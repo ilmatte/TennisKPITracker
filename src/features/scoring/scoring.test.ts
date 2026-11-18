@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Match, Point } from '../../types';
-import { deriveGameScore, pointsToGame, tiebreakServer } from './scoring';
+import { deriveGameScore, nextGameNumber, pointsToGame, tiebreakServer } from './scoring';
 import { freeErrorStats, serveKpi, servicePlusOne } from '../kpi/kpi';
 
 const match = (overrides: Partial<Match> = {}): Match => ({
@@ -27,6 +27,11 @@ describe('scoring core', () => {
   it('closes a standard game after four points', () => {
     const result = pointsToGame([point(),point(),point(),point()], 'player', false);
     expect(result).toEqual({ player: 1, opponent: 0 });
+  });
+  it('advances to the next game only after the current game is won', () => {
+    const firstGame = [1,2,3,4].map(() => point());
+    expect(nextGameNumber(firstGame, 1, match())).toBe(2);
+    expect(nextGameNumber(firstGame.slice(0, 3), 1, match())).toBe(1);
   });
   it('handles advantages and closes on the next point', () => {
     const points = [1,2,3,4].map(()=>point({winner:'player'})).concat([1,2,3,4].map(()=>point({winner:'opponent'})));

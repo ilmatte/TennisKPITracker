@@ -60,6 +60,18 @@ export function sortedPoints(points: Point[], setNumber: number, gameNumber: num
   return points.filter(p => !p.deleted && p.setNumber === setNumber && p.gameNumber === gameNumber).sort((a, b) => a.pointNumber - b.pointNumber);
 }
 
+export function nextGameNumber(points: Point[], setNumber: number, match: Match): number {
+  const gameNumbers = points
+    .filter(point => !point.deleted && point.setNumber === setNumber)
+    .map(point => point.gameNumber);
+  let gameNumber = 1;
+  const lastRecordedGame = Math.max(0, ...gameNumbers);
+  while (gameNumber <= lastRecordedGame && pointsToGame(sortedPoints(points, setNumber, gameNumber), 'player', match.deuceSinglePoint)) {
+    gameNumber += 1;
+  }
+  return gameNumber;
+}
+
 export function deriveSetScore(points: Point[], setNumber: number, match: Match): { player: number; opponent: number } {
   let player = 0;
   let opponent = 0;

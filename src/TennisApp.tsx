@@ -5,7 +5,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { jsPDF } from 'jspdf';
 import { db, persistSnapshotStorage, seedPlayers } from './db/database';
 import type { Match, Player, Point } from './types';
-import { deriveGameScore, deriveSetScore, getServer, sortedPoints } from './features/scoring/scoring';
+import { deriveGameScore, deriveSetScore, getServer, nextGameNumber, pointsToGame, sortedPoints } from './features/scoring/scoring';
 import { freeErrorStats, serveKpi, servicePlusOne } from './features/kpi/kpi';
 
 const stamp = () => new Date().toISOString();
@@ -80,13 +80,140 @@ function Players() {
 
 function PlayerModal({player,onClose,onSave,onDelete}:{player:Player;onClose:()=>void;onSave:(p:Player)=>void;onDelete?:()=>void}){const[draft,setDraft]=useState(player);return <div className="modal-backdrop"><div className="modal-sheet"><div className="modal-heading"><h2>{draft.firstName?'Modifica giocatore':'Nuovo giocatore'}</h2><button className="icon-button" onClick={onClose}>×</button></div><div className="form-grid"><label>Nome<input value={draft.firstName} onChange={e=>setDraft({...draft,firstName:e.target.value})}/></label><label>Cognome<input value={draft.lastName} onChange={e=>setDraft({...draft,lastName:e.target.value})}/></label></div><label>Data di nascita<input type="date" value={draft.birthDate||''} onChange={e=>setDraft({...draft,birthDate:e.target.value})}/></label><div className="form-grid"><label>Categoria<input value={draft.category} onChange={e=>setDraft({...draft,category:e.target.value})}/></label><label>Classifica FITP<input value={draft.ranking} onChange={e=>setDraft({...draft,ranking:e.target.value})}/></label></div>{onDelete&&<button className="danger" onClick={onDelete}>Elimina giocatore</button>}<button className="primary wide" disabled={!draft.firstName.trim()} onClick={()=>onSave(draft)}>Salva</button></div></div>}
 
-function Tracker(){const{id}=useParams();const match=useLiveQuery(()=>db.matches.get(id!),[id]);const points=useLiveQuery(()=>db.points.where('matchId').equals(id!).filter(p=>!p.deleted).sortBy('pointNumber'),[id])??[];const[setNumber,setSetNumber]=useState(1);const[gameNumber]=useState(1);const[winner,setWinner]=useState<'player'|'opponent'>('player');const[shotCount,setShotCount]=useState(1);const[doubleFault,setDoubleFault]=useState(false);const[secondServe,setSecondServe]=useState(false);const[freeError,setFreeError]=useState(false);const[errorPlayer,setErrorPlayer]=useState<'player'|'opponent'>('opponent');const[attack,setAttack]=useState(false);const[pressure,setPressure]=useState(false);if(!match)return <div className="page"><div className="empty-state">Partita non trovata</div></div>;
-  useEffect(()=>{if(doubleFault)setWinner('opponent')},[doubleFault]);useEffect(()=>{if(freeError)setWinner(errorPlayer==='player'?'opponent':'player')},[freeError,errorPlayer]);
-  const activeMatch=match;
-  const game=sortedPoints(points,setNumber,gameNumber);const score=deriveGameScore(game,activeMatch.deuceSinglePoint);const setScore=deriveSetScore(points,setNumber,activeMatch);
-  async function save(){const t=stamp();const p:Point={id:crypto.randomUUID(),matchId:activeMatch.id,setNumber,gameNumber,pointNumber:game.length+1,winner,server:getServer(activeMatch,setNumber,gameNumber),secondServe,doubleFault,shotCount,freeError,errorPlayer:freeError?errorPlayer:undefined,errorCategory:freeError?'other':undefined,attackError:attack,pressureSituation:pressure,pressureErrorPlayer:pressure?errorPlayer:undefined,createdAt:t,updatedAt:t,version:1};await db.points.put(p);await db.syncQueue.put({id:crypto.randomUUID(),entityType:'points',entityId:p.id,operation:'upsert',payload:p,createdAt:t,attempts:0});setDoubleFault(false);setSecondServe(false);setFreeError(false);setAttack(false);setPressure(false);setShotCount(1);}
-  async function remove(p:Point){await db.points.put({...p,deleted:true,updatedAt:stamp(),version:p.version+1});}
-  return <div className="tracking-page"><div className="tracking-header"><button className="icon-button" onClick={()=>history.back()} aria-label="Indietro">‹</button><div><span>SET {setNumber}</span><strong>{match.playerFirstNameSnapshot} vs {match.opponent}</strong></div><button className="icon-button" onClick={()=>db.matches.put({...match,status:'completed',updatedAt:stamp(),version:match.version+1})} aria-label="Termina">✓</button></div><div className="scoreboard"><div><span>Tu</span><strong>{score.player}</strong></div><div className="game-count"><strong>{setScore.player}-{setScore.opponent}</strong><span>Game {gameNumber}</span></div><div><span>{match.opponent}</span><strong>{score.opponent}</strong></div></div><div className="set-tabs">{[1,2,3].slice(0,match.numberOfSets).map(n=><button key={n} className={n===setNumber?'active':''} onClick={()=>setSetNumber(n)}>Set {n}</button>)}</div><div className="tracking-controls"><div className="winner-grid"><button className={`winner player ${winner==='player'?'active':''}`} onClick={()=>setWinner('player')}>Punto tuo</button><button className={`winner opponent ${winner==='opponent'?'active':''}`} onClick={()=>setWinner('opponent')}>Punto avversario</button></div><div className="quick-options"><button className={secondServe?'active':''} onClick={()=>setSecondServe(v=>!v)}>Seconda palla</button><button className={doubleFault?'active danger':''} onClick={()=>setDoubleFault(v=>!v)}>Doppio fallo</button><button className={freeError?'active':''} onClick={()=>setFreeError(v=>!v)}>Errore gratuito</button></div>{freeError&&<div className="quick-options"><button className={errorPlayer==='player'?'active':''} onClick={()=>setErrorPlayer('player')}>Errore mio</button><button className={errorPlayer==='opponent'?'active':''} onClick={()=>setErrorPlayer('opponent')}>Errore avversario</button></div>}<label className="shot-control"><span>Colpi complessivi</span><div><button onClick={()=>setShotCount(v=>Math.max(1,v-1))}>−</button><strong>{shotCount}</strong><button onClick={()=>setShotCount(v=>v+1)}>+</button></div></label><div className="quick-options"><button className={attack?'active':''} onClick={()=>setAttack(v=>!v)}>Errore in attacco</button><button className={pressure?'active':''} onClick={()=>setPressure(v=>!v)}>Pressione</button></div><button className="primary save-point" onClick={save}>Salva punto</button></div>{game.length>0&&<div className="point-history"><h3>Punti del game</h3>{game.map(p=><div className="point-row" key={p.id}><span>{p.pointNumber}</span><strong>{p.winner==='player'?'Tu':match.opponent}</strong><span>{p.shotCount} colpi</span><button onClick={()=>remove(p)}>Elimina</button></div>)}</div>}</div>;
+function Tracker() {
+  const { id } = useParams();
+  const match = useLiveQuery(() => db.matches.get(id!), [id]);
+  const points = useLiveQuery(() => db.points.where('matchId').equals(id!).filter(point => !point.deleted).sortBy('pointNumber'), [id]) ?? [];
+  const [setNumber, setSetNumber] = useState(1);
+  const [selectedGame, setSelectedGame] = useState<number | null>(null);
+  const [winner, setWinner] = useState<'player' | 'opponent'>('player');
+  const [shotCount, setShotCount] = useState(1);
+  const [doubleFault, setDoubleFault] = useState(false);
+  const [secondServe, setSecondServe] = useState(false);
+  const [freeError, setFreeError] = useState(false);
+  const [errorPlayer, setErrorPlayer] = useState<'player' | 'opponent'>('opponent');
+  const [attack, setAttack] = useState(false);
+  const [pressure, setPressure] = useState(false);
+
+  const currentGameNumber = match ? nextGameNumber(points, setNumber, match) : 1;
+  const gameNumber = selectedGame ?? currentGameNumber;
+  const game = sortedPoints(points, setNumber, gameNumber);
+  const gameComplete = match ? Boolean(pointsToGame(game, 'player', match.deuceSinglePoint)) : false;
+
+  useEffect(() => {
+    if (doubleFault) setWinner('opponent');
+  }, [doubleFault]);
+  useEffect(() => {
+    if (freeError) setWinner(errorPlayer === 'player' ? 'opponent' : 'player');
+  }, [freeError, errorPlayer]);
+  useEffect(() => {
+    setWinner('player');
+    setShotCount(1);
+    setDoubleFault(false);
+    setSecondServe(false);
+    setFreeError(false);
+    setErrorPlayer('opponent');
+    setAttack(false);
+    setPressure(false);
+  }, [setNumber, gameNumber]);
+
+  if (!match) return <div className="page"><div className="empty-state">Partita non trovata</div></div>;
+
+  const activeMatch = match;
+  const setScore = deriveSetScore(points, setNumber, match);
+  const recordedGameNumbers = points.filter(point => point.setNumber === setNumber).map(point => point.gameNumber);
+  const lastGameNumber = Math.max(currentGameNumber, ...recordedGameNumbers);
+
+  function selectGame(number: number) {
+    setSelectedGame(number === currentGameNumber ? null : number);
+  }
+
+  async function save() {
+    if (gameComplete) return;
+    const t = stamp();
+    const point: Point = {
+      id: crypto.randomUUID(), matchId: activeMatch.id, setNumber, gameNumber,
+      pointNumber: Math.max(0, ...game.map(existingPoint => existingPoint.pointNumber)) + 1,
+      winner, server: getServer(activeMatch, setNumber, gameNumber), secondServe, doubleFault, shotCount,
+      freeError, errorPlayer: freeError ? errorPlayer : undefined, errorCategory: freeError ? 'other' : undefined,
+      attackError: attack, pressureSituation: pressure, pressureErrorPlayer: pressure ? errorPlayer : undefined,
+      createdAt: t, updatedAt: t, version: 1,
+    };
+    await db.points.put(point);
+    await db.syncQueue.put({ id: crypto.randomUUID(), entityType: 'points', entityId: point.id, operation: 'upsert', payload: point, createdAt: t, attempts: 0 });
+    setDoubleFault(false);
+    setSecondServe(false);
+    setFreeError(false);
+    setAttack(false);
+    setPressure(false);
+    setShotCount(1);
+  }
+
+  async function remove(point: Point) {
+    const updatedPoint = { ...point, deleted: true, updatedAt: stamp(), version: point.version + 1 };
+    await db.points.put(updatedPoint);
+    await db.syncQueue.put({ id: crypto.randomUUID(), entityType: 'points', entityId: point.id, operation: 'upsert', payload: updatedPoint, createdAt: updatedPoint.updatedAt, attempts: 0 });
+  }
+
+  return <div className="tracking-page">
+    <div className="tracking-header">
+      <button className="icon-button" onClick={() => history.back()} aria-label="Indietro">‹</button>
+      <div><span>SET {setNumber} · GAME {gameNumber}</span><strong>{match.playerFirstNameSnapshot} vs {match.opponent}</strong></div>
+      <button className="icon-button" onClick={() => db.matches.put({ ...match, status: 'completed', updatedAt: stamp(), version: match.version + 1 })} aria-label="Termina">✓</button>
+    </div>
+    <div className="scoreboard">
+      <div><span>Tu</span><strong>{deriveGameScore(game, match.deuceSinglePoint).player}</strong></div>
+      <div className="game-count"><strong>{setScore.player}-{setScore.opponent}</strong><span>Game {gameNumber}</span></div>
+      <div><span>{match.opponent}</span><strong>{deriveGameScore(game, match.deuceSinglePoint).opponent}</strong></div>
+    </div>
+    <div className="set-tabs">{[1, 2, 3].slice(0, match.numberOfSets).map(number =>
+      <button key={number} className={number === setNumber ? 'active' : ''} onClick={() => { setSetNumber(number); setSelectedGame(null); }}>Set {number}</button>
+    )}</div>
+    <div className="game-navigation" aria-label="Seleziona game">
+      {Array.from({ length: lastGameNumber }, (_, index) => index + 1).map(number => {
+        const gamePoints = sortedPoints(points, setNumber, number);
+        const result = pointsToGame(gamePoints, 'player', match.deuceSinglePoint);
+        const label = result ? `${result.player}-${result.opponent}` : 'in corso';
+        const isCurrent = number === currentGameNumber;
+        const isSelected = number === gameNumber;
+        return <button key={number} className={`${isSelected ? 'active' : ''}${isCurrent ? ' current' : ''}`} onClick={() => selectGame(number)}>
+          Game {number}<span>{isCurrent ? 'Corrente' : label}</span>
+        </button>;
+      })}
+    </div>
+    <div className="tracking-controls">
+      <div className="winner-grid">
+        <button className={`winner player ${winner === 'player' ? 'active' : ''}`} onClick={() => setWinner('player')}>Punto tuo</button>
+        <button className={`winner opponent ${winner === 'opponent' ? 'active' : ''}`} onClick={() => setWinner('opponent')}>Punto avversario</button>
+      </div>
+      <div className="quick-options">
+        <button className={secondServe ? 'active' : ''} onClick={() => setSecondServe(value => !value)}>Seconda palla</button>
+        <button className={doubleFault ? 'active danger' : ''} onClick={() => setDoubleFault(value => !value)}>Doppio fallo</button>
+        <button className={freeError ? 'active' : ''} onClick={() => setFreeError(value => !value)}>Errore gratuito</button>
+      </div>
+      {freeError && <div className="quick-options">
+        <button className={errorPlayer === 'player' ? 'active' : ''} onClick={() => setErrorPlayer('player')}>Errore mio</button>
+        <button className={errorPlayer === 'opponent' ? 'active' : ''} onClick={() => setErrorPlayer('opponent')}>Errore avversario</button>
+      </div>}
+      <label className="shot-control"><span>Colpi complessivi</span><div>
+        <button onClick={() => setShotCount(value => Math.max(1, value - 1))}>−</button><strong>{shotCount}</strong>
+        <button onClick={() => setShotCount(value => value + 1)}>+</button>
+      </div></label>
+      <div className="quick-options">
+        <button className={attack ? 'active' : ''} onClick={() => setAttack(value => !value)}>Errore in attacco</button>
+        <button className={pressure ? 'active' : ''} onClick={() => setPressure(value => !value)}>Pressione</button>
+      </div>
+      {gameComplete && <p className="completed-game-note">Game concluso. Per correggerlo, elimina il punto errato dalla lista qui sotto.</p>}
+      <button className="primary save-point" disabled={gameComplete} onClick={save}>Salva punto</button>
+    </div>
+    {game.length > 0 && <div className="point-history">
+      <h3>Punti del game {gameNumber}</h3>
+      {game.map(point => <div className="point-row" key={point.id}>
+        <span>{point.pointNumber}</span><strong>{point.winner === 'player' ? 'Tu' : match.opponent}</strong>
+        <span>{point.shotCount} colpi</span><button onClick={() => remove(point)}>Elimina</button>
+      </div>)}
+    </div>}
+  </div>;
 }
 
 function Dashboard(){const matches=useLiveQuery(async()=> (await db.matches.toArray()).filter(match=>!match.deleted),[])??[];const[matchId,setMatchId]=useState('all');const points=useLiveQuery(async()=>matchId==='all'?db.points.filter(p=>!p.deleted).toArray():db.points.where('matchId').equals(matchId).filter(p=>!p.deleted).toArray(),[matchId])??[];const player=serveKpi(points,'player');const opponent=serveKpi(points,'opponent');const pe=freeErrorStats(points,'player');const oe=freeErrorStats(points,'opponent');const pp=servicePlusOne(points,'player');const op=servicePlusOne(points,'opponent');const data=[{name:'Tu',Punti:player.pointsWon,Errori:pe.total},{name:'Avversario',Punti:opponent.pointsWon,Errori:oe.total}];return <div className="page"><div className="page-heading"><div><p className="eyebrow">Analisi</p><h1>Dashboard KPI</h1></div></div><label className="filter"><span>Partita</span><select value={matchId} onChange={e=>setMatchId(e.target.value)}><option value="all">Tutte le partite</option>{matches.map(m=><option key={m.id} value={m.id}>{new Date(m.matchDate).toLocaleDateString('it-IT')} · {m.opponent}</option>)}</select></label><section className="dashboard-section"><h2>Servizio</h2><div className="kpi-grid"><Kpi label="Prime palle" value={`${player.firstServePercentage.toFixed(0)}%`}/><Kpi label="Doppi falli" value={player.doubleFaults}/><Kpi label="Punti al servizio" value={player.pointsWon}/><Kpi label="Seconda palla" value={player.secondServes}/></div></section><section className="dashboard-section"><h2>Errori gratuiti</h2><div className="kpi-grid"><Kpi label="Totali tu" value={pe.total}/><Kpi label="Entro 4" value={pe.under4}/><Kpi label="Rally" value={pe.rally}/><Kpi label="Pressione" value={pe.pressure}/></div></section><section className="dashboard-section"><h2>Servizio +1</h2><div className="kpi-grid"><Kpi label="Tu" value={`${pp.percentage.toFixed(0)}%`} detail={`${pp.won}/${pp.total}`}/><Kpi label="Avversario" value={`${op.percentage.toFixed(0)}%`} detail={`${op.won}/${op.total}`}/></div></section><section className="dashboard-section"><h2>Confronto</h2><div className="chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={data}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="name"/><YAxis/><Tooltip/><Bar dataKey="Punti" fill="#16856b" radius={[4,4,0,0]}/><Bar dataKey="Errori" fill="#d85e38" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></div></section></div>}
