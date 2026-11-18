@@ -26,7 +26,7 @@ Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to enable cloud synchroniza
 ## Supabase setup
 
 1. Create a Supabase project.
-2. Run `supabase/schema.sql` in the SQL Editor.
+2. For a new database, run `supabase/001_schema.sql` in the SQL Editor. If the old `supabase/schema.sql` was already applied, run `supabase/002_normalize_sets_games.sql` instead to migrate existing data without losing points.
 3. Enable Email/Password authentication.
 4. Add the environment variables to Vercel.
 5. Keep all personal tables protected by the included RLS policies.

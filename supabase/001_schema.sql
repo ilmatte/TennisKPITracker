@@ -44,12 +44,36 @@ create table if not exists public.matches (
   unique(user_id,id)
 );
 
+create table if not exists public.sets (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  match_id uuid not null,
+  set_number integer not null check (set_number > 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  version integer not null default 1,
+  unique(match_id, set_number),
+  unique(user_id, id),
+  foreign key (user_id, match_id) references public.matches(user_id, id) on delete cascade
+);
+
+create table if not exists public.games (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  set_id uuid not null,
+  game_number integer not null check (game_number > 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  version integer not null default 1,
+  unique(set_id, game_number),
+  unique(user_id, id),
+  foreign key (user_id, set_id) references public.sets(user_id, id) on delete cascade
+);
+
 create table if not exists public.points (
   id uuid primary key,
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  match_id uuid not null references public.matches(id) on delete cascade,
-  set_number integer not null,
-  game_number integer not null,
+  game_id uuid not null,
   point_number integer not null,
   winner text not null,
   server text not null,
@@ -66,13 +90,22 @@ create table if not exists public.points (
   updated_at timestamptz not null default now(),
   version integer not null default 1,
   deleted boolean not null default false,
-  unique(user_id,id)
+  unique(user_id,id),
+  foreign key (user_id, game_id) references public.games(user_id, id) on delete cascade
 );
+
+create index if not exists sets_match_id_idx on public.sets(match_id);
+create index if not exists games_set_id_idx on public.games(set_id);
+create index if not exists points_game_id_idx on public.points(game_id);
 
 alter table public.players enable row level security;
 alter table public.matches enable row level security;
+alter table public.sets enable row level security;
+alter table public.games enable row level security;
 alter table public.points enable row level security;
 
 create policy "own players" on public.players for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "own matches" on public.matches for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "own sets" on public.sets for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "own games" on public.games for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "own points" on public.points for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
