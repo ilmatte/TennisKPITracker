@@ -1,6 +1,6 @@
 # Tennis KPI Tracker
 
-Local-first tennis match tracking PWA built with React, TypeScript, Vite, Dexie/IndexedDB, Supabase, Recharts, and Workbox.
+Local-first tennis match tracking PWA built with React, TypeScript, Vite, Dexie/IndexedDB, Supabase Auth, and Supabase PostgreSQL.
 
 ## Local development
 
@@ -11,51 +11,42 @@ npm test
 npm run build
 ```
 
-Open the Vite URL shown in the terminal. The app works locally without Supabase or Google credentials.
+The app remains usable without signing in or connecting to the internet. To enable Google sign-in and shared-family management, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (publishable/anon key) in `.env.local` and in the required Vercel environments. Google OAuth credentials belong in Supabase Auth configuration. Never put a Google client secret or Supabase `service_role` key in frontend code or environment variables.
 
-## Environment
+## Supabase database setup
 
-The app works locally without Supabase credentials. To enable Google sign-in locally, put `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (the publishable/anon key) in `.env.local`; set the same public variables in the Vercel environments where sign-in is enabled. Never expose the Supabase `service_role` key or Google OAuth client secret in the frontend.
+`supabase/001_initial_schema.sql` is the only supported initial schema. It defines families, members, one-time email invitations, and family-scoped players, matches, sets, games, and points, including RLS policies and family-management functions. It requires `pgcrypto` in the `extensions` schema. The `private` schema contains RLS helper functions and must not be added to Supabase's exposed API schemas.
 
-## Supabase setup
+For a **new, empty** Supabase project, run `001_initial_schema.sql` once in the Supabase SQL Editor.
 
-1. Create a Supabase project.
-2. For a new database, run `supabase/001_schema.sql` in the SQL Editor. If the old `supabase/schema.sql` was already applied, run `supabase/002_normalize_sets_games.sql` instead to migrate existing data without losing points.
-3. Keep all personal tables protected by the included RLS policies.
+For a project with former Tennis KPI tables, review `supabase/000_reset_application.sql` carefully. It is **destructive** and removes only the application's listed tables and functions (including the two RLS helpers in `private`); it does not use `CASCADE` and does not touch Supabase Auth or OAuth configuration. Only after verifying the script and confirming the application data can be discarded, run it manually in the SQL Editor, then run `001_initial_schema.sql`. Neither script is executed by the app or build.
 
-The schema stores match snapshot fields for player name, ranking, category, and match date. Profile updates must never replace those fields.
+Configure Google as an enabled Supabase Auth provider and allow the app's redirect URL, including `http://localhost:5173/` for local development and the production app URL when deployed. Only a family owner can create invitations. Invitations use a random one-time token; only its SHA-256 hash is stored in PostgreSQL, and the token expires after seven days. The app provides a link that the inviter can send to the invited email address. Acceptance requires a signed-in account with a confirmed email matching the invitation.
 
-## Google sign-in and cloud sync
+## Local database and privacy
 
-Google sign-in is implemented through Supabase Auth using PKCE. Configure Google as an enabled provider in Supabase and set the app's Site URL and allowed redirect URL (for local development, `http://localhost:5173/`). The app sends users back to the root URL; Supabase processes the PKCE callback and restores the session automatically. The application remains usable offline and without authentication. Sign-in requires the public Supabase URL and publishable/anon key; no Google secret or Supabase `service_role` key belongs in frontend environment variables.
+Dexie uses a versioned database with family-scoped stores. Upgrading the previous Dexie version to the relational schema clears its old `players`, `matches`, `points`, and pending sync-queue records **once** as part of the version migration. The point-numbering migration preserves every current record, deterministically renumbers any duplicate point numbers (including deleted points), and then adds a unique compound index on `(game_id, point_number)`. Later app starts do not clear data. Old local backups use the previous shape and are not accepted as version 2 relational backups. Export any old data separately before deploying if it must be retained.
 
-Cloud synchronization between local IndexedDB and Supabase is not implemented. When it is added, associate records with the authenticated user, handle conflicts, and follow the normalized relationship `match → set → game → point`; use RLS for access control.
+The new local database starts without sample players. Create a local-only workspace to use the app without an account, or create/join a shared family while signed in. Local-only workspaces are scoped to the current signed-in account after explicit association. Changing or signing out of an account hides that account's shared-family workspaces from the other account.
 
+`sets`, `games`, and `points` are stored as related entities with client-generated UUIDs. Points link to a game, games to a set, and sets to a match. Records and their local outbox entries are written in Dexie transactions. The outbox is preparation for a later sync engine; **sporting data is not currently uploaded or downloaded**, even for shared families. A family currently shares membership and invitations, not match/player data. Do not treat this version as cloud backup or cross-device synchronization.
 
-1. Configurare Google come provider in Supabase, inserendo le credenziali OAuth dell’app Google. Il secret OAuth va configurato in Supabase, mai nel codice o nelle variabili pubbliche di Vercel.
-2. Consentire in Supabase gli URL di redirect dell’app, incluso `http://localhost:5173/` in sviluppo e l’URL di produzione quando applicabile.
-3. Per abilitare l’accesso, impostare `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` nell’ambiente frontend; non usare mai una chiave `service_role`.
-4. La sincronizzazione cloud dei dati locali non è implementata.
+Family owners can revoke member access and delete a family. RLS restricts remote family and sporting-data access to current members; application users never receive an elevated service-role credential.
 
 ## Vercel deployment
 
-1. Push the repository to GitHub.
-2. Import it into Vercel.
-3. Use framework preset Vite.
-4. Build command: `npm run build`.
-5. Output directory: `dist`.
-6. When cloud integration is implemented, add the `VITE_SUPABASE_*` variables to the **Production** environment in Project Settings.
-
-Google Drive configuration is optional.
+1. Import the repository into Vercel with the Vite framework preset.
+2. Set build command `npm run build` and output directory `dist`.
+3. Configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` only where authentication and family management are enabled.
 
 ## iPhone installation
 
-Open the deployed HTTPS URL in Safari, choose Share, then Add to Home Screen. The app uses a service worker for app resources and IndexedDB for match data.
+Open the deployed HTTPS URL in Safari, choose Share, then Add to Home Screen. The PWA caches app resources and uses IndexedDB for local match data.
 
 ## Data safety
 
-- Points and profile changes are saved locally first.
-- Deleting a profile does not delete historical matches or snapshots.
-- Match snapshots remain independent from the live player profile.
-- JSON export/import preserves records and unique identifiers.
-- Cloud synchronization never blocks point capture.
+- IndexedDB is the operational store; scoring and KPI features remain available offline.
+- Match snapshots remain independent from later player-profile changes.
+- Family deletion removes local cached family records on the device performing the deletion; remote deletion cascades through that family's data.
+- JSON backups are version 2 and scoped to the active family.
+- No automatic cloud sync is implemented.

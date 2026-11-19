@@ -1,50 +1,18 @@
-import { useEffect, useState } from 'react';
-import type { User } from '@supabase/supabase-js';
+import { useState } from 'react';
 import { supabase } from '../../services/supabase/client';
+import { useAuth } from './AuthContext';
 import './AuthStatus.css';
 
-function getOAuthError() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('error_description') ?? params.get('error');
-}
-
 export default function AuthStatus() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(() => Boolean(supabase));
+  const { user, loading } = useAuth();
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(getOAuthError);
-
-  useEffect(() => {
-    if (!supabase) return;
-
-    let receivedAuthEvent = false;
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      receivedAuthEvent = true;
-      setUser(session?.user ?? null);
-      setLoading(false);
-      if (event !== 'INITIAL_SESSION') setError(null);
-    });
-
-    void supabase.auth.getSession().then(({ data, error: sessionError }) => {
-      if (receivedAuthEvent) return;
-      if (sessionError) {
-        setError(sessionError.message);
-      } else {
-        setUser(data.session?.user ?? null);
-      }
-      setLoading(false);
-    }).catch((sessionError: Error) => {
-      if (receivedAuthEvent) return;
-      setError(sessionError.message);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  const [error, setError] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('error_description') ?? params.get('error');
+  });
 
   async function signIn() {
     if (!supabase) return;
-
     setPending(true);
     setError(null);
     try {
@@ -62,7 +30,6 @@ export default function AuthStatus() {
 
   async function signOut() {
     if (!supabase) return;
-
     setPending(true);
     setError(null);
     try {

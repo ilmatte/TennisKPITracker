@@ -14,10 +14,10 @@ export interface ServeKpi {
 
 export function serveKpi(points: Point[], side: Side): ServeKpi {
   const served = points.filter(p => !p.deleted && p.server === side);
-  const doubleFaults = served.filter(p => p.doubleFault).length;
-  const validFirst = served.filter(p => !p.secondServe && !p.doubleFault).length;
-  const firstAttempts = served.filter(p => !p.secondServe).length;
-  const secondServes = served.filter(p => p.secondServe).length;
+  const doubleFaults = served.filter(p => p.double_fault).length;
+  const validFirst = served.filter(p => !p.second_serve && !p.double_fault).length;
+  const firstAttempts = served.filter(p => !p.second_serve).length;
+  const secondServes = served.filter(p => p.second_serve).length;
   const pointsWon = served.filter(p => p.winner === side).length;
   return {
     doubleFaults,
@@ -31,19 +31,19 @@ export function serveKpi(points: Point[], side: Side): ServeKpi {
 }
 
 export function freeErrorStats(points: Point[], side: Side) {
-  const errors = points.filter(p => !p.deleted && p.freeError && p.errorPlayer === side);
+  const errors = points.filter(p => !p.deleted && p.free_error && p.error_player === side);
   return {
-    under4: errors.filter(p => p.shotCount <= 4).length,
-    rally: errors.filter(p => p.shotCount > 4).length,
-    attack: errors.filter(p => p.attackError).length,
-    pressure: errors.filter(p => p.pressureSituation && p.pressureErrorPlayer === side).length,
+    under4: errors.filter(p => p.shot_count <= 4).length,
+    rally: errors.filter(p => p.shot_count > 4).length,
+    attack: errors.filter(p => p.attack_error).length,
+    pressure: errors.filter(p => p.pressure_situation && p.pressure_error_player === side).length,
     total: errors.length,
   };
 }
 
 export function servicePlusOne(points: Point[], side: Side) {
   const served = points.filter(p => !p.deleted && p.server === side);
-  const pattern = served.filter(p => p.winner === side && p.shotCount <= 4 && p.freeError);
+  const pattern = served.filter(p => p.winner === side && p.shot_count <= 4 && p.free_error);
   return {
     won: pattern.length,
     total: served.length,
@@ -54,7 +54,7 @@ export function servicePlusOne(points: Point[], side: Side) {
 export function pressureStats(points: Point[], side: Side) {
   // Pressure outcomes are computed from replayed score context by caller where needed.
   return {
-    player30: points.filter(p => p.winner === side && p.pointNumber >= 0).length,
+    player30: points.filter(p => p.winner === side && p.point_number >= 0).length,
   };
 }
 

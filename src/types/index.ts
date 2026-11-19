@@ -1,77 +1,139 @@
-export type PlayerId = string;
+export type UUID = string;
+export type PlayerId = UUID;
+
+export interface Family {
+  id: UUID;
+  name: string;
+  created_at: string;
+  updated_at: string;
+  created_by: UUID | null;
+  local_only: boolean;
+}
+
+export interface FamilyMember {
+  family_id: UUID;
+  user_id: UUID;
+  member_email: string;
+  role: 'owner' | 'member';
+  created_at: string;
+}
+
+export interface FamilyInvitation {
+  id: UUID;
+  family_id: UUID;
+  invited_email: string;
+  invited_by: UUID;
+  expires_at: string;
+  accepted_at: string | null;
+  created_at: string;
+}
 
 export interface Player {
   id: PlayerId;
-  firstName: string;
-  lastName: string;
-  birthDate?: string;
+  family_id: UUID;
+  first_name: string;
+  last_name: string;
+  birth_date?: string | null;
   category: string;
   ranking: string;
-  createdAt: string;
-  updatedAt: string;
+  created_at: string;
+  updated_at: string;
   version: number;
-  deleted?: boolean;
+  deleted: boolean;
 }
 
 export interface Match {
-  id: string;
-  matchDate: string;
-  playerId: PlayerId;
-  playerFirstNameSnapshot: string;
-  playerLastNameSnapshot: string;
-  playerRankingSnapshot: string;
-  playerCategorySnapshot: string;
+  id: UUID;
+  family_id: UUID;
+  match_date: string;
+  player_id: PlayerId;
+  player_first_name_snapshot: string;
+  player_last_name_snapshot: string;
+  player_ranking_snapshot: string;
+  player_category_snapshot: string;
   opponent: string;
-  opponentRanking?: string;
-  opponentCategory?: string;
-  tournament?: string;
-  tournamentMatchNumber?: number;
-  numberOfSets: 3 | 5;
-  thirdSetType: 'normal' | 'super-tiebreak';
-  superTiebreakTarget: number;
-  tiebreakTarget: number;
-  tiebreakStartsAt363: boolean;
-  deuceSinglePoint: boolean;
-  firstServer: 'player' | 'opponent';
+  opponent_ranking?: string | null;
+  opponent_category?: string | null;
+  tournament?: string | null;
+  tournament_match_number?: number | null;
+  number_of_sets: 3 | 5;
+  third_set_type: 'normal' | 'super-tiebreak';
+  super_tiebreak_target: number;
+  tiebreak_target: number;
+  tiebreak_starts_at_363: boolean;
+  deuce_single_point: boolean;
+  first_server: 'player' | 'opponent';
   status: 'in-progress' | 'completed';
-  createdAt: string;
-  updatedAt: string;
+  result?: string | null;
+  created_at: string;
+  updated_at: string;
   version: number;
-  deleted?: boolean;
+  deleted: boolean;
+}
+
+export interface TennisSet {
+  id: UUID;
+  family_id: UUID;
+  match_id: UUID;
+  set_number: number;
+  player_games: number;
+  opponent_games: number;
+  created_at: string;
+  updated_at: string;
+  version: number;
+  deleted: boolean;
+}
+
+export interface Game {
+  id: UUID;
+  family_id: UUID;
+  set_id: UUID;
+  game_number: number;
+  player_points: number;
+  opponent_points: number;
+  created_at: string;
+  updated_at: string;
+  version: number;
+  deleted: boolean;
 }
 
 export type ErrorCategory = 'forehand' | 'backhand' | 'serve' | 'volley' | 'net' | 'other';
 
 export interface Point {
-  id: string;
-  matchId: string;
-  setNumber: number;
-  gameNumber: number;
-  pointNumber: number;
+  id: UUID;
+  family_id: UUID;
+  game_id: UUID;
+  point_number: number;
   winner: 'player' | 'opponent';
   server: 'player' | 'opponent';
-  secondServe: boolean;
-  doubleFault: boolean;
-  shotCount: number;
-  freeError: boolean;
-  errorPlayer?: 'player' | 'opponent';
-  errorCategory?: ErrorCategory;
-  attackError: boolean;
-  pressureSituation: boolean;
-  pressureErrorPlayer?: 'player' | 'opponent';
-  createdAt: string;
-  updatedAt: string;
+  second_serve: boolean;
+  double_fault: boolean;
+  shot_count: number;
+  free_error: boolean;
+  error_player?: 'player' | 'opponent';
+  error_category?: ErrorCategory;
+  attack_error: boolean;
+  pressure_situation: boolean;
+  pressure_error_player?: 'player' | 'opponent';
+  created_at: string;
+  updated_at: string;
   version: number;
-  deleted?: boolean;
+  deleted: boolean;
+}
+
+export interface ScoredPoint extends Point {
+  set_number: number;
+  game_number: number;
 }
 
 export interface SyncOperation {
-  id: string;
-  entityType: 'players' | 'matches' | 'points';
-  entityId: string;
+  id: UUID;
+  family_id: UUID;
+  entity_type: 'players' | 'matches' | 'sets' | 'games' | 'points';
+  entity_id: UUID;
   operation: 'upsert' | 'delete';
   payload: unknown;
-  createdAt: string;
+  created_at: string;
   attempts: number;
-  lastError?: string;
+  last_error?: string;
 }

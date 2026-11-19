@@ -1,0 +1,127 @@
+.family-manager h3 {
+  margin: 18px 0 8px;
+  font-size: 14px;
+}
+
+.family-select,
+.family-create-form label,
+.family-invite-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.family-select select,
+.family-create-form input,
+.family-invite-form input,
+.invitation-result textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.family-summary,
+.family-member {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.family-summary span,
+.family-member span,
+.family-feedback,
+.invitation-result p {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.family-member span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.family-member .danger {
+  min-height: 34px;
+  padding-inline: 8px;
+}
+
+.family-feedback.error {
+  color: #a33a28;
+}
+
+.family-create-form,
+.family-invite-form {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.family-create-form button + button {
+  margin-top: 8px;
+}
+
+.invitation-result {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.invitation-result p {
+  margin: 0;
+}
+
+.invitation-result textarea {
+  overflow-wrap: anywhere;
+  resize: vertical;
+}
+
+.invitation-result a {
+  color: var(--green-dark);
+  font-weight: 700;
+}
+
+.family-delete {
+  margin-top: 18px;
+  padding-inline: 12px;
+}
+
+.family-refresh {
+  margin-top: 12px;
+  border: 0;
+  background: transparent;
+  color: var(--green-dark);
+  font-weight: 700;
+}
+
+.family-setup-link {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.active-family-select {
+  max-width: 180px;
+  min-height: 34px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 11px;
+}
+
+@media (max-width: 520px) {
+  .active-family-select {
+    max-width: 92px;
+  }
+}
