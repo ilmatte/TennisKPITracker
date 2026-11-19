@@ -15,7 +15,7 @@ Open the Vite URL shown in the terminal. The app works locally without Supabase 
 
 ## Environment
 
-The local development environment does not need Supabase credentials. Configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` only in Vercel's **Production** environment when cloud integration is implemented. Never expose the Supabase `service_role` key in the frontend.
+The app works locally without Supabase credentials. To enable Google sign-in locally, put `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (the publishable/anon key) in `.env.local`; set the same public variables in the Vercel environments where sign-in is enabled. Never expose the Supabase `service_role` key or Google OAuth client secret in the frontend.
 
 ## Supabase setup
 
@@ -25,22 +25,17 @@ The local development environment does not need Supabase credentials. Configure 
 
 The schema stores match snapshot fields for player name, ranking, category, and match date. Profile updates must never replace those fields.
 
-## Next steps: Google sign-in and cloud sync
+## Google sign-in and cloud sync
 
-Google authentication and synchronization are not implemented in the app yet. Continue with these steps:
+Google sign-in is implemented through Supabase Auth using PKCE. Configure Google as an enabled provider in Supabase and set the app's Site URL and allowed redirect URL (for local development, `http://localhost:5173/`). The app sends users back to the root URL; Supabase processes the PKCE callback and restores the session automatically. The application remains usable offline and without authentication. Sign-in requires the public Supabase URL and publishable/anon key; no Google secret or Supabase `service_role` key belongs in frontend environment variables.
 
-1. Configure Google as an OAuth provider in Supabase and add the Google OAuth client credentials there. Keep the OAuth client secret out of the frontend and source code.
-2. Set the OAuth callback and allowed redirect URLs in Supabase and the Google Cloud Console, including the deployed Vercel app URL.
-3. Implement Supabase sign-in/sign-out in the app and restore the authenticated user's session.
-4. Implement synchronization between local IndexedDB and Supabase, associating records with the authenticated user and handling conflicts. Follow the normalized relationship `match → set → game → point`.
-5. Add `VITE_SUPABASE_URL` and the publishable/anon key to Vercel's **Production** environment only. Use RLS for access control; never put a `service_role` key in the frontend.
+Cloud synchronization between local IndexedDB and Supabase is not implemented. When it is added, associate records with the authenticated user, handle conflicts, and follow the normalized relationship `match → set → game → point`; use RLS for access control.
 
 
 1. Configurare Google come provider in Supabase, inserendo le credenziali OAuth dell’app Google. Il secret OAuth va configurato in Supabase, mai nel codice o nelle variabili pubbliche di Vercel.
-2. Impostare URL di callback e redirect in Supabase e nella console Google, includendo il dominio Vercel dell’app.
-3. Implementare nell’app il login/logout con Supabase, il recupero della sessione e l’interfaccia per l’utente autenticato.
-4. Implementare la sincronizzazione tra i dati locali e le tabelle Supabase, gestendo conflitti e associazione dei dati all’utente. Il database normalizzato ora prevede la relazione partita → set → game → punto, quindi va rispettata anche dalla sincronizzazione.
-5. Tenere le chiavi Supabase pubbliche nel frontend e affidarsi a RLS per l’autorizzazione; non usare mai una chiave service_role.
+2. Consentire in Supabase gli URL di redirect dell’app, incluso `http://localhost:5173/` in sviluppo e l’URL di produzione quando applicabile.
+3. Per abilitare l’accesso, impostare `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` nell’ambiente frontend; non usare mai una chiave `service_role`.
+4. La sincronizzazione cloud dei dati locali non è implementata.
 
 ## Vercel deployment
 

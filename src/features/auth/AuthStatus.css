@@ -1,0 +1,77 @@
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.auth-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-email,
+.auth-message {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth-button {
+  min-height: 36px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--green);
+  color: white;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.auth-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.auth-error {
+  position: absolute;
+  z-index: 25;
+  top: calc(100% + 6px);
+  right: 0;
+  max-width: min(360px, calc(100vw - 24px));
+  padding: 8px 10px;
+  border: 1px solid #e8b9ad;
+  border-radius: 6px;
+  background: #fff0ec;
+  color: #8e3322;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .topbar {
+    padding-inline: 10px;
+  }
+
+  .topbar-actions {
+    gap: 8px;
+  }
+
+  .auth-email {
+    max-width: 105px;
+  }
+
+  .auth-message {
+    display: none;
+  }
+
+  .auth-button {
+    padding-inline: 8px;
+    font-size: 11px;
+  }
+}

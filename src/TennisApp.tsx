@@ -7,6 +7,7 @@ import { db, persistSnapshotStorage, seedPlayers } from './db/database';
 import type { Match, Player, Point } from './types';
 import { deriveGameScore, deriveSetScore, getServer, nextGameNumber, pointsToGame, sortedPoints } from './features/scoring/scoring';
 import { freeErrorStats, serveKpi, servicePlusOne } from './features/kpi/kpi';
+import AuthStatus from './features/auth/AuthStatus';
 
 const stamp = () => new Date().toISOString();
 
@@ -19,7 +20,13 @@ export default function TennisApp() {
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
   return <BrowserRouter><div className="app-shell">
-    <header className="topbar"><div><span className="brand-mark">TK</span><strong>Tennis KPI</strong></div><span className={`status ${online ? 'online' : 'offline'}`}>{online ? 'Online' : 'Offline'}</span></header>
+    <header className="topbar">
+      <div><span className="brand-mark">TK</span><strong>Tennis KPI</strong></div>
+      <div className="topbar-actions">
+        <span className={`status ${online ? 'online' : 'offline'}`}>{online ? 'Online' : 'Offline'}</span>
+        <AuthStatus />
+      </div>
+    </header>
     <main><Routes>
       <Route path="/" element={<Matches />} /><Route path="/players" element={<Players />} />
       <Route path="/match/:id" element={<Tracker />} /><Route path="/dashboard" element={<Dashboard />} />
