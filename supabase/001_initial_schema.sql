@@ -4,28 +4,11 @@ create schema if not exists extensions;
 create schema if not exists private;
 
 do $$
-declare
-  installed_schema name;
 begin
-  select n.nspname into installed_schema
-  from pg_catalog.pg_extension e
-  join pg_catalog.pg_namespace n on n.oid = e.extnamespace
-  where e.extname = 'pgcrypto';
-
-  if installed_schema is null then
-    execute 'create extension pgcrypto with schema extensions';
-  elsif installed_schema <> 'extensions' then
-    execute 'alter extension pgcrypto set schema extensions';
-  end if;
-
   if not exists (
-    select 1
-    from pg_catalog.pg_extension e
-    join pg_catalog.pg_namespace n on n.oid = e.extnamespace
-    where e.extname = 'pgcrypto'
-      and n.nspname = 'extensions'
+    select 1 from pg_catalog.pg_extension where extname = 'pgcrypto'
   ) then
-    raise exception 'pgcrypto must be installed in the extensions schema';
+    execute 'create extension pgcrypto with schema extensions';
   end if;
 end;
 $$;
@@ -252,7 +235,9 @@ set search_path = ''
 as $$
 declare
   normalized_email text := lower(btrim(_invited_email));
-  raw_token text := encode(extensions.gen_random_bytes(32), 'hex');
+  pgcrypto_schema name;
+  raw_token text;
+  raw_token_hash text;
   new_invitation_id uuid := _id;
   expiry timestamptz := now() + interval '7 days';
 begin
@@ -272,12 +257,26 @@ begin
     raise exception 'This email already belongs to the family';
   end if;
 
+  select n.nspname into pgcrypto_schema
+  from pg_catalog.pg_extension e
+  join pg_catalog.pg_namespace n on n.oid = e.extnamespace
+  where e.extname = 'pgcrypto';
+  if pgcrypto_schema is null then
+    raise exception 'pgcrypto is not installed';
+  end if;
+  execute format('select encode(%I.gen_random_bytes(32), %L)', pgcrypto_schema, 'hex')
+    into raw_token;
+  execute format(
+    'select encode(%I.digest(convert_to(%L, %L), %L), %L)',
+    pgcrypto_schema, raw_token, 'UTF8', 'sha256', 'hex'
+  ) into raw_token_hash;
+
   insert into public.family_invitations (
     id, family_id, invited_email, invited_by, token_hash, expires_at
   )
   values (
     new_invitation_id, _family_id, normalized_email, auth.uid(),
-    encode(extensions.digest(convert_to(raw_token, 'UTF8'), 'sha256'), 'hex'), expiry
+    raw_token_hash, expiry
   );
   return query select new_invitation_id, raw_token, expiry, now();
 end;
@@ -291,6 +290,8 @@ set search_path = ''
 as $$
 declare
   current_email text;
+  pgcrypto_schema name;
+  computed_token_hash text;
   invitation public.family_invitations%rowtype;
 begin
   if auth.uid() is null or _token is null or _token !~ '^[0-9a-f]{64}$' then
@@ -304,9 +305,21 @@ begin
     raise exception 'A confirmed email address is required';
   end if;
 
+  select n.nspname into pgcrypto_schema
+  from pg_catalog.pg_extension e
+  join pg_catalog.pg_namespace n on n.oid = e.extnamespace
+  where e.extname = 'pgcrypto';
+  if pgcrypto_schema is null then
+    raise exception 'pgcrypto is not installed';
+  end if;
+  execute format(
+    'select encode(%I.digest(convert_to(%L, %L), %L), %L)',
+    pgcrypto_schema, _token, 'UTF8', 'sha256', 'hex'
+  ) into computed_token_hash;
+
   select fi.* into invitation
   from public.family_invitations fi
-  where fi.token_hash = encode(extensions.digest(convert_to(_token, 'UTF8'), 'sha256'), 'hex')
+  where fi.token_hash = computed_token_hash
   for update;
   if not found or invitation.accepted_at is not null or invitation.expires_at <= now() then
     raise exception 'Invitation is invalid, expired, or already used';
@@ -327,6 +340,44 @@ begin
   set accepted_at = now()
   where id = invitation.id and accepted_at is null;
   return invitation.family_id;
+end;
+$$;
+
+create function public.delete_family(_family_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required';
+  end if;
+
+  perform 1
+  from public.families f
+  where f.id = _family_id
+  for update;
+  if not found then
+    raise exception 'Family not found';
+  end if;
+  if not private.is_family_owner(_family_id) then
+    raise exception 'Only the family owner can delete the family';
+  end if;
+
+  delete from public.family_members fm
+  where fm.family_id = _family_id
+    and fm.user_id = auth.uid()
+    and fm.role = 'owner';
+  if not found then
+    raise exception 'Family owner membership not found';
+  end if;
+
+  delete from public.families f
+  where f.id = _family_id;
+  if not found then
+    raise exception 'Family could not be deleted';
+  end if;
 end;
 $$;
 
@@ -359,12 +410,14 @@ revoke all on function private.is_family_owner(uuid) from public, anon;
 revoke all on function public.create_family(uuid, text) from public, anon;
 revoke all on function public.create_family_invitation(uuid, uuid, text) from public, anon;
 revoke all on function public.accept_family_invitation(text) from public, anon;
+revoke all on function public.delete_family(uuid) from public, anon;
 revoke all on function public.revoke_family_member(uuid, uuid) from public, anon;
 grant execute on function private.is_family_member(uuid) to authenticated;
 grant execute on function private.is_family_owner(uuid) to authenticated;
 grant execute on function public.create_family(uuid, text) to authenticated;
 grant execute on function public.create_family_invitation(uuid, uuid, text) to authenticated;
 grant execute on function public.accept_family_invitation(text) to authenticated;
+grant execute on function public.delete_family(uuid) to authenticated;
 grant execute on function public.revoke_family_member(uuid, uuid) to authenticated;
 
 revoke all on table
@@ -378,9 +431,9 @@ revoke all on table
   public.points
 from public, anon, authenticated;
 
-grant select, delete on table public.families to authenticated;
+grant select on table public.families to authenticated;
 grant select on table public.family_members to authenticated;
-grant select, insert, update, delete on table
+grant select, insert, update on table
   public.players,
   public.matches,
   public.sets,
@@ -400,10 +453,6 @@ alter table public.points enable row level security;
 create policy "family members can read their families"
   on public.families for select to authenticated
   using (private.is_family_member(id));
-create policy "owners can delete their families"
-  on public.families for delete to authenticated
-  using (private.is_family_owner(id));
-
 create policy "family members can read membership"
   on public.family_members for select to authenticated
   using (private.is_family_member(family_id));
@@ -418,9 +467,6 @@ create policy "family members can update players"
   on public.players for update to authenticated
   using (private.is_family_member(family_id))
   with check (private.is_family_member(family_id));
-create policy "family members can delete players"
-  on public.players for delete to authenticated
-  using (private.is_family_member(family_id));
 
 create policy "family members can read matches"
   on public.matches for select to authenticated
@@ -432,9 +478,6 @@ create policy "family members can update matches"
   on public.matches for update to authenticated
   using (private.is_family_member(family_id))
   with check (private.is_family_member(family_id));
-create policy "family members can delete matches"
-  on public.matches for delete to authenticated
-  using (private.is_family_member(family_id));
 
 create policy "family members can read sets"
   on public.sets for select to authenticated
@@ -446,9 +489,6 @@ create policy "family members can update sets"
   on public.sets for update to authenticated
   using (private.is_family_member(family_id))
   with check (private.is_family_member(family_id));
-create policy "family members can delete sets"
-  on public.sets for delete to authenticated
-  using (private.is_family_member(family_id));
 
 create policy "family members can read games"
   on public.games for select to authenticated
@@ -460,9 +500,6 @@ create policy "family members can update games"
   on public.games for update to authenticated
   using (private.is_family_member(family_id))
   with check (private.is_family_member(family_id));
-create policy "family members can delete games"
-  on public.games for delete to authenticated
-  using (private.is_family_member(family_id));
 
 create policy "family members can read points"
   on public.points for select to authenticated
@@ -474,8 +511,5 @@ create policy "family members can update points"
   on public.points for update to authenticated
   using (private.is_family_member(family_id))
   with check (private.is_family_member(family_id));
-create policy "family members can delete points"
-  on public.points for delete to authenticated
-  using (private.is_family_member(family_id));
 
 commit;

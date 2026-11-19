@@ -229,7 +229,7 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
   const deleteFamily = useCallback(async (family: Family) => {
     if (!family.local_only) {
       if (!supabase) throw new Error('Supabase non è configurato.');
-      const { error: deleteError } = await supabase.from('families').delete().eq('id', family.id);
+      const { error: deleteError } = await supabase.rpc('delete_family', { _family_id: family.id });
       if (deleteError) throw deleteError;
     }
     await removeLocalFamily(family.id);
