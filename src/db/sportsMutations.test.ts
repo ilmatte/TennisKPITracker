@@ -112,12 +112,13 @@ describe('sport entity mutations', () => {
     expect(await db.syncQueue.count()).toBe(0);
   });
 
-  it('rejects player creation for a local family owned by another user', async () => {
+  it('allows local player creation regardless of the current login without claiming the workspace', async () => {
     await db.families.add(family('family-1', true, 'owner-1'));
-    await expect(createPlayer(player('new-player'), 'user-2'))
-      .rejects.toThrow('Non sei autorizzato a creare giocatori in questa famiglia.');
-    expect(await db.players.count()).toBe(0);
-    expect(await db.syncQueue.count()).toBe(0);
+    await createPlayer(player('new-player'), 'user-2');
+
+    expect(await db.players.get('new-player')).toMatchObject({ family_id: 'family-1' });
+    expect(await db.families.get('family-1')).toMatchObject({ local_only: true, created_by: 'owner-1' });
+    expect(await db.syncQueue.count()).toBe(1);
   });
 
   it('rejects player creation for a shared family without a local membership', async () => {

@@ -112,9 +112,8 @@ export async function createPlayer(player: Player, userId: string | null): Promi
     const family = await db.families.get(player.family_id);
     if (!family) throw new Error('La famiglia indicata non esiste.');
 
-    const authorized = family.local_only
-      ? family.created_by === userId
-      : userId !== null && Boolean(await db.family_members.get([family.id, userId]));
+    const authorized = family.local_only ||
+      (userId !== null && Boolean(await db.family_members.get([family.id, userId])));
     if (!authorized) throw new Error('Non sei autorizzato a creare giocatori in questa famiglia.');
 
     const created = { ...player, version: 1, deleted: false };

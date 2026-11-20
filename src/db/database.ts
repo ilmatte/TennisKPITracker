@@ -81,6 +81,29 @@ class TennisDatabase extends Dexie {
 
 export const db = new TennisDatabase();
 
+export async function ensureLocalWorkspace(): Promise<Family> {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  return db.transaction('rw', db.families, async () => {
+    const workspaces = (await db.families.toArray()).filter(family => family.local_only);
+    const existing = workspaces.sort((a, b) =>
+      a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id),
+    )[0];
+    if (existing) return existing;
+
+    const workspace: Family = {
+      id,
+      name: 'Tennis KPI Tracker',
+      created_at: now,
+      updated_at: now,
+      created_by: null,
+      local_only: true,
+    };
+    await db.families.add(workspace);
+    return workspace;
+  });
+}
+
 export async function persistSnapshotStorage(): Promise<void> {
   if (navigator.storage?.persist) {
     try { await navigator.storage.persist(); } catch { /* Storage persistence is optional. */ }

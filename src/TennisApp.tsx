@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { jsPDF } from 'jspdf';
@@ -59,7 +59,6 @@ function queueOperation<T>(
 
 export default function TennisApp() {
   const [online, setOnline] = useState(navigator.onLine);
-  const { activeFamily, families, selectFamily } = useFamily();
 
   useEffect(() => {
     void persistSnapshotStorage();
@@ -77,46 +76,31 @@ export default function TennisApp() {
     <header className="topbar">
       <div><span className="brand-mark">TK</span><strong>Tennis KPI</strong></div>
       <div className="topbar-actions">
-        {families.length > 0 && <select
-          className="active-family-select"
-          value={activeFamily?.id ?? ''}
-          aria-label="Spazio dati attivo"
-          onChange={event => selectFamily(event.target.value)}
-        >
-          {families.map(family => <option key={family.id} value={family.id}>{family.name}</option>)}
-        </select>}
         <span className={`status ${online ? 'online' : 'offline'}`}>{online ? 'Online' : 'Offline'}</span>
         <AuthStatus />
       </div>
     </header>
     <main><Routes>
-      <Route path="/" element={<FamilyRequired><Matches /></FamilyRequired>} />
-      <Route path="/players" element={<FamilyRequired><Players /></FamilyRequired>} />
-      <Route path="/match/:id" element={<FamilyRequired><Tracker /></FamilyRequired>} />
-      <Route path="/dashboard" element={<FamilyRequired><Dashboard /></FamilyRequired>} />
+      <Route path="/" element={<HomeRoute />} />
+      <Route path="/players" element={<Players />} />
+      <Route path="/match/:id" element={<Tracker />} />
+      <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes></main>
     <nav className="bottom-nav">
       <NavLink to="/">Partite</NavLink><NavLink to="/players">Giocatori</NavLink>
-      <NavLink to="/dashboard">KPI</NavLink><NavLink to="/settings">Famiglia</NavLink>
+      <NavLink to="/dashboard">KPI</NavLink><NavLink to="/settings">Impostazioni</NavLink>
     </nav>
   </div>;
 }
 
-function FamilyRequired({ children }: { children: ReactNode }) {
-  const { activeFamily, loading } = useFamily();
+function HomeRoute() {
   const location = useLocation();
   let pendingInvite = false;
   try { pendingInvite = Boolean(sessionStorage.getItem('tennis-kpi-pending-invite')); } catch { /* Continue without a cached invitation. */ }
   if (new URLSearchParams(location.hash.slice(1)).has('invite') || pendingInvite) return <Navigate to="/settings" replace />;
-  if (loading) return <div className="page"><div className="empty-state">Caricamento spazio dati…</div></div>;
-  if (!activeFamily) return <div className="page"><div className="empty-state">
-    <strong>Crea o seleziona uno spazio dati</strong>
-    <span>Puoi creare uno spazio locale anche senza account o connessione.</span>
-    <Link className="primary family-setup-link" to="/settings">Configura famiglia</Link>
-  </div></div>;
-  return children;
+  return <Matches />;
 }
 
 function Matches() {
@@ -900,7 +884,11 @@ function Kpi({ label, value, detail }: { label: string; value: string | number; 
 
 function Settings() {
   const { activeFamily } = useFamily();
+  const location = useLocation();
   const [message, setMessage] = useState('');
+  let pendingInvite = false;
+  try { pendingInvite = Boolean(sessionStorage.getItem('tennis-kpi-pending-invite')); } catch { /* Continue without a cached invitation. */ }
+  const invitationFlow = new URLSearchParams(location.hash.slice(1)).has('invite') || pendingInvite;
 
   async function jsonExport() {
     if (!activeFamily) return;
@@ -1036,7 +1024,7 @@ function Settings() {
 
   return <div className="page">
     <div className="page-heading"><div><p className="eyebrow">Dati e account</p><h1>Impostazioni</h1></div></div>
-    <FamilyManager />
+    {invitationFlow && <FamilyManager invitationOnly />}
     <section className="settings-section"><h2>Backup</h2>
       <button className="setting-row" onClick={() => void jsonExport()} disabled={!activeFamily}><span>Esporta JSON dello spazio</span><b>›</b></button>
       <button className="setting-row" onClick={() => void csvExport()} disabled={!activeFamily}><span>Esporta KPI CSV</span><b>›</b></button>
@@ -1044,7 +1032,7 @@ function Settings() {
       <label className="setting-row"><span>Ripristina backup JSON v2</span><b>›</b><input type="file" accept="application/json" onChange={event => void restore(event)} /></label>
     </section>
     <section className="settings-section"><h2>Sincronizzazione</h2>
-      <div className="cloud-state"><span>Non ancora attiva</span><small>I dati restano su questo dispositivo; la famiglia condivisa gestisce solo account e inviti.</small></div>
+      <div className="cloud-state"><span>Solo su questo dispositivo</span><small>L’accesso Google non attiva né associa la sincronizzazione. L’attivazione sarà disponibile in una fase successiva.</small></div>
     </section>
     {message && <div className="toast" role="status">{message}</div>}
   </div>;

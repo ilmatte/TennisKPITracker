@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { db, removeLocalFamily } from '../../db/database';
+import { db, ensureLocalWorkspace, removeLocalFamily } from '../../db/database';
 import type { Family, FamilyMember } from '../../types';
 import { supabase } from '../../services/supabase/client';
 import { useAuth } from '../auth/AuthContext';
@@ -10,7 +10,28 @@ function activeFamilyStorageKey(userId: string | null) {
 }
 
 function storedFamilyId(userId: string | null) {
-  try { return localStorage.getItem(activeFamilyStorageKey(userId)); } catch { return null; }
+  try {
+    return localStorage.getItem('tennis-kpi-active-workspace') ??
+      localStorage.getItem(activeFamilyStorageKey(userId)) ??
+      localStorage.getItem(activeFamilyStorageKey(null));
+  } catch {
+    return null;
+  }
+}
+
+function defaultFamilyId(available: Family[]): string | null {
+  const local = available
+    .filter(family => family.local_only)
+    .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+  return local[0]?.id ?? available[0]?.id ?? null;
+}
+
+function resolveFamilyId(available: Family[], current: string | null, userId: string | null): string | null {
+  const preferred = storedFamilyId(userId);
+  if (preferred && available.some(family => family.id === preferred)) return preferred;
+  return current && available.some(family => family.id === current)
+    ? current
+    : defaultFamilyId(available);
 }
 
 export function FamilyProvider({ children }: { children: ReactNode }) {
@@ -26,12 +47,16 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
+      await ensureLocalWorkspace();
       const localFamilies = await db.families.toArray();
+      const localWorkspaces = localFamilies.filter(family => family.local_only);
+      setFamilies(localWorkspaces);
+      setActiveFamilyId(current => resolveFamilyId(localWorkspaces, current, user?.id ?? null));
       if (!user || !supabase) {
-        const available = localFamilies.filter(family => family.local_only && family.created_by === null);
-        setFamilies(available);
+        const available = localFamilies;
         setMembers([]);
-        setActiveFamilyId(current => available.some(family => family.id === current) ? current : available[0]?.id ?? null);
+        setFamilies(available);
+        setActiveFamilyId(current => resolveFamilyId(available, current, null));
         return;
       }
 
@@ -74,11 +99,10 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
         cloudFamilies = (data ?? []).map(family => ({ ...family, local_only: false }));
         await db.families.bulkPut(cloudFamilies);
       }
-      const localWorkspaces = localFamilies.filter(family => family.local_only && family.created_by === user.id);
       const available = [...localWorkspaces, ...cloudFamilies];
       setFamilies(available);
       setMembers(memberRows);
-      setActiveFamilyId(current => available.some(family => family.id === current) ? current : available[0]?.id ?? null);
+      setActiveFamilyId(current => resolveFamilyId(available, current, user.id));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Impossibile caricare famiglie e membri.');
       const cached = await db.families.toArray();
@@ -89,17 +113,17 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
           ? await db.family_members.where('family_id').anyOf([...allowed]).toArray()
           : [];
         const available = [
-          ...cached.filter(family => family.local_only && family.created_by === user.id),
+          ...cached.filter(family => family.local_only),
           ...cached.filter(family => allowed.has(family.id)),
         ];
         setFamilies(available);
         setMembers(memberships);
-        setActiveFamilyId(current => available.some(family => family.id === current) ? current : available[0]?.id ?? null);
+        setActiveFamilyId(current => resolveFamilyId(available, current, user.id));
       } else {
-        const available = cached.filter(family => family.local_only && family.created_by === null);
+        const available = cached;
         setFamilies(available);
         setMembers([]);
-        setActiveFamilyId(current => available.some(family => family.id === current) ? current : available[0]?.id ?? null);
+        setActiveFamilyId(current => resolveFamilyId(available, current, null));
       }
     } finally {
       setLoading(false);
@@ -112,7 +136,10 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
 
   const selectFamily = useCallback((familyId: string) => {
     setActiveFamilyId(familyId);
-    try { localStorage.setItem(activeFamilyStorageKey(user?.id ?? null), familyId); } catch { /* Selection remains available for this session. */ }
+    try {
+      localStorage.setItem('tennis-kpi-active-workspace', familyId);
+      localStorage.setItem(activeFamilyStorageKey(user?.id ?? null), familyId);
+    } catch { /* Selection remains available for this session. */ }
   }, [user]);
 
   const createFamily = useCallback(async (name: string, localOnly: boolean) => {

@@ -16,7 +16,7 @@ function readInviteToken() {
   try { return token ?? sessionStorage.getItem('tennis-kpi-pending-invite') ?? ''; } catch { return token ?? ''; }
 }
 
-export default function FamilyManager() {
+export default function FamilyManager({ invitationOnly = false }: { invitationOnly?: boolean }) {
   const { user } = useAuth();
   const {
     families, members, activeFamily, activeRole, loading, error,
@@ -102,6 +102,21 @@ export default function FamilyManager() {
   async function removeFamily() {
     if (!activeFamily || !window.confirm(`Eliminare definitivamente la famiglia "${activeFamily.name}" e i dati locali associati?`)) return;
     await run(() => deleteFamily(activeFamily), 'Famiglia eliminata.');
+  }
+
+  if (invitationOnly) {
+    return (
+      <section className="settings-section family-manager">
+        <h2>Invito alla condivisione</h2>
+        {error && <p className="family-feedback error" role="alert">{error}</p>}
+        {message && <p className="family-feedback" role="status">{message}</p>}
+        {inviteToken ? <form className="family-invite-form" onSubmit={submitAcceptance}>
+          {!user && <p>Accedi con l’account Google invitato, poi conferma l’accettazione.</p>}
+          <label>Token invito<input value={inviteToken} onChange={event => setInviteToken(event.target.value)} required /></label>
+          <button className="primary wide" disabled={pending || !user || !navigator.onLine}>Accetta invito</button>
+        </form> : <p className="cloud-state">Non è presente un invito da accettare.</p>}
+      </section>
+    );
   }
 
   return (
