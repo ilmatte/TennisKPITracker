@@ -59,6 +59,7 @@ function queueOperation<T>(
 
 export default function TennisApp() {
   const [online, setOnline] = useState(navigator.onLine);
+  const { activeFamily, loading: workspaceLoading, error: workspaceError } = useFamily();
 
   useEffect(() => {
     void persistSnapshotStorage();
@@ -80,6 +81,11 @@ export default function TennisApp() {
         <AuthStatus />
       </div>
     </header>
+    {!workspaceLoading && !activeFamily && (
+      <p className="family-feedback error" role="alert">
+        {workspaceError ?? 'Impossibile inizializzare lo spazio locale.'}
+      </p>
+    )}
     <main><Routes>
       <Route path="/" element={<HomeRoute />} />
       <Route path="/players" element={<Players />} />
@@ -1024,7 +1030,7 @@ function Settings() {
 
   return <div className="page">
     <div className="page-heading"><div><p className="eyebrow">Dati e account</p><h1>Impostazioni</h1></div></div>
-    {invitationFlow && <FamilyManager invitationOnly />}
+    {invitationFlow && <FamilyManager />}
     <section className="settings-section"><h2>Backup</h2>
       <button className="setting-row" onClick={() => void jsonExport()} disabled={!activeFamily}><span>Esporta JSON dello spazio</span><b>›</b></button>
       <button className="setting-row" onClick={() => void csvExport()} disabled={!activeFamily}><span>Esporta KPI CSV</span><b>›</b></button>

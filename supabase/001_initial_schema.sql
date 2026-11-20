@@ -22,6 +22,9 @@ create table public.families (
   unique (id, created_by)
 );
 
+create unique index families_one_workspace_per_owner_idx
+  on public.families(created_by);
+
 create table public.family_members (
   family_id uuid not null references public.families(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -203,13 +206,35 @@ set search_path = ''
 as $$
 declare
   new_family_id uuid := _id;
+  existing_family_id uuid;
   owner_email text;
 begin
   if auth.uid() is null then
     raise exception 'Authentication required';
   end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(auth.uid()::text, 0)
+  );
+
+  select f.id into existing_family_id
+  from public.families f
+  where f.created_by = auth.uid();
+  if found then
+    return existing_family_id;
+  end if;
+
   if new_family_id is null or _name is null or length(btrim(_name)) = 0 then
     raise exception 'Family name is required';
+  end if;
+
+  if exists (
+    select 1
+    from public.family_members fm
+    where fm.user_id = auth.uid()
+      and fm.role = 'member'
+  ) then
+    raise exception 'A family member cannot create an owner workspace';
   end if;
 
   select lower(u.email) into owner_email
@@ -220,10 +245,20 @@ begin
   end if;
 
   insert into public.families (id, name, created_by)
-  values (new_family_id, btrim(_name), auth.uid());
+  values (new_family_id, btrim(_name), auth.uid())
+  on conflict (created_by) do nothing
+  returning id into existing_family_id;
+
+  if existing_family_id is null then
+    select f.id into existing_family_id
+    from public.families f
+    where f.created_by = auth.uid();
+    return existing_family_id;
+  end if;
+
   insert into public.family_members (family_id, user_id, member_email, role)
-  values (new_family_id, auth.uid(), owner_email, 'owner');
-  return new_family_id;
+  values (existing_family_id, auth.uid(), owner_email, 'owner');
+  return existing_family_id;
 end;
 $$;
 
@@ -297,6 +332,10 @@ begin
   if auth.uid() is null or _token is null or _token !~ '^[0-9a-f]{64}$' then
     raise exception 'Authentication and a valid invitation are required';
   end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(auth.uid()::text, 0)
+  );
 
   select lower(u.email) into current_email
   from auth.users u

@@ -11,7 +11,6 @@ import type {
   SyncOperation,
   TennisSet,
 } from '../types';
-import { normalizeDuplicatePointNumbers } from './pointNumbers';
 
 class TennisDatabase extends Dexie {
   families!: EntityTable<Family, 'id'>;
@@ -27,53 +26,14 @@ class TennisDatabase extends Dexie {
   constructor() {
     super('TennisKPITracker');
     this.version(1).stores({
-      players: 'id, firstName, lastName, ranking, category, updatedAt, deleted',
-      matches: 'id, matchDate, playerId, status, tournament, updatedAt, deleted',
-      points: 'id, matchId, setNumber, gameNumber, pointNumber, winner, server, updatedAt, deleted',
-      syncQueue: 'id, entityType, entityId, createdAt, attempts',
-    });
-    this.version(2).stores({
-      families: 'id, created_by, updated_at',
+      families: 'id, created_by, local_only, updated_at',
       family_members: '[family_id+user_id], family_id, user_id, role',
       family_invitations: 'id, family_id, invited_email, expires_at',
       players: 'id, family_id, first_name, last_name, ranking, category, updated_at, deleted',
       matches: 'id, family_id, match_date, player_id, status, tournament, updated_at, deleted',
       sets: 'id, family_id, match_id, set_number, &[match_id+set_number], updated_at, deleted',
       games: 'id, family_id, set_id, game_number, &[set_id+game_number], updated_at, deleted',
-      points: 'id, family_id, game_id, point_number, winner, server, updated_at, deleted',
-      syncQueue: 'id, family_id, entity_type, entity_id, created_at, attempts',
-    }).upgrade(async transaction => {
-      await Promise.all([
-        transaction.table('players').clear(),
-        transaction.table('matches').clear(),
-        transaction.table('points').clear(),
-        transaction.table('syncQueue').clear(),
-      ]);
-    });
-    this.version(3).stores({
-      families: 'id, created_by, updated_at',
-      family_members: '[family_id+user_id], family_id, user_id, role',
-      family_invitations: 'id, family_id, invited_email, expires_at',
-      players: 'id, family_id, first_name, last_name, ranking, category, updated_at, deleted',
-      matches: 'id, family_id, match_date, player_id, status, tournament, updated_at, deleted',
-      sets: 'id, family_id, match_id, set_number, &[match_id+set_number], updated_at, deleted',
-      games: 'id, family_id, set_id, game_number, &[set_id+game_number], updated_at, deleted',
-      points: 'id, family_id, game_id, point_number, [game_id+point_number], winner, server, updated_at, deleted',
-      syncQueue: 'id, family_id, entity_type, entity_id, created_at, attempts',
-    }).upgrade(async transaction => {
-      const points = transaction.table('points');
-      const updates = normalizeDuplicatePointNumbers(await points.toArray());
-      if (updates.length) await points.bulkPut(updates);
-    });
-    this.version(4).stores({
-      families: 'id, created_by, updated_at',
-      family_members: '[family_id+user_id], family_id, user_id, role',
-      family_invitations: 'id, family_id, invited_email, expires_at',
-      players: 'id, family_id, first_name, last_name, ranking, category, updated_at, deleted',
-      matches: 'id, family_id, match_date, player_id, status, tournament, updated_at, deleted',
-      sets: 'id, family_id, match_id, set_number, &[match_id+set_number], updated_at, deleted',
-      games: 'id, family_id, set_id, game_number, &[set_id+game_number], updated_at, deleted',
-      points: 'id, family_id, game_id, point_number, &[game_id+point_number], winner, server, updated_at, deleted',
+      points: 'id, family_id, game_id, &[game_id+point_number], point_number, winner, server, updated_at, deleted',
       syncQueue: 'id, family_id, entity_type, entity_id, created_at, attempts',
     });
   }
@@ -81,15 +41,53 @@ class TennisDatabase extends Dexie {
 
 export const db = new TennisDatabase();
 
+const databaseResetMarker = 'tennis-kpi-dexie-reset-v1';
+let databaseResetPromise: Promise<void> | null = null;
+
+function deleteLocalDatabase(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase('TennisKPITracker');
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error ?? new Error('Impossibile reimpostare il database locale.'));
+    request.onblocked = () => reject(new Error(
+      'Il reset del database locale è bloccato da un’altra scheda. Chiudi le altre schede di Tennis KPI Tracker e ricarica.',
+    ));
+  });
+}
+
+async function resetLocalDatabase(): Promise<void> {
+  if (localStorage.getItem(databaseResetMarker) === 'done') return;
+
+  db.close();
+  await deleteLocalDatabase();
+  localStorage.setItem(databaseResetMarker, 'done');
+}
+
+export function resetLocalDatabaseOnce(): Promise<void> {
+  if (!databaseResetPromise) {
+    databaseResetPromise = ('locks' in navigator
+      ? navigator.locks.request(databaseResetMarker, async () => resetLocalDatabase())
+      : resetLocalDatabase()
+    ).catch(cause => {
+      databaseResetPromise = null;
+      throw cause;
+    });
+  }
+  return databaseResetPromise;
+}
+
 export async function ensureLocalWorkspace(): Promise<Family> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   return db.transaction('rw', db.families, async () => {
     const workspaces = (await db.families.toArray()).filter(family => family.local_only);
-    const existing = workspaces.sort((a, b) =>
-      a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id),
-    )[0];
-    if (existing) return existing;
+    if (workspaces.length > 1) {
+      throw new Error(
+        `Incoerenza nei dati locali: trovati ${workspaces.length} workspace locali. ` +
+        'Nessun dato è stato modificato; è necessario risolvere i duplicati prima di continuare.',
+      );
+    }
+    if (workspaces.length === 1) return workspaces[0];
 
     const workspace: Family = {
       id,
@@ -108,30 +106,6 @@ export async function persistSnapshotStorage(): Promise<void> {
   if (navigator.storage?.persist) {
     try { await navigator.storage.persist(); } catch { /* Storage persistence is optional. */ }
   }
-}
-
-export async function removeLocalFamily(familyId: string): Promise<void> {
-  await db.transaction('rw', [
-    db.families,
-    db.family_members,
-    db.family_invitations,
-    db.players,
-    db.matches,
-    db.sets,
-    db.games,
-    db.points,
-    db.syncQueue,
-  ], async () => {
-      await db.points.where('family_id').equals(familyId).delete();
-      await db.games.where('family_id').equals(familyId).delete();
-      await db.sets.where('family_id').equals(familyId).delete();
-      await db.matches.where('family_id').equals(familyId).delete();
-      await db.players.where('family_id').equals(familyId).delete();
-      await db.family_invitations.where('family_id').equals(familyId).delete();
-      await db.family_members.where('family_id').equals(familyId).delete();
-      await db.syncQueue.where('family_id').equals(familyId).delete();
-      await db.families.delete(familyId);
-  });
 }
 
 export async function getMatchPoints(familyId: string, matchId: string): Promise<ScoredPoint[]> {

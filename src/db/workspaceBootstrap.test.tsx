@@ -59,12 +59,15 @@ function WorkspaceProbe() {
 describe('automatic local workspace', () => {
   it('creates one anonymous local workspace on an empty offline first launch', async () => {
     const user = userEvent.setup();
+    localStorage.setItem('tennis-kpi-active-workspace', 'obsolete-workspace-id');
     renderOfflineApp();
 
     expect(await screen.findByText('Nessuna partita')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Giocatori' })).toBeTruthy();
     expect(screen.queryByText(/Crea o seleziona uno spazio dati/)).toBeNull();
     expect(screen.queryByRole('link', { name: 'Famiglia' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Spazio attivo' })).toBeNull();
+    expect(screen.queryByText(/Crea spazio solo locale|Crea famiglia condivisa/)).toBeNull();
     expect(await db.families.count()).toBe(1);
 
     const [workspace] = await db.families.toArray();
@@ -105,7 +108,7 @@ describe('automatic local workspace', () => {
     expect((await ensureLocalWorkspace()).id).toBe(workspaces[0].id);
   });
 
-  it('preserves multiple pre-existing local workspaces and all sports record IDs', async () => {
+  it('reports duplicate local workspaces without selecting one or changing records', async () => {
     await db.families.bulkAdd([
       localFamily('workspace-later', '2026-01-02T10:00:00.000Z'),
       localFamily('workspace-earlier', '2026-01-01T10:00:00.000Z'),
@@ -166,9 +169,15 @@ describe('automatic local workspace', () => {
     await db.games.add(game);
     await db.points.add(point);
 
-    const selected = await ensureLocalWorkspace();
+    const view = renderOfflineApp();
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Incoerenza nei dati locali: trovati 2 workspace locali.',
+    );
+    view.unmount();
 
-    expect(selected.id).toBe('workspace-earlier');
+    await expect(ensureLocalWorkspace()).rejects.toThrow(
+      'Incoerenza nei dati locali: trovati 2 workspace locali.',
+    );
     expect(await db.families.count()).toBe(2);
     expect(await db.families.get('workspace-later')).toEqual(
       localFamily('workspace-later', '2026-01-02T10:00:00.000Z'),

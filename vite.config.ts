@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate',
       manifest: {
         name: 'Tennis KPI Tracker',
         short_name: 'Tennis KPI',
@@ -19,7 +19,12 @@ export default defineConfig({
           { src: '/pwa-icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }
         ]
       },
-      workbox: { navigateFallback: '/index.html' }
+      workbox: {
+        navigateFallback: '/index.html',
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
+      }
     })
   ],
   test: { environment: 'jsdom', globals: true }
