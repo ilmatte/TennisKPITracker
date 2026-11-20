@@ -1,7 +1,22 @@
-import type { Match, ScoredPoint } from '../../types';
+import type { Match, ScoredPoint, TennisSet } from '../../types';
 
 export type Side = 'player' | 'opponent';
 export interface GameResult { player: number; opponent: number }
+
+export function configuredSetNavigation(
+  numberOfSets: Match['number_of_sets'],
+  sets: Pick<TennisSet, 'set_number' | 'deleted'>[],
+): { set_number: number; exists: boolean }[] {
+  const activeSetNumbers = new Set(sets.filter(set => !set.deleted).map(set => set.set_number));
+  return Array.from({ length: numberOfSets }, (_, index) => {
+    const set_number = index + 1;
+    return { set_number, exists: activeSetNumbers.has(set_number) };
+  });
+}
+
+function activePoints(points: ScoredPoint[]): ScoredPoint[] {
+  return points.filter(point => !point.deleted);
+}
 
 export function labelPoint(value: number, _deuceSinglePoint = false): string {
   if (value >= 3) return value === 3 ? '40' : String(value);
@@ -9,8 +24,9 @@ export function labelPoint(value: number, _deuceSinglePoint = false): string {
 }
 
 export function pointsToGame(points: ScoredPoint[], _side: Side, deuceSinglePoint = false): GameResult | null {
-  const player = points.filter(p => p.winner === 'player').length;
-  const opponent = points.filter(p => p.winner === 'opponent').length;
+  const livePoints = activePoints(points);
+  const player = livePoints.filter(p => p.winner === 'player').length;
+  const opponent = livePoints.filter(p => p.winner === 'opponent').length;
   if (deuceSinglePoint && (player >= 5 || opponent >= 5) && (player === 5 || opponent === 5)) {
     if (player > opponent) return { player: 1, opponent: 0 };
     if (opponent > player) return { player: 0, opponent: 1 };
@@ -21,14 +37,16 @@ export function pointsToGame(points: ScoredPoint[], _side: Side, deuceSinglePoin
 }
 
 export function isPointDeuce(points: ScoredPoint[]): boolean {
-  const player = points.filter(p => p.winner === 'player').length;
-  const opponent = points.filter(p => p.winner === 'opponent').length;
+  const livePoints = activePoints(points);
+  const player = livePoints.filter(p => p.winner === 'player').length;
+  const opponent = livePoints.filter(p => p.winner === 'opponent').length;
   return player >= 3 && opponent >= 3 && player === opponent;
 }
 
 export function deriveGameScore(points: ScoredPoint[], deuceSinglePoint = false): { player: number | string; opponent: number | string } {
-  const player = points.filter(p => p.winner === 'player').length;
-  const opponent = points.filter(p => p.winner === 'opponent').length;
+  const livePoints = activePoints(points);
+  const player = livePoints.filter(p => p.winner === 'player').length;
+  const opponent = livePoints.filter(p => p.winner === 'opponent').length;
   if (deuceSinglePoint && player >= 4 && opponent >= 4) {
     if (player === opponent) return { player: '40', opponent: '40' };
     return player > opponent ? { player: 'AD', opponent: '40' } : { player: '40', opponent: 'AD' };

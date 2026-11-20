@@ -54,12 +54,13 @@ export function servicePlusOne(points: Point[], side: Side) {
 export function pressureStats(points: Point[], side: Side) {
   // Pressure outcomes are computed from replayed score context by caller where needed.
   return {
-    player30: points.filter(p => p.winner === side && p.point_number >= 0).length,
+    player30: points.filter(p => !p.deleted && p.winner === side && p.point_number >= 0).length,
   };
 }
 
 export function scorePressure(points: Point[], side: Side) {
-  const won = points.filter(p => p.winner === side).length;
-  const lost = points.filter(p => p.winner !== side).length;
-  return { won, lost, rate: points.length ? (won / points.length) * 100 : 0 };
+  const active = points.filter(point => !point.deleted);
+  const won = active.filter(p => p.winner === side).length;
+  const lost = active.filter(p => p.winner !== side).length;
+  return { won, lost, rate: active.length ? (won / active.length) * 100 : 0 };
 }

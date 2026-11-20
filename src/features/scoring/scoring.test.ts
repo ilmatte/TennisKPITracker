@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Match, ScoredPoint } from '../../types';
-import { deriveGameScore, nextGameNumber, pointsToGame, tiebreakServer } from './scoring';
-import { freeErrorStats, serveKpi, servicePlusOne } from '../kpi/kpi';
+import { configuredSetNavigation, deriveGameScore, nextGameNumber, pointsToGame, tiebreakServer } from './scoring';
+import { freeErrorStats, pressureStats, scorePressure, serveKpi, servicePlusOne } from '../kpi/kpi';
 
 const match = (overrides: Partial<Match> = {}): Match => ({
   id: 'm1', family_id: 'f1', match_date: '2026-11-17', player_id: 'alessandro',
@@ -21,6 +21,26 @@ const point = (overrides: Partial<ScoredPoint> = {}): ScoredPoint => ({
 });
 
 describe('scoring core', () => {
+  it('creates three configured set navigation slots for best-of-three matches', () => {
+    expect(configuredSetNavigation(3, [])).toEqual([
+      { set_number: 1, exists: false },
+      { set_number: 2, exists: false },
+      { set_number: 3, exists: false },
+    ]);
+  });
+  it('exposes all five configured slots while reporting only active existing sets', () => {
+    expect(configuredSetNavigation(5, [
+      { set_number: 1, deleted: false },
+      { set_number: 4, deleted: false },
+      { set_number: 5, deleted: true },
+    ])).toEqual([
+      { set_number: 1, exists: true },
+      { set_number: 2, exists: false },
+      { set_number: 3, exists: false },
+      { set_number: 4, exists: true },
+      { set_number: 5, exists: false },
+    ]);
+  });
   it('calculates standard point labels', () => {
     expect(deriveGameScore([point(), point()])).toEqual({ player: 30, opponent: 0 });
   });
@@ -41,6 +61,11 @@ describe('scoring core', () => {
   it('uses one-point deuce when enabled', () => {
     const points=[1,2,3].map(()=>point()).concat([1,2,3].map(()=>point({winner:'opponent'}))).concat([point()]);
     expect(deriveGameScore(points, true)).toEqual({ player: 'AD', opponent: '40' });
+  });
+  it('excludes logically deleted points from game scores', () => {
+    const points = [point(), point(), point(), point({ deleted: true })];
+    expect(deriveGameScore(points)).toEqual({ player: 40, opponent: 0 });
+    expect(pointsToGame(points, 'player')).toBeNull();
   });
   it('alternates the first tie-break server and then every two points', () => {
     const m=match();
@@ -63,6 +88,11 @@ describe('KPI core', () => {
   it('calculates service +1 for wins by points <= 4', () => {
     const points=[point({winner:'player',free_error:true,shot_count:4}),point({winner:'player',free_error:false,shot_count:3})];
     expect(servicePlusOne(points,'player')).toMatchObject({won:1,total:2,percentage:50});
+  });
+  it('excludes logically deleted points from pressure and point-result KPIs', () => {
+    const points = [point({ winner: 'player' }), point({ winner: 'opponent', deleted: true })];
+    expect(pressureStats(points, 'player').player30).toBe(1);
+    expect(scorePressure(points, 'player')).toEqual({ won: 1, lost: 0, rate: 100 });
   });
   it('keeps historical match snapshot independent of profile updates', () => {
     const historical=match({match_date:'2026-11-17',player_ranking_snapshot:'4.1',player_category_snapshot:'U16'});
