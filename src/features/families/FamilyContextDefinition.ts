@@ -6,7 +6,7 @@ export interface FamilyContextValue {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-  acceptInvitation: (token: string) => Promise<void>;
+  acceptInvitation: (token: string) => Promise<string>;
   setError: (message: string | null) => void;
 }
 

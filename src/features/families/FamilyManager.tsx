@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import { useFamily } from './FamilyContextDefinition';
+import { useSync } from '../../sync/SyncContextDefinition';
 import './FamilyManager.css';
 
 function readInviteToken() {
@@ -15,7 +15,7 @@ function readInviteToken() {
 
 export default function FamilyManager() {
   const { user } = useAuth();
-  const { acceptInvitation, error, setError } = useFamily();
+  const { acceptInvitationAndSync, error } = useSync();
   const [inviteToken, setInviteToken] = useState(readInviteToken);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -23,16 +23,19 @@ export default function FamilyManager() {
   async function submitAcceptance(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
-    setError(null);
     setMessage(null);
     try {
-      await acceptInvitation(inviteToken);
+      const syncStatus = await acceptInvitationAndSync(inviteToken);
       setInviteToken('');
       try { sessionStorage.removeItem('tennis-kpi-pending-invite'); } catch { /* Nothing else is required. */ }
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-      setMessage('Invito accettato: ora fai parte della famiglia.');
+      setMessage(syncStatus === 'needs-attention'
+        ? 'Invito accettato. Sono presenti dati locali indipendenti: la sincronizzazione è sospesa in attesa di una scelta esplicita.'
+        : syncStatus === 'synced'
+          ? 'Invito accettato: i dati della famiglia sono disponibili su questo dispositivo.'
+          : 'Invito accettato. Il download iniziale è in attesa di connessione o di un nuovo tentativo.');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Impossibile accettare l’invito.');
+      setMessage(cause instanceof Error ? cause.message : 'Impossibile accettare l’invito.');
     } finally {
       setPending(false);
     }

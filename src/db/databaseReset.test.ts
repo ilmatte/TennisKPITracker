@@ -28,7 +28,7 @@ describe('local database reset', () => {
     await resetLocalDatabaseOnce();
     await db.open();
 
-    expect(db.verno).toBe(1);
+    expect(db.verno).toBe(2);
     expect(db.tables.map(table => table.name)).toEqual([
       'families',
       'family_members',
@@ -39,6 +39,8 @@ describe('local database reset', () => {
       'games',
       'points',
       'syncQueue',
+      'syncMetadata',
+      'syncConflicts',
     ]);
     expect(db.sets.schema.indexes.find(index => index.name === '[match_id+set_number]')?.unique).toBe(true);
     expect(db.games.schema.indexes.find(index => index.name === '[set_id+game_number]')?.unique).toBe(true);

@@ -137,3 +137,70 @@ export interface SyncOperation {
   attempts: number;
   last_error?: string;
 }
+
+export type SyncEntityType = SyncOperation['entity_type'];
+export type SyncRole = FamilyMember['role'];
+export type SyncStatus =
+  | 'local-only'
+  | 'signed-in-disabled'
+  | 'syncing'
+  | 'synced'
+  | 'offline-pending'
+  | 'retryable-error'
+  | 'needs-attention'
+  | 'permanent-error';
+
+export interface SyncMapping {
+  kind: 'mapping';
+  local_family_id: UUID;
+  remote_family_id: UUID | null;
+  user_id: UUID | null;
+  role: SyncRole | null;
+  enabled: boolean;
+  status: SyncStatus;
+  initial_download_started: boolean;
+  initial_download_complete: boolean;
+  initial_download_revision: number | null;
+  initial_download_cursors: Partial<Record<SyncEntityType, string>>;
+  download_revision: number;
+  last_download_completed_at: string | null;
+  last_upload_completed_at: string | null;
+  retry_count: number;
+  next_retry_at: string | null;
+  last_error: string | null;
+  updated_at: string;
+}
+
+export interface SyncRecordBaseline {
+  kind: 'record-baseline';
+  entity_type: SyncEntityType;
+  entity_id: UUID;
+  remote_version: number;
+}
+
+export interface SyncLease {
+  kind: 'sync-lease';
+  owner_id: UUID;
+  expires_at: number;
+}
+
+export interface SyncMetadata {
+  key: string;
+  value: SyncMapping | SyncRecordBaseline | SyncLease;
+  updated_at: string;
+}
+
+export interface SyncConflict {
+  id: UUID;
+  family_id: UUID;
+  entity_type: SyncEntityType;
+  entity_id: UUID;
+  base_version: number;
+  reason: 'version' | 'constraint';
+  local_payload: unknown;
+  remote_payload: unknown | null;
+  remote_version: number;
+  status: 'unresolved' | 'resolved';
+  created_at: string;
+  resolved_at: string | null;
+}

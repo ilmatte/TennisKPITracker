@@ -31,6 +31,7 @@ import AuthStatus from './features/auth/AuthStatus';
 import { useAuth } from './features/auth/AuthContext';
 import { useFamily } from './features/families/FamilyContextDefinition';
 import FamilyManager from './features/families/FamilyManager';
+import { useSync } from './sync/SyncContextDefinition';
 
 const stamp = () => new Date().toISOString();
 
@@ -890,6 +891,8 @@ function Kpi({ label, value, detail }: { label: string; value: string | number; 
 
 function Settings() {
   const { activeFamily } = useFamily();
+  const { user } = useAuth();
+  const { mapping, status, busy, error: syncError, conflicts, activate, syncNow, resolveConflict } = useSync();
   const location = useLocation();
   const [message, setMessage] = useState('');
   let pendingInvite = false;
@@ -1038,7 +1041,46 @@ function Settings() {
       <label className="setting-row"><span>Ripristina backup JSON v2</span><b>›</b><input type="file" accept="application/json" onChange={event => void restore(event)} /></label>
     </section>
     <section className="settings-section"><h2>Sincronizzazione</h2>
-      <div className="cloud-state"><span>Solo su questo dispositivo</span><small>L’accesso Google non attiva né associa la sincronizzazione. L’attivazione sarà disponibile in una fase successiva.</small></div>
+      <div className="cloud-state">
+        <span>{{
+          'local-only': 'Solo su questo dispositivo',
+          'signed-in-disabled': 'Accesso effettuato · sincronizzazione non attiva',
+          syncing: 'Sincronizzazione in corso',
+          synced: 'Sincronizzato',
+          'offline-pending': 'Modifiche in attesa di connessione',
+          'retryable-error': 'Errore temporaneo · nuovo tentativo disponibile',
+          'needs-attention': 'È necessaria una scelta prima di continuare',
+          'permanent-error': 'Sincronizzazione sospesa · intervento necessario',
+        }[status]}</span>
+        <small>
+          {mapping?.remote_family_id
+            ? `Ruolo: ${mapping.role === 'owner' ? 'proprietario' : 'membro'} · ultimo download: ${mapping.last_download_completed_at
+              ? new Date(mapping.last_download_completed_at).toLocaleString('it-IT')
+              : 'non completato'}`
+            : 'Il login Google non crea una famiglia né attiva la sincronizzazione. Puoi continuare a usare i dati locali.'}
+        </small>
+      </div>
+      <button className="setting-row" onClick={() => void (mapping?.enabled ? syncNow() : activate())}
+        disabled={busy || !user || (status === 'needs-attention' && !mapping?.enabled)}>
+        <span>{busy ? 'Sincronizzazione…' : status === 'permanent-error'
+          ? 'Riprova sincronizzazione'
+          : mapping?.enabled ? 'Sincronizza ora' : 'Attiva sincronizzazione'}</span><b>›</b>
+      </button>
+      {syncError && <p className="family-feedback error" role="alert">{syncError}</p>}
+      {conflicts.length > 0 && <div className="sync-conflicts">
+        <p>{conflicts.length} conflitto/i: scegli quale versione mantenere per ogni record.</p>
+        {conflicts.map(conflict => <div className="sync-conflict" key={conflict.id}>
+          <strong>{conflict.entity_type} · {conflict.entity_id}</strong>
+          <small>{conflict.reason === 'constraint'
+            ? 'Il dato viola un vincolo univoco remoto. Modifica il dato locale prima di riprovare.'
+            : 'Il record è stato modificato anche su un altro dispositivo.'}</small>
+          <button className="secondary" onClick={() => void resolveConflict(conflict.id, 'local')}>
+            {conflict.reason === 'constraint' ? 'Riprova il dato locale corretto' : 'Mantieni questo dispositivo'}
+          </button>
+          {conflict.reason === 'version' && conflict.remote_payload !== null &&
+            <button className="secondary" onClick={() => void resolveConflict(conflict.id, 'remote')}>Usa versione cloud</button>}
+        </div>)}
+      </div>}
     </section>
     {message && <div className="toast" role="status">{message}</div>}
   </div>;

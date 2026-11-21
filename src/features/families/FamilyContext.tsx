@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { db, ensureLocalWorkspace } from '../../db/database';
-import type { Family, FamilyMember } from '../../types';
+import { ensureLocalWorkspace } from '../../db/database';
+import type { Family } from '../../types';
 import { supabase } from '../../services/supabase/client';
 import { useAuth } from '../auth/AuthContext';
 import { FamilyContext, type FamilyContextValue } from './FamilyContextDefinition';
@@ -24,50 +24,32 @@ export function FamilyProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    try {
-      if (user && supabase && navigator.onLine) {
-        const { data, error: membershipError } = await supabase
-          .from('family_members')
-          .select('family_id,user_id,member_email,role,created_at')
-          .eq('user_id', user.id);
-        if (membershipError) throw membershipError;
-        const ownMemberships: FamilyMember[] = data ?? [];
-        const familyIds = [...new Set(ownMemberships.map(member => member.family_id))];
-        if (familyIds.length) {
-          const { data: memberData, error: membersError } = await supabase
-            .from('family_members')
-            .select('family_id,user_id,member_email,role,created_at')
-            .in('family_id', familyIds);
-          if (membersError) throw membersError;
-          await db.family_members.bulkPut(memberData ?? []);
-
-          const { data: familyData, error: familiesError } = await supabase
-            .from('families')
-            .select('id,name,created_at,updated_at,created_by')
-            .in('id', familyIds);
-          if (familiesError) throw familiesError;
-          const remoteFamilies = (familyData ?? []).map(family => ({ ...family, local_only: false }));
-          await db.families.bulkPut(remoteFamilies);
-        }
-      }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Impossibile aggiornare i dati di condivisione.');
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let active = true;
+    ensureLocalWorkspace().then(workspace => {
+      if (active) setActiveFamily(workspace);
+    }).catch(cause => {
+      if (!active) return;
+      setActiveFamily(null);
+      setError(cause instanceof Error ? cause.message : 'Impossibile inizializzare lo spazio locale.');
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, []);
 
   const acceptInvitation = useCallback(async (token: string) => {
     if (!user || !supabase || !navigator.onLine) {
       throw new Error('Accedi e connettiti a internet per accettare l’invito.');
     }
-    const { error: acceptError } = await supabase.rpc('accept_family_invitation', { _token: token.trim() });
+    const { data, error: acceptError } = await supabase.rpc('accept_family_invitation', { _token: token.trim() });
     if (acceptError) throw acceptError;
+    if (typeof data !== 'string') throw new Error('La RPC di accettazione invito ha restituito una famiglia non valida.');
     await refresh();
+    return data;
   }, [refresh, user]);
 
   const value = useMemo<FamilyContextValue>(() => ({

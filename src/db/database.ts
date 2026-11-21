@@ -9,10 +9,12 @@ import type {
   Point,
   ScoredPoint,
   SyncOperation,
+  SyncConflict,
+  SyncMetadata,
   TennisSet,
 } from '../types';
 
-class TennisDatabase extends Dexie {
+export class TennisDatabase extends Dexie {
   families!: EntityTable<Family, 'id'>;
   family_members!: Table<FamilyMember, [string, string]>;
   family_invitations!: EntityTable<FamilyInvitation, 'id'>;
@@ -22,10 +24,12 @@ class TennisDatabase extends Dexie {
   games!: EntityTable<Game, 'id'>;
   points!: EntityTable<Point, 'id'>;
   syncQueue!: EntityTable<SyncOperation, 'id'>;
+  syncMetadata!: EntityTable<SyncMetadata, 'key'>;
+  syncConflicts!: EntityTable<SyncConflict, 'id'>;
 
-  constructor() {
-    super('TennisKPITracker');
-    this.version(1).stores({
+  constructor(name = 'TennisKPITracker') {
+    super(name);
+    const schema = {
       families: 'id, created_by, local_only, updated_at',
       family_members: '[family_id+user_id], family_id, user_id, role',
       family_invitations: 'id, family_id, invited_email, expires_at',
@@ -35,6 +39,12 @@ class TennisDatabase extends Dexie {
       games: 'id, family_id, set_id, game_number, &[set_id+game_number], updated_at, deleted',
       points: 'id, family_id, game_id, &[game_id+point_number], point_number, winner, server, updated_at, deleted',
       syncQueue: 'id, family_id, entity_type, entity_id, created_at, attempts',
+    };
+    this.version(1).stores(schema);
+    this.version(2).stores({
+      ...schema,
+      syncMetadata: 'key, updated_at',
+      syncConflicts: 'id, family_id, entity_type, entity_id, status, created_at',
     });
   }
 }
