@@ -32,6 +32,8 @@ import { useAuth } from './features/auth/AuthContext';
 import { useFamily } from './features/families/FamilyContextDefinition';
 import FamilyManager from './features/families/FamilyManager';
 import { useSync } from './sync/SyncContextDefinition';
+import { supabase } from './services/supabase/client';
+import tennisLogo from './assets/logo.svg';
 import './design.css';
 
 const stamp = () => new Date().toISOString();
@@ -61,6 +63,7 @@ function queueOperation<T>(
 
 export default function TennisApp() {
   const [online, setOnline] = useState(navigator.onLine);
+  const location = useLocation();
   const { activeFamily, loading: workspaceLoading, error: workspaceError } = useFamily();
 
   useEffect(() => {
@@ -77,12 +80,19 @@ export default function TennisApp() {
 
   return <div className="app-shell">
     <header className="topbar">
-      <div className="brand-lockup"><span className="brand-mark" aria-hidden="true"><span /></span><strong>Tennis KPI <b>Tracker</b></strong></div>
+      <img className="brand-logo" src="/tennis-kpi-logo.svg" alt="Tennis KPI Tracker" />
       <div className="topbar-actions">
         <span className={`status ${online ? 'online' : 'offline'}`}>{online ? 'Online' : 'Offline'}</span>
         <AuthStatus />
       </div>
     </header>
+    <aside className="desktop-sidebar">
+      <NavLink to="/" end>Dashboard</NavLink>
+      <NavLink to="/matches">Le mie partite</NavLink>
+      <NavLink to="/players">Giocatori</NavLink>
+      <NavLink to="/dashboard">Statistiche</NavLink>
+      <NavLink to="/settings">Impostazioni</NavLink>
+    </aside>
     {!workspaceLoading && !activeFamily && (
       <p className="family-feedback error" role="alert">
         {workspaceError ?? 'Impossibile inizializzare lo spazio locale.'}
@@ -90,15 +100,18 @@ export default function TennisApp() {
     )}
     <main><Routes>
       <Route path="/" element={<HomeRoute />} />
+      <Route path="/matches" element={<Matches />} />
       <Route path="/players" element={<Players />} />
       <Route path="/match/:id" element={<Tracker />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes></main>
-    <nav className="bottom-nav">
-      <NavLink to="/">Partite</NavLink><NavLink to="/players">Giocatori</NavLink>
-      <NavLink to="/dashboard">KPI</NavLink><NavLink to="/settings">Impostazioni</NavLink>
+    <nav className={`bottom-nav${location.pathname.startsWith('/match/') ? ' tracker-hidden' : ''}`}>
+      <NavLink to="/" end>Home</NavLink>
+      <NavLink to="/dashboard">Statistiche</NavLink>
+      <NavLink to="/matches">Partite</NavLink>
+      <NavLink to="/settings">Impostazioni</NavLink>
     </nav>
   </div>;
 }
@@ -108,7 +121,126 @@ function HomeRoute() {
   let pendingInvite = false;
   try { pendingInvite = Boolean(sessionStorage.getItem('tennis-kpi-pending-invite')); } catch { /* Continue without a cached invitation. */ }
   if (new URLSearchParams(location.hash.slice(1)).has('invite') || pendingInvite) return <Navigate to="/settings" replace />;
-  return <Matches />;
+  return <DashboardHome />;
+}
+
+function DashboardHome() {
+  const { activeFamily } = useFamily();
+  const { user, loading: authLoading } = useAuth();
+  const [authPending, setAuthPending] = useState(false);
+  const matches = useLiveQuery(
+    async () => activeFamily
+      ? (await db.matches.where('family_id').equals(activeFamily.id).toArray())
+          .filter(match => !match.deleted).sort((a, b) => b.match_date.localeCompare(a.match_date))
+      : [],
+    [activeFamily?.id],
+  ) ?? [];
+  const [newOpen, setNewOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const results = useLiveQuery(async () => {
+    if (!activeFamily) return [] as { match: Match; won: boolean }[];
+    return (await Promise.all(matches.map(async match => {
+      const points = await getMatchPoints(activeFamily.id, match.id);
+      let playerSets = 0;
+      let opponentSets = 0;
+      for (let setNumber = 1; setNumber <= match.number_of_sets; setNumber += 1) {
+        const setScore = deriveSetScore(points, setNumber, match);
+        if (setScore.player > setScore.opponent) playerSets += 1;
+        if (setScore.opponent > setScore.player) opponentSets += 1;
+      }
+      return { match, won: playerSets > opponentSets };
+    }))).filter(item => item.match.status === 'completed');
+  }, [activeFamily?.id, matches.map(match => match.id).join(',')]) ?? [];
+
+  const wins = results.filter(result => result.won).length;
+  const winRate = results.length ? Math.round((wins / results.length) * 100) : 0;
+  const recentDetails = useLiveQuery(async () => {
+    if (!activeFamily) return [] as { match: Match; points: ScoredPoint[] }[];
+    return Promise.all(matches.slice(0, 2).map(async match => ({
+      match,
+      points: await getMatchPoints(activeFamily.id, match.id),
+    })));
+  }, [activeFamily?.id, matches.map(match => match.id).join(',')]) ?? [];
+
+  async function handleProfileAction() {
+    if (user) {
+      navigate('/settings');
+      return;
+    }
+    if (!supabase || authPending) return;
+
+    setAuthPending(true);
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/` },
+    });
+  }
+
+  return <div className="home-page">
+    <section className="home-hero">
+      <div className="home-brand">
+        <img src={tennisLogo} alt="" />
+        <strong>Tennis <span>KPI Tracker</span></strong>
+      </div>
+      <button
+        className="profile-avatar"
+        type="button"
+        onClick={handleProfileAction}
+        disabled={authPending || authLoading}
+        aria-label={user ? 'Apri impostazioni profilo' : 'Accedi con Google'}
+        title={user ? 'Profilo' : 'Accedi con Google'}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21c1-5 4-7 8-7s7 2 8 7"/></svg>
+      </button>
+      <div className="hero-tennis-ball" aria-hidden="true"><span /></div>
+      <div className="home-welcome"><p>Benvenuto!</p><span>Monitora, migliora, gioca meglio</span></div>
+      <button className="lime-button" onClick={() => setNewOpen(true)}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        <span>Nuova Partita</span>
+      </button>
+    </section>
+    <section className="home-summary">
+      <button className="summary-heading" onClick={() => navigate('/dashboard')}>
+        <span className="summary-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10h3v10H4Zm7 0V5h3v15h-3Zm7 0V13h3v7h-3Z"/></svg>I tuoi KPI</span>
+        <svg className="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+      </button>
+      <div className="summary-grid">
+        <div><strong>{winRate}%</strong><span>Vittorie</span><svg className="summary-icon trophy" viewBox="0 0 24 24"><path d="M7 3h10v3h4v3c0 3-2 5-5 5h-1c-.5 2-1.5 3-3 3s-2.5-1-3-3H8c-3 0-5-2-5-5V6h4V3Zm0 5H5v1c0 1.7 1 3 3 3V8Zm10 0v4c2 0 3-1.3 3-3V8h-3Zm-5 10h2v3h-2v-3Z"/></svg></div>
+        <div><strong>{wins ? `+${wins}` : '0%'}</strong><span>vs mese scorso</span><svg className="summary-icon trend" viewBox="0 0 24 24"><path d="m3 17 6-6 4 4 8-8"/><path d="M16 7h5v5"/></svg></div>
+        <div><strong>{matches.length}</strong><span>Partite</span><svg className="summary-icon calendar" viewBox="0 0 24 24"><path d="M4 5h16v15H4V5Zm0 5h16M8 3v4m8-4v4M8 13h2m4 0h2m-8 3h2m4 0h2"/></svg></div>
+      </div>
+    </section>
+    <section className="home-recent">
+      <button className="summary-heading" onClick={() => navigate('/matches')}>
+        <span className="summary-title"><svg className="recent-clock" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/><path d="M4 4l2 2M20 4l-2 2"/></svg>Le tue ultime partite</span>
+        <svg className="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+      </button>
+      <div className="recent-list">
+        {recentDetails.map(({ match, points }) => {
+          let playerSets = 0;
+          let opponentSets = 0;
+          for (let setNumber = 1; setNumber <= match.number_of_sets; setNumber += 1) {
+            const score = deriveSetScore(points, setNumber, match);
+            if (score.player > score.opponent) playerSets += 1;
+            if (score.opponent > score.player) opponentSets += 1;
+          }
+          const won = playerSets > opponentSets;
+          const setLabels = [1, 2, 3].map(setNumber => deriveSetScore(points, setNumber, match)).filter(score => score.player || score.opponent);
+          const scoreText = setLabels.map(score => `${score.player}-${score.opponent}`).join(' ');
+          return <button className="recent-match" key={match.id} onClick={() => navigate(`/match/${match.id}`)}>
+            <span className={`tennis-ball-badge ${won ? 'won' : 'lost'}`}><i /></span>
+            <span className="recent-info"><strong>{match.player_last_name_snapshot || match.player_first_name_snapshot} vs {match.opponent}</strong><small>{new Date(match.match_date).toLocaleDateString('it-IT')}</small></span>
+            <strong className="recent-score">{scoreText || '—'}</strong>
+            <span className={`match-result ${won ? 'win' : 'loss'}`}>{won ? 'Vinta' : 'Persa'}</span>
+            <svg className="recent-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+          </button>;
+        })}
+        {!matches.length && <div className="empty-state"><strong>Nessuna partita</strong><span>Crea la prima partita per iniziare il tracking.</span></div>}
+      </div>
+    </section>
+    {newOpen && <NewMatch onClose={() => setNewOpen(false)} />}
+  </div>;
 }
 
 function Matches() {
@@ -120,7 +252,22 @@ function Matches() {
       : [],
     [activeFamily?.id],
   ) ?? [];
+  const matchOutcomes = useLiveQuery(async () => {
+    if (!activeFamily) return [] as { id: string; won: boolean }[];
+    return (await Promise.all(matches.map(async match => {
+      const points = await getMatchPoints(activeFamily.id, match.id);
+      let playerSets = 0;
+      let opponentSets = 0;
+      for (let setNumber = 1; setNumber <= match.number_of_sets; setNumber += 1) {
+        const setScore = deriveSetScore(points, setNumber, match);
+        if (setScore.player > setScore.opponent) playerSets += 1;
+        if (setScore.opponent > setScore.player) opponentSets += 1;
+      }
+      return { id: match.id, won: playerSets > opponentSets };
+    }))).filter(item => matches.find(match => match.id === item.id)?.status === 'completed');
+  }, [activeFamily?.id, matches.map(match => match.id).join(',')]) ?? [];
   const [newOpen, setNewOpen] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'won' | 'lost'>('all');
   const [editing, setEditing] = useState<Match | null>(null);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -138,12 +285,25 @@ function Matches() {
     }
   }
 
-  return <div className="page">
-    <div className="page-heading"><div><p className="eyebrow">Archivio</p><h1>Partite</h1></div><button className="primary" onClick={() => setNewOpen(true)}>+ Nuova</button></div>
+  const wonIds = new Set(matchOutcomes.filter(outcome => outcome.won).map(outcome => outcome.id));
+  const lostIds = new Set(matchOutcomes.filter(outcome => !outcome.won).map(outcome => outcome.id));
+  const visibleMatches = matches.filter(match => {
+    if (filter === 'won') return wonIds.has(match.id);
+    if (filter === 'lost') return lostIds.has(match.id);
+    return true;
+  });
+
+  return <div className="page archive-page">
+    <div className="page-heading"><div><p className="eyebrow">Archivio</p><h1>Le mie partite</h1></div><button className="primary" onClick={() => setNewOpen(true)}>+ Nuova partita</button></div>
+    <div className="archive-tabs" aria-label="Filtra partite">
+      <button className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>Tutte</button>
+      <button className={filter === 'won' ? 'active' : ''} onClick={() => setFilter('won')}>Vinte</button>
+      <button className={filter === 'lost' ? 'active' : ''} onClick={() => setFilter('lost')}>Perse</button>
+    </div>
     {newOpen && <NewMatch onClose={() => setNewOpen(false)} />}
     {error && <p className="family-feedback error" role="alert">{error}</p>}
     <div className="match-list">
-      {matches.map(match => <MatchCard key={match.id} match={match} open={() => navigate(`/match/${match.id}`)}
+      {visibleMatches.map(match => <MatchCard key={match.id} match={match} open={() => navigate(`/match/${match.id}`)}
         onEdit={() => { setError(null); setEditing(match); }} onDelete={() => void remove(match)} />)}
       {!matches.length && <div className="empty-state"><strong>Nessuna partita</strong><span>Crea la prima partita per iniziare il tracking.</span></div>}
     </div>
@@ -680,9 +840,6 @@ function Tracker() {
       <button className="danger" onClick={() => void removeGame(currentGame)}>Elimina game {gameNumber}</button>
     </div>}
     <div className="tracking-controls point-recorder">
-      <button className="undo-point" onClick={() => void undoLatestPoint()} disabled={!gamePoints.length}>
-        Annulla ultimo punto
-      </button>
       <div className="point-action-group point-action-lost">
         <div className="point-action-heading"><span>Punto perso</span><small>Il punto va all'avversario</small></div>
         <button onClick={() => void savePoint('free_error')} disabled={gameComplete}>Errore gratuito</button>
@@ -695,6 +852,9 @@ function Tracker() {
         <button onClick={() => void savePoint('won')} disabled={gameComplete}>Vinto</button>
         <button onClick={() => void savePoint('ace')} disabled={gameComplete}>Servizio vincente</button>
       </div>
+      <button className="undo-point" onClick={() => void undoLatestPoint()} disabled={!gamePoints.length}>
+        Annulla ultimo punto
+      </button>
       {gameComplete && <p className="completed-game-note">Game concluso.</p>}
       {trackerError && <p className="family-feedback error" role="alert">{trackerError}</p>}
     </div>

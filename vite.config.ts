@@ -11,12 +11,12 @@ export default defineConfig({
         name: 'Tennis KPI Tracker',
         short_name: 'Tennis KPI',
         description: 'Live tennis scoring and KPI tracking',
-        theme_color: '#16856b',
-        background_color: '#edf1ec',
+        theme_color: '#0B2858',
+        background_color: '#F3F6FA',
         display: 'standalone',
         start_url: '/',
         icons: [
-          { src: '/pwa-icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }
+          { src: '/tennis-kpi-pwa.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }
         ]
       },
       workbox: {

@@ -201,8 +201,8 @@ describe('automatic local workspace', () => {
     await user.click(screen.getByRole('button', { name: 'Salva' }));
     await screen.findByText('Ada Lovelace');
 
-    await user.click(screen.getByRole('link', { name: 'Partite' }));
-    await user.click(screen.getByRole('button', { name: '+ Nuova' }));
+    await user.click(screen.getByRole('link', { name: 'Le mie partite' }));
+    await user.click(screen.getByRole('button', { name: '+ Nuova partita' }));
     const savedPlayer = await db.players.toCollection().first();
     await user.selectOptions(screen.getByLabelText('Giocatore'), savedPlayer!.id);
     await user.type(screen.getByLabelText('Avversario'), 'Avversaria');
