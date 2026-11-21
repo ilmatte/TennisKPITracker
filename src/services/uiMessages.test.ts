@@ -32,12 +32,24 @@ describe('user-facing cloud messages', () => {
     expect(normalizeUiError('conflict')).toBe('Sono presenti versioni diverse. Scegli quale mantenere.');
   });
 
-  it('logs diagnostic metadata without recording the raw error message', () => {
+  it('logs filtered diagnostic metadata without recording sensitive values', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    logTechnicalDiagnostic('sync', new Error(technicalMessage));
+    logTechnicalDiagnostic('sync', {
+      name: 'PostgrestError',
+      status: 403,
+      code: '42501',
+      requestId: 'req-fake-123',
+      message: 'Denied for ada@example.test at https://iscbysjawfndadbiwbxt.supabase.co/rest/v1/players?token=secret&api_key=fake',
+    });
 
     const rendered = JSON.stringify(spy.mock.calls);
-    expect(rendered).not.toContain(technicalMessage);
+    expect(rendered).toContain('PostgrestError');
+    expect(rendered).toContain('42501');
+    expect(rendered).toContain('req-fake-123');
+    expect(rendered).toContain('[email]');
+    expect(rendered).toContain('[url]');
+    expect(rendered).not.toContain('ada@example.test');
     expect(rendered).not.toContain('secret');
+    expect(rendered).not.toContain('iscbysjawfndadbiwbxt.supabase.co');
   });
 });
