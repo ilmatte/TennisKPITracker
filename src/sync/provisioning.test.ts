@@ -180,7 +180,7 @@ describe('sync provisioning', () => {
     repository.authenticatedUserId = 'different-user';
 
     await expect(provisionSync(repository, workspace(), 'owner-id'))
-      .rejects.toThrow('La session Supabase non corrisponde all’account autenticato nell’app.');
+      .rejects.toThrow('Accesso a Tennis Tracker Cloud non riuscito.');
     expect(repository.created).toHaveLength(0);
   });
 });

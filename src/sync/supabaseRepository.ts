@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { FamilyMember, SyncEntityType } from '../types';
 import { supabase } from '../services/supabase/client';
+import { logTechnicalDiagnostic, normalizeUiError } from '../services/uiMessages';
 import type {
   ApplyRecordResult,
   RemoteChange,
@@ -9,13 +10,17 @@ import type {
 } from './contracts';
 
 function requireSupabase(client: SupabaseClient | null): SupabaseClient {
-  if (!client) throw new Error('Supabase non è configurato.');
+  if (!client) {
+    logTechnicalDiagnostic('cloud-configuration', 'supabase-client-not-configured');
+    throw new Error(normalizeUiError('cloud-config'));
+  }
   return client;
 }
 
 function validateApplyResult(value: unknown): ApplyRecordResult {
   if (!value || typeof value !== 'object') {
-    throw new Error('Risposta non valida dal protocollo di sincronizzazione.');
+    logTechnicalDiagnostic('sync-response-validation', value);
+    throw new Error(normalizeUiError('sync'));
   }
   const result = value as Record<string, unknown>;
   if (result.status === 'applied' && typeof result.remote_version === 'number' &&
@@ -27,16 +32,19 @@ function validateApplyResult(value: unknown): ApplyRecordResult {
     (result.reason === undefined || result.reason === 'version' || result.reason === 'constraint')) {
     return result as ApplyRecordResult;
   }
-  throw new Error('Risposta incompleta dal protocollo di sincronizzazione.');
+  logTechnicalDiagnostic('sync-response-validation', result);
+  throw new Error(normalizeUiError('sync'));
 }
 
 function validateChanges(value: unknown): { changes: RemoteChange[]; nextRevision: number } {
   if (!value || typeof value !== 'object') {
-    throw new Error('Risposta non valida durante il download incrementale.');
+    logTechnicalDiagnostic('sync-change-validation', value);
+    throw new Error(normalizeUiError('sync'));
   }
   const result = value as Record<string, unknown>;
   if (!Array.isArray(result.changes) || typeof result.next_revision !== 'number') {
-    throw new Error('Risposta incompleta durante il download incrementale.');
+    logTechnicalDiagnostic('sync-change-validation', result);
+    throw new Error(normalizeUiError('sync'));
   }
   const changes = result.changes.map((item): RemoteChange => {
     if (!item || typeof item !== 'object') throw new Error('Elemento non valido nel log di sincronizzazione.');
@@ -73,14 +81,17 @@ export function createSupabaseSyncRepository(client: SupabaseClient | null = sup
         .single();
       if (error) throw error;
       if (!data || typeof data.sync_revision !== 'number') {
-        throw new Error('La famiglia remota non espone il cursore di sincronizzazione; applica la migrazione 003.');
+        throw new Error('Tennis Tracker Cloud non espone lo stato di sincronizzazione richiesto.');
       }
       return data as RemoteFamily;
     },
     async createFamily(localFamilyId, name) {
       const { data, error } = await remote.rpc('create_family', { _id: localFamilyId, _name: name });
       if (error) throw error;
-      if (typeof data !== 'string') throw new Error('La RPC create_family ha restituito una risposta non valida.');
+      if (typeof data !== 'string') {
+        logTechnicalDiagnostic('cloud-family-creation', 'invalid-create-family-response');
+        throw new Error(normalizeUiError('sync'));
+      }
       return data;
     },
     async beginInitialSnapshot(familyId) {
@@ -88,7 +99,8 @@ export function createSupabaseSyncRepository(client: SupabaseClient | null = sup
       if (error) throw error;
       const revision = typeof data === 'number' ? data : typeof data === 'string' ? Number(data) : NaN;
       if (!Number.isSafeInteger(revision) || revision < 0) {
-        throw new Error('Il server non ha restituito una revisione snapshot valida.');
+        logTechnicalDiagnostic('cloud-snapshot-validation', 'invalid-snapshot-revision');
+        throw new Error(normalizeUiError('sync'));
       }
       return revision;
     },
@@ -101,7 +113,10 @@ export function createSupabaseSyncRepository(client: SupabaseClient | null = sup
         _limit: limit,
       });
       if (error) throw error;
-      if (!Array.isArray(data)) throw new Error('Il server ha restituito una pagina snapshot non valida.');
+      if (!Array.isArray(data)) {
+        logTechnicalDiagnostic('cloud-snapshot-validation', 'invalid-snapshot-page');
+        throw new Error(normalizeUiError('sync'));
+      }
       return data as unknown as Record<string, unknown>[];
     },
     async applyRecord({ familyId, operationId, entityType, entityId, baseVersion, payload }) {

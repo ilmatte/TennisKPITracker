@@ -2,6 +2,7 @@ import { db } from '../db/database';
 import type { Family, SyncMapping } from '../types';
 import type { ProvisionedSync, SyncRepository } from './contracts';
 import { saveSyncMapping } from './syncState';
+import { logTechnicalDiagnostic, normalizeUiError } from '../services/uiMessages';
 
 const now = () => new Date().toISOString();
 
@@ -53,12 +54,13 @@ export async function provisionSync(
 ): Promise<ProvisionedSync | { mapping: SyncMapping; needsAttention: true }> {
   const authenticatedUserId = await repository.getAuthenticatedUserId();
   if (!authenticatedUserId || authenticatedUserId !== userId) {
-    throw new Error('La session Supabase non corrisponde all’account autenticato nell’app.');
+    logTechnicalDiagnostic('cloud-authentication', 'authenticated-user-mismatch');
+    throw new Error(normalizeUiError('auth'));
   }
   const memberships = await repository.getMemberships(userId);
   if (memberships.length > 1) {
     const needsAttention = mapping(localWorkspace.id, userId, null, null, 'needs-attention', false);
-    needsAttention.last_error = 'L’account appartiene a più famiglie remote; è necessario sceglierne una prima della sincronizzazione.';
+    needsAttention.last_error = 'L’account appartiene a più spazi condivisi. Scegli quale usare prima di continuare.';
     needsAttention.updated_at = now();
     await saveSyncMapping(needsAttention);
     return { mapping: needsAttention, needsAttention: true };
@@ -79,7 +81,7 @@ export async function provisionSync(
       const needsAttention = mapping(
         localWorkspace.id, userId, family.id, 'member', 'needs-attention', false,
       );
-      needsAttention.last_error = 'Sono presenti dati locali indipendenti. La famiglia è stata associata in sola attesa: scegli esplicitamente come procedere prima di importare o unire i dati.';
+      needsAttention.last_error = 'Sono presenti dati locali indipendenti. Tennis Tracker Cloud è stato associato in sola attesa: scegli come procedere prima di importare dati.';
       needsAttention.updated_at = now();
       await saveSyncMapping(needsAttention);
       return { mapping: needsAttention, needsAttention: true };
@@ -102,7 +104,7 @@ export async function provisionSync(
 
 export async function recordOfflineActivation(localWorkspace: Family, userId: string): Promise<SyncMapping> {
   const result = mapping(localWorkspace.id, userId, null, null, 'offline-pending', true);
-  result.last_error = 'Attivazione in attesa di una connessione Internet.';
+  result.last_error = 'Nessuna connessione: attivazione di Tennis Tracker Cloud in attesa.';
   await saveSyncMapping(result);
   return result;
 }

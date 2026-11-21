@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { AuthContext, type AuthContextValue } from './AuthContext';
 import { supabase } from '../../services/supabase/client';
+import { logTechnicalDiagnostic } from '../../services/uiMessages';
 
 export default function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthContextValue['user']>(null);
@@ -18,12 +19,12 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
     void supabase.auth.getSession().then(({ data, error }) => {
       if (receivedAuthEvent) return;
-      if (error) console.error('Unable to restore the Supabase session:', error);
+      if (error) logTechnicalDiagnostic('session-restoration', error);
       setUser(data.session?.user ?? null);
       setLoading(false);
     }).catch(error => {
       if (receivedAuthEvent) return;
-      console.error('Unable to restore the Supabase session:', error);
+      logTechnicalDiagnostic('session-restoration', error);
       setLoading(false);
     });
 

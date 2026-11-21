@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import schema from '../../supabase/001_initial_schema.sql?raw';
-import migration from '../../supabase/002_single_workspace_per_owner.sql?raw';
-import syncProtocol from '../../supabase/003_sync_protocol.sql?raw';
+import schema from '../../supabase/initial_schema.sql?raw';
 
 function functionBody(sql: string, name: string): string {
   const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -19,14 +17,11 @@ describe('workspace ownership SQL guarantees', () => {
     expect(schema).toMatch(
       /create unique index families_one_workspace_per_owner_idx\s+on public\.families\s*\(created_by\)/i,
     );
-    expect(migration).toMatch(
-      /create unique index if not exists families_one_workspace_per_owner_idx\s+on public\.families\s*\(created_by\)/i,
-    );
-    expect(migration).toMatch(/group by created_by\s+having count\(\*\) > 1/i);
+    expect(schema).toMatch(/create unique index families_one_workspace_per_owner_idx/i);
   });
 
   it('makes create_family idempotent and safe against concurrent calls', () => {
-    const body = functionBody(migration, 'create_family');
+    const body = functionBody(schema, 'create_family');
     expect(body).toMatch(/pg_advisory_xact_lock/i);
     expect(body).toMatch(/where f\.created_by = auth\.uid\(\)/i);
     expect(body).toMatch(/on conflict \(created_by\) do nothing/i);
@@ -35,29 +30,29 @@ describe('workspace ownership SQL guarantees', () => {
   });
 
   it('serializes invitation acceptance with owner-workspace creation and keeps invitees members', () => {
-    const body = functionBody(migration, 'accept_family_invitation');
+    const body = functionBody(schema, 'accept_family_invitation');
     expect(body).toMatch(/pg_advisory_xact_lock/i);
     expect(body).toMatch(/values\s*\(invitation\.family_id,\s*auth\.uid\(\),\s*current_email,\s*'member'\)/i);
     expect(body).not.toMatch(/insert\s+into public\.families/i);
-    expect(migration).not.toMatch(/delete\s+from public\.families/i);
+    expect(body).not.toMatch(/delete\s+from public\.families/i);
   });
 
   it('uses only version-checked RPC writes and a serialized, paginated change cursor', () => {
-    expect(syncProtocol).toMatch(/add column if not exists sync_revision bigint/i);
-    expect(syncProtocol).toMatch(/create table if not exists public\.sync_changes/i);
-    expect(syncProtocol).toMatch(/update public\.families\s+set sync_revision = sync_revision \+ 1/i);
-    expect(syncProtocol).toMatch(/insert into public\.sync_changes/i);
-    expect(syncProtocol).toMatch(/create or replace function public\.apply_sync_record/i);
-    expect(syncProtocol).toMatch(/current_version <> _base_version/i);
-    expect(syncProtocol).toMatch(/where id = \$1 for update/i);
-    expect(syncProtocol).toMatch(/'status', 'conflict'/i);
-    expect(syncProtocol).toMatch(/when unique_violation then/i);
-    expect(syncProtocol).toMatch(/'reason', 'constraint'/i);
-    expect(syncProtocol).toMatch(/create or replace function public\.pull_sync_changes/i);
-    expect(syncProtocol).toMatch(/order by change\.revision/i);
-    expect(syncProtocol).toMatch(/set search_path = ''/i);
-    expect(syncProtocol).toMatch(/private\.is_family_member\(_family_id\)/i);
-    expect(syncProtocol).toMatch(/revoke insert, update, delete on table[\s\S]*from public, anon, authenticated/i);
-    expect(syncProtocol).not.toMatch(/\b(drop|truncate)\s+table\b/i);
+    expect(schema).toMatch(/add column if not exists sync_revision bigint/i);
+    expect(schema).toMatch(/create table if not exists public\.sync_changes/i);
+    expect(schema).toMatch(/update public\.families\s+set sync_revision = sync_revision \+ 1/i);
+    expect(schema).toMatch(/insert into public\.sync_changes/i);
+    expect(schema).toMatch(/create or replace function public\.apply_sync_record/i);
+    expect(schema).toMatch(/current_version <> _base_version/i);
+    expect(schema).toMatch(/where id = \$1 and family_id = \$2 for update/i);
+    expect(schema).toMatch(/'status', 'conflict'/i);
+    expect(schema).toMatch(/when unique_violation then/i);
+    expect(schema).toMatch(/'reason', 'constraint'/i);
+    expect(schema).toMatch(/create or replace function public\.pull_sync_changes/i);
+    expect(schema).toMatch(/order by change\.revision/i);
+    expect(schema).toMatch(/set search_path = ''/i);
+    expect(schema).toMatch(/private\.is_family_member\(_family_id\)/i);
+    expect(schema).toMatch(/revoke insert, update, delete on table[\s\S]*from public, anon, authenticated/i);
+    expect(schema).not.toMatch(/\b(drop|truncate)\s+table\b/i);
   });
 });

@@ -491,11 +491,11 @@ describe('sync engine', () => {
     await markSyncFailure(state, new TypeError('network unavailable'));
 
     expect(await db.syncQueue.get(`queue-players-${player.id}-1`))
-      .toMatchObject({ attempts: 1, last_error: 'network unavailable' });
+      .toMatchObject({ attempts: 1, last_error: 'Tennis Tracker Cloud non è momentaneamente raggiungibile.' });
     expect(state).toMatchObject({
       retry_count: 3,
       status: 'retryable-error',
-      last_error: 'network unavailable',
+      last_error: 'Tennis Tracker Cloud non è momentaneamente raggiungibile.',
     });
     expect(Date.parse(state.next_retry_at!)).toBeGreaterThan(Date.now());
   });

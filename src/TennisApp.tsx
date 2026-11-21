@@ -1045,7 +1045,7 @@ function Settings() {
         <span>{{
           'local-only': 'Solo su questo dispositivo',
           'signed-in-disabled': 'Accesso effettuato · sincronizzazione non attiva',
-          syncing: 'Sincronizzazione in corso',
+          syncing: 'Connessione a Tennis Tracker Cloud in corso',
           synced: 'Sincronizzato',
           'offline-pending': 'Modifiche in attesa di connessione',
           'retryable-error': 'Errore temporaneo · nuovo tentativo disponibile',
@@ -1057,7 +1057,7 @@ function Settings() {
             ? `Ruolo: ${mapping.role === 'owner' ? 'proprietario' : 'membro'} · ultimo download: ${mapping.last_download_completed_at
               ? new Date(mapping.last_download_completed_at).toLocaleString('it-IT')
               : 'non completato'}`
-            : 'Il login Google non crea una famiglia né attiva la sincronizzazione. Puoi continuare a usare i dati locali.'}
+            : 'L’accesso Google non attiva Tennis Tracker Cloud. Puoi continuare con i dati locali.'}
         </small>
       </div>
       <button className="setting-row" onClick={() => void (mapping?.enabled ? syncNow() : activate())}
@@ -1078,7 +1078,7 @@ function Settings() {
             {conflict.reason === 'constraint' ? 'Riprova il dato locale corretto' : 'Mantieni questo dispositivo'}
           </button>
           {conflict.reason === 'version' && conflict.remote_payload !== null &&
-            <button className="secondary" onClick={() => void resolveConflict(conflict.id, 'remote')}>Usa versione cloud</button>}
+            <button className="secondary" onClick={() => void resolveConflict(conflict.id, 'remote')}>Usa la versione di Tennis Tracker Cloud</button>}
         </div>)}
       </div>}
     </section>

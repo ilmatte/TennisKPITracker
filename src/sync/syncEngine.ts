@@ -16,6 +16,7 @@ import type {
 import type { RemoteChange, SyncRepository } from './contracts';
 import { readRecordBaseline, saveSyncMapping, writeRecordBaseline } from './syncState';
 import { syncEntityOrder } from './supabaseRepository';
+import { normalizeUiError } from '../services/uiMessages';
 
 const PAGE_SIZE = 200;
 const INITIAL_COMPLETE = '__complete__';
@@ -537,7 +538,7 @@ export async function markSyncFailure(mapping: SyncMapping, error: unknown): Pro
   const retryCount = mapping.retry_count + 1;
   const delaySeconds = Math.min(60 * 60, 2 ** Math.min(retryCount, 10));
   mapping.status = recoverable ? 'retryable-error' : 'permanent-error';
-  mapping.last_error = error instanceof Error ? error.message : 'Errore sconosciuto durante la sincronizzazione.';
+  mapping.last_error = normalizeUiError('sync', error);
   mapping.retry_count = retryCount;
   mapping.next_retry_at = recoverable
     ? new Date(Date.now() + delaySeconds * 1000).toISOString()
@@ -547,7 +548,7 @@ export async function markSyncFailure(mapping: SyncMapping, error: unknown): Pro
 }
 
 export async function recordQueueFailure(localFamilyId: string, error: unknown): Promise<void> {
-  const message = error instanceof Error ? error.message : 'Errore sconosciuto durante la sincronizzazione.';
+  const message = normalizeUiError('sync', error);
   await db.transaction('rw', db.syncQueue, async () => {
     await db.syncQueue.where('family_id').equals(localFamilyId).modify(operation => {
       operation.attempts++;

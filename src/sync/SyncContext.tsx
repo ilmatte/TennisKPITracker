@@ -17,6 +17,7 @@ import { createSupabaseSyncRepository } from './supabaseRepository';
 import { readSyncMapping, saveSyncMapping, SYNC_STATE_KEY } from './syncState';
 import type { ProvisionedSync, SyncRepository } from './contracts';
 import { SyncContext, type SyncContextValue } from './SyncContextDefinition';
+import { logTechnicalDiagnostic, normalizeUiError } from '../services/uiMessages';
 
 const EMPTY_CONFLICTS: SyncConflict[] = [];
 
@@ -81,7 +82,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     try {
       stored = await readSyncMapping();
     } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : 'Impossibile leggere lo stato di sincronizzazione locale.');
+      logTechnicalDiagnostic('sync-state', cause);
+      setActionError(normalizeUiError('sync', cause));
       return null;
     }
     if (stored?.enabled && stored.user_id && stored.user_id !== user.id) {
@@ -109,7 +111,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
           });
         }
       } catch (cause) {
-        setActionError(cause instanceof Error ? cause.message : 'Impossibile salvare lo stato offline.');
+        logTechnicalDiagnostic('sync-offline-state', cause);
+        setActionError(normalizeUiError('sync', cause));
       }
       return null;
     }
@@ -125,7 +128,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       const repository: SyncRepository = createSupabaseSyncRepository();
       const authenticatedUserId = await repository.getAuthenticatedUserId();
       if (authenticatedUserId !== user.id) {
-        throw new Error('La session Supabase non corrisponde all’account autenticato nell’app.');
+        throw new Error(normalizeUiError('auth'));
       }
       let provisioned: ProvisionedSync;
       if (activeMapping?.enabled && activeMapping.user_id === user.id && activeMapping.remote_family_id) {
@@ -166,7 +169,8 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       }
       return result;
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Sincronizzazione non riuscita.';
+      logTechnicalDiagnostic('sync', cause);
+      const message = normalizeUiError('sync', cause);
       setActionError(message);
       await recordQueueFailure(activeFamily.id, cause);
       if (activeMapping) {

@@ -2,13 +2,16 @@ import { useState } from 'react';
 import { supabase } from '../../services/supabase/client';
 import { useAuth } from './AuthContext';
 import './AuthStatus.css';
+import { logTechnicalDiagnostic, normalizeUiError } from '../../services/uiMessages';
 
 export default function AuthStatus() {
   const { user, loading } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get('error_description') ?? params.get('error');
+    return params.has('error_description') || params.has('error')
+      ? normalizeUiError('auth')
+      : null;
   });
 
   async function signIn() {
@@ -20,9 +23,13 @@ export default function AuthStatus() {
         provider: 'google',
         options: { redirectTo: `${window.location.origin}/` },
       });
-      if (signInError) setError(signInError.message);
+      if (signInError) {
+        logTechnicalDiagnostic('oauth-sign-in', signInError);
+        setError(normalizeUiError('auth', signInError));
+      }
     } catch (signInError) {
-      setError(signInError instanceof Error ? signInError.message : 'Accesso Google non riuscito.');
+      logTechnicalDiagnostic('oauth-sign-in', signInError);
+      setError(normalizeUiError('auth', signInError));
     } finally {
       setPending(false);
     }
@@ -34,9 +41,13 @@ export default function AuthStatus() {
     setError(null);
     try {
       const { error: signOutError } = await supabase.auth.signOut();
-      if (signOutError) setError(signOutError.message);
+      if (signOutError) {
+        logTechnicalDiagnostic('oauth-sign-out', signOutError);
+        setError(normalizeUiError('auth', signOutError));
+      }
     } catch (signOutError) {
-      setError(signOutError instanceof Error ? signOutError.message : 'Uscita non riuscita.');
+      logTechnicalDiagnostic('oauth-sign-out', signOutError);
+      setError(normalizeUiError('auth', signOutError));
     } finally {
       setPending(false);
     }
@@ -57,12 +68,12 @@ export default function AuthStatus() {
               className="auth-button"
               onClick={signIn}
               disabled={pending || !supabase}
-              title={!supabase ? 'Configura le variabili VITE_SUPABASE_* per abilitare l’accesso' : undefined}
+              title={!supabase ? 'Tennis Tracker Cloud non è disponibile al momento' : undefined}
             >
               {pending ? 'Accesso…' : 'Accedi con Google'}
             </button>}
       {error && <span className="auth-error" role="status">{error}</span>}
-      {!supabase && !loading && <span className="auth-message">Accesso cloud non configurato</span>}
+      {!supabase && !loading && <span className="auth-message">Tennis Tracker Cloud non è disponibile al momento</span>}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { useSync } from '../../sync/SyncContextDefinition';
 import './FamilyManager.css';
+import { logTechnicalDiagnostic, normalizeUiError } from '../../services/uiMessages';
 
 function readInviteToken() {
   const hash = new URLSearchParams(window.location.hash.slice(1));
@@ -35,7 +36,8 @@ export default function FamilyManager() {
           ? 'Invito accettato: i dati della famiglia sono disponibili su questo dispositivo.'
           : 'Invito accettato. Il download iniziale è in attesa di connessione o di un nuovo tentativo.');
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : 'Impossibile accettare l’invito.');
+      logTechnicalDiagnostic('invitation', cause);
+      setMessage(normalizeUiError('invitation', cause));
     } finally {
       setPending(false);
     }

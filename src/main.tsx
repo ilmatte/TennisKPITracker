@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { resetLocalDatabaseOnce } from './db/database'
+import { logTechnicalDiagnostic, normalizeUiError } from './services/uiMessages'
 
 const rootElement = document.getElementById('root')!;
 
@@ -13,8 +14,6 @@ void resetLocalDatabaseOnce().then(() => {
     </StrictMode>,
   )
 }).catch(cause => {
-  console.error('Unable to initialize the local database:', cause);
-  rootElement.textContent = cause instanceof Error
-    ? cause.message
-    : 'Impossibile inizializzare il database locale.';
+  logTechnicalDiagnostic('local-database-startup', cause);
+  rootElement.textContent = normalizeUiError('local-startup', cause);
 });
