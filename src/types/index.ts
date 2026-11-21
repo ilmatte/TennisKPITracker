@@ -128,6 +128,7 @@ export interface ScoredPoint extends Point {
 
 export interface SyncOperation {
   id: UUID;
+  operation_id?: UUID;
   family_id: UUID;
   entity_type: 'players' | 'matches' | 'sets' | 'games' | 'points';
   entity_id: UUID;

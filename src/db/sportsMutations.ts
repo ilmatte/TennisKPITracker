@@ -18,8 +18,10 @@ function queueOperation<T extends { id: string }>(
   entity: T,
   created_at: string,
 ): SyncOperation {
+  const operationId = crypto.randomUUID();
   return {
-    id: crypto.randomUUID(),
+    id: operationId,
+    operation_id: operationId,
     family_id,
     entity_type,
     entity_id: entity.id,

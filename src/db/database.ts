@@ -46,44 +46,26 @@ export class TennisDatabase extends Dexie {
       syncMetadata: 'key, updated_at',
       syncConflicts: 'id, family_id, entity_type, entity_id, status, created_at',
     });
+    this.version(3).stores({
+      syncQueue: 'id, operation_id, family_id, entity_type, entity_id, created_at, attempts',
+    });
   }
 }
 
 export const db = new TennisDatabase();
 
-const databaseResetMarker = 'tennis-kpi-dexie-reset-v1';
-let databaseResetPromise: Promise<void> | null = null;
-
-function deleteLocalDatabase(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.deleteDatabase('TennisKPITracker');
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error ?? new Error('Impossibile reimpostare il database locale.'));
-    request.onblocked = () => reject(new Error(
-      'Il reset del database locale è bloccato da un’altra scheda. Chiudi le altre schede di Tennis KPI Tracker e ricarica.',
-    ));
-  });
-}
-
-async function resetLocalDatabase(): Promise<void> {
-  if (localStorage.getItem(databaseResetMarker) === 'done') return;
-
-  db.close();
-  await deleteLocalDatabase();
-  localStorage.setItem(databaseResetMarker, 'done');
-}
+let databaseInitializationPromise: Promise<void> | null = null;
 
 export function resetLocalDatabaseOnce(): Promise<void> {
-  if (!databaseResetPromise) {
-    databaseResetPromise = ('locks' in navigator
-      ? navigator.locks.request(databaseResetMarker, async () => resetLocalDatabase())
-      : resetLocalDatabase()
-    ).catch(cause => {
-      databaseResetPromise = null;
-      throw cause;
-    });
+  if (!databaseInitializationPromise) {
+    databaseInitializationPromise = db.open()
+      .then(() => undefined)
+      .catch(cause => {
+        databaseInitializationPromise = null;
+        throw cause;
+      });
   }
-  return databaseResetPromise;
+  return databaseInitializationPromise;
 }
 
 export async function ensureLocalWorkspace(): Promise<Family> {

@@ -297,7 +297,7 @@ async function downloadInitial(
   let downloaded = 0;
   if (!mapping.initial_download_started) {
     mapping.initial_download_started = true;
-    mapping.initial_download_revision = familyRevision;
+    mapping.initial_download_revision = await repository.beginInitialSnapshot(mapping.remote_family_id!);
     mapping.initial_download_cursors = {};
     mapping.updated_at = new Date().toISOString();
     await saveSyncMapping(mapping);
@@ -306,7 +306,13 @@ async function downloadInitial(
   for (const type of syncEntityOrder) {
     let cursor = mapping.initial_download_cursors[type] ?? '';
     while (cursor !== INITIAL_COMPLETE) {
-      const rows = await repository.listRecords(type, mapping.remote_family_id!, cursor, PAGE_SIZE);
+      const rows = await repository.listSnapshot(
+        type,
+        mapping.remote_family_id!,
+        mapping.initial_download_revision!,
+        cursor,
+        PAGE_SIZE,
+      );
       const nextCursor = rows.length < PAGE_SIZE
         ? INITIAL_COMPLETE
         : String(rows[rows.length - 1].id);
@@ -409,8 +415,20 @@ async function uploadPending(repository: SyncRepository, mapping: SyncMapping): 
       if (await hasBlockedDependency(type, localRecord, mapping.local_family_id)) continue;
 
       const baseline = await readRecordBaseline(type, id);
+      const operation = pending
+        .filter(item => item.entity_id === id)
+        .reduce<SyncOperation | undefined>((latest, item) => {
+          if (!latest) return item;
+          const latestVersion = getVersion(latest.payload);
+          const itemVersion = getVersion(item.payload);
+          if (itemVersion !== latestVersion) return itemVersion > latestVersion ? item : latest;
+          return item.created_at > latest.created_at ? item : latest;
+        }, undefined);
+      const operationId = operation?.operation_id ?? operation?.id;
+      if (!operationId) throw new Error(`Operazione in coda senza identificatore persistente: ${type}/${id}.`);
       const result = await repository.applyRecord({
         familyId: mapping.remote_family_id!,
+        operationId,
         entityType: type,
         entityId: id,
         baseVersion: baseline?.remote_version ?? 0,
@@ -436,7 +454,11 @@ async function uploadPending(repository: SyncRepository, mapping: SyncMapping): 
         await writeRecordBaseline(type, id, result.remote_version);
         const operations = await queuedFor(type, id, mapping.local_family_id);
         await db.syncQueue.bulkDelete(operations
-          .filter(operation => getVersion(operation.payload) <= sentVersion)
+          .filter(operation => {
+            const operationPayloadVersion = getVersion(operation.payload);
+            const operationIdentity = operation.operation_id ?? operation.id;
+            return operationIdentity === operationId || operationPayloadVersion < sentVersion;
+          })
           .map(operation => operation.id));
       });
       uploaded++;

@@ -83,19 +83,31 @@ export function createSupabaseSyncRepository(client: SupabaseClient | null = sup
       if (typeof data !== 'string') throw new Error('La RPC create_family ha restituito una risposta non valida.');
       return data;
     },
-    async listRecords(entityType, familyId, afterId, limit) {
-      const { data, error } = await remote.from(entityType)
-        .select('*')
-        .eq('family_id', familyId)
-        .gt('id', afterId)
-        .order('id', { ascending: true })
-        .limit(limit);
+    async beginInitialSnapshot(familyId) {
+      const { data, error } = await remote.rpc('begin_initial_snapshot', { _family_id: familyId });
       if (error) throw error;
-      return (data ?? []) as unknown as Record<string, unknown>[];
+      const revision = typeof data === 'number' ? data : typeof data === 'string' ? Number(data) : NaN;
+      if (!Number.isSafeInteger(revision) || revision < 0) {
+        throw new Error('Il server non ha restituito una revisione snapshot valida.');
+      }
+      return revision;
     },
-    async applyRecord({ familyId, entityType, entityId, baseVersion, payload }) {
+    async listSnapshot(entityType, familyId, revision, afterId, limit) {
+      const { data, error } = await remote.rpc('list_initial_snapshot', {
+        _family_id: familyId,
+        _snapshot_revision: revision,
+        _entity_type: entityType,
+        _after_id: afterId || '00000000-0000-0000-0000-000000000000',
+        _limit: limit,
+      });
+      if (error) throw error;
+      if (!Array.isArray(data)) throw new Error('Il server ha restituito una pagina snapshot non valida.');
+      return data as unknown as Record<string, unknown>[];
+    },
+    async applyRecord({ familyId, operationId, entityType, entityId, baseVersion, payload }) {
       const { data, error } = await remote.rpc('apply_sync_record', {
         _family_id: familyId,
+        _operation_id: operationId,
         _entity_type: entityType,
         _entity_id: entityId,
         _base_version: baseVersion,

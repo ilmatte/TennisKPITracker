@@ -45,12 +45,13 @@ describe('sync metadata schema migration', () => {
 
     const migrated = new TennisDatabase(databaseName);
     await migrated.open();
-    expect(migrated.verno).toBe(2);
+    expect(migrated.verno).toBe(3);
     expect(await migrated.table('families').get(family.id)).toEqual(family);
     expect(await migrated.table('players').get(player.id)).toEqual(player);
     expect(await migrated.table('syncQueue').get(operation.id)).toEqual(operation);
     expect(migrated.tables.map(table => table.name)).toContain('syncMetadata');
     expect(migrated.tables.map(table => table.name)).toContain('syncConflicts');
+    expect(migrated.syncQueue.schema.indexes.find(index => index.name === 'operation_id')).toBeDefined();
     expect(await migrated.table('syncMetadata').count()).toBe(0);
     expect(await migrated.table('syncConflicts').count()).toBe(0);
     migrated.close();

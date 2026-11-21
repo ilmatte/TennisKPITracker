@@ -30,6 +30,7 @@ class FakeSyncRepository implements SyncRepository {
   failAfterCommit = false;
   afterCommit: (() => Promise<void>) | null = null;
   createdIds: string[] = [];
+  committedOperations = new Map<string, ApplyRecordResult>();
   memberships: FamilyMember[] = [];
 
   constructor() {
@@ -67,11 +68,25 @@ class FakeSyncRepository implements SyncRepository {
     return id;
   }
 
-  async listRecords(type: SyncEntityType, familyId: string, afterId: string, limit: number) {
+  snapshotRecords: Map<SyncEntityType, Map<string, Record<string, unknown>>> | null = null;
+  snapshotRevision = 0;
+
+  async beginInitialSnapshot(familyId: string) {
+    if (familyId !== remoteFamilyId) throw new Error('wrong remote family');
+    this.snapshotRevision = this.revision;
+    this.snapshotRecords = new Map<SyncEntityType, Map<string, Record<string, unknown>>>();
+    for (const [type, records] of this.records) {
+      this.snapshotRecords.set(type, new Map(records));
+    }
+    return this.snapshotRevision;
+  }
+
+  async listSnapshot(type: SyncEntityType, familyId: string, revision: number, afterId: string, limit: number) {
     if (familyId !== remoteFamilyId) throw new Error('wrong remote family');
     this.listCalls++;
     if (this.failOnListCall === this.listCalls) throw new TypeError('network interrupted');
-    return [...this.records.get(type)!.values()]
+    if (revision !== this.snapshotRevision || !this.snapshotRecords) throw new Error('snapshot revision mismatch');
+    return [...this.snapshotRecords.get(type)!.values()]
       .filter(record => String(record.id) > afterId)
       .sort((left, right) => String(left.id).localeCompare(String(right.id)))
       .slice(0, limit);
@@ -79,6 +94,7 @@ class FakeSyncRepository implements SyncRepository {
 
   async applyRecord(input: {
     familyId: string;
+    operationId: string;
     entityType: SyncEntityType;
     entityId: string;
     baseVersion: number;
@@ -86,6 +102,8 @@ class FakeSyncRepository implements SyncRepository {
   }): Promise<ApplyRecordResult> {
     if (input.familyId !== remoteFamilyId) throw new Error('wrong remote family');
     this.calls.push(input.entityType);
+    const prior = this.committedOperations.get(input.operationId);
+    if (prior) return prior;
     const table = this.records.get(input.entityType)!;
     const current = table.get(input.entityId);
     if ((current?.version ?? 0) !== input.baseVersion) {
@@ -114,12 +132,14 @@ class FakeSyncRepository implements SyncRepository {
       await this.afterCommit?.();
       throw new TypeError('response lost after server commit');
     }
-    return {
+    const applied: ApplyRecordResult = {
       status: 'applied',
       remote_version: Number(record.version),
       revision: this.revision,
       record,
     };
+    this.committedOperations.set(input.operationId, applied);
+    return applied;
   }
 
   async pullChanges(_familyId: string, afterRevision: number, limit: number) {
@@ -376,6 +396,90 @@ describe('sync engine', () => {
     expect(resumed.status).toBe('synced');
     expect(await db.players.count()).toBe(201);
     expect(state.initial_download_complete).toBe(true);
+  });
+
+  it('simulates snapshot consistency and subsequent changes across two devices', async () => {
+    const remote = new FakeSyncRepository();
+    const original = localPlayer();
+    remote.seed('players', { ...original, family_id: remoteFamilyId, first_name: 'Ada' });
+
+    const state = mapping();
+    await saveSyncMapping(state);
+    const snapshotRevision = await remote.beginInitialSnapshot(remoteFamilyId);
+    state.initial_download_started = true;
+    state.initial_download_revision = snapshotRevision;
+    state.initial_download_cursors = {};
+    await saveSyncMapping(state);
+
+    const changedByB = {
+      ...original,
+      family_id: remoteFamilyId,
+      first_name: 'Grace',
+      version: 2,
+      updated_at: '2026-03-01T10:01:00.000Z',
+    };
+    remote.records.get('players')!.set(original.id, changedByB);
+    remote.revision = snapshotRevision + 1;
+    remote.changes.push({
+      revision: remote.revision,
+      entity_type: 'players',
+      entity_id: original.id,
+      payload: changedByB,
+    });
+
+    const result = await runSync(remote, state, remote.revision);
+
+    expect(result.status).toBe('synced');
+    expect(await db.players.get(original.id)).toMatchObject({ first_name: 'Grace', version: 2 });
+    expect(state.initial_download_revision).toBe(snapshotRevision);
+    expect(state.download_revision).toBe(snapshotRevision + 1);
+  });
+
+  it('does not increment the server revision when retrying the same operation after a lost response', async () => {
+    const remote = new FakeSyncRepository();
+    const player = localPlayer();
+    await db.players.add(player);
+    await db.syncQueue.add({ ...queue('players', player), operation_id: 'operation-player-1' });
+    const state = mapping({ initial_download_complete: true });
+    await saveSyncMapping(state);
+    remote.failAfterCommit = true;
+
+    await expect(runSync(remote, state, 0)).rejects.toThrow('response lost after server commit');
+    const revisionAfterCommit = remote.revision;
+    const callsAfterCommit = remote.calls.length;
+
+    const resumed = await runSync(remote, state, remote.revision);
+
+    expect(resumed.status).toBe('synced');
+    expect(remote.revision).toBe(revisionAfterCommit);
+    expect(remote.calls.length).toBe(callsAfterCommit);
+    expect(await db.syncQueue.count()).toBe(0);
+  });
+
+  it('keeps a local pending modification when a remote tombstone is downloaded', async () => {
+    const remote = new FakeSyncRepository();
+    const local = localPlayer();
+    await db.players.add(local);
+    await db.syncQueue.add(queue('players', local));
+    remote.seed('players', { ...local, family_id: remoteFamilyId, deleted: true, version: 2 });
+    remote.revision = 1;
+    remote.changes.push({
+      revision: 1,
+      entity_type: 'players',
+      entity_id: local.id,
+      payload: { ...local, family_id: remoteFamilyId, deleted: true, version: 2 },
+    });
+    const state = mapping({ initial_download_complete: true });
+    await saveSyncMapping(state);
+
+    const result = await runSync(remote, state, remote.revision);
+
+    expect(await db.players.get(local.id)).toMatchObject({ deleted: false, version: 1 });
+    expect(await db.syncQueue.where('entity_id').equals(local.id).count()).toBe(1);
+    expect(await db.syncConflicts.where('entity_id').equals(local.id).toArray()).toMatchObject([
+      { reason: 'version', status: 'unresolved' },
+    ]);
+    expect(result.status).toBe('needs-attention');
   });
 
   it('persists progressive retry state and queue attempt details for recoverable failures', async () => {

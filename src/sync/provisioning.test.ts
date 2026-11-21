@@ -35,7 +35,10 @@ class ProvisionRepository implements SyncRepository {
     this.family = { ...this.family, id, name, created_by: 'owner-id' };
     return id;
   }
-  async listRecords() {
+  async beginInitialSnapshot() {
+    return 0;
+  }
+  async listSnapshot() {
     return [];
   }
   async applyRecord(): Promise<ApplyRecordResult> {

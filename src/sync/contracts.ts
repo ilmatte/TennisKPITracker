@@ -30,9 +30,11 @@ export interface SyncRepository {
   getMemberships(userId: string): Promise<FamilyMember[]>;
   getFamily(familyId: string): Promise<RemoteFamily>;
   createFamily(localFamilyId: string, name: string): Promise<string>;
-  listRecords(entityType: SyncEntityType, familyId: string, afterId: string, limit: number): Promise<Record<string, unknown>[]>;
+  beginInitialSnapshot(familyId: string): Promise<number>;
+  listSnapshot(entityType: SyncEntityType, familyId: string, revision: number, afterId: string, limit: number): Promise<Record<string, unknown>[]>;
   applyRecord(input: {
     familyId: string;
+    operationId: string;
     entityType: SyncEntityType;
     entityId: string;
     baseVersion: number;
