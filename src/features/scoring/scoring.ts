@@ -1,6 +1,26 @@
 import type { Match, ScoredPoint, TennisSet } from '../../types';
 
 export type Side = 'player' | 'opponent';
+export type PointAction = 'free_error' | 'double_fault' | 'lost' | 'great_shot' | 'won' | 'ace';
+export interface PointActionResult {
+  winner: Side;
+  secondServe: boolean;
+  doubleFault: boolean;
+  shotCount: number;
+  freeError: boolean;
+}
+
+export function resolvePointAction(action: PointAction): PointActionResult {
+  const playerWon = action === 'great_shot' || action === 'won' || action === 'ace';
+  return {
+    winner: playerWon ? 'player' : 'opponent',
+    secondServe: action === 'double_fault',
+    doubleFault: action === 'double_fault',
+    shotCount: action === 'ace' ? 1 : action === 'great_shot' ? 3 : 1,
+    freeError: action === 'free_error',
+  };
+}
+
 export interface GameResult { player: number; opponent: number }
 
 export function configuredSetNavigation(

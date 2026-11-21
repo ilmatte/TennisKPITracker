@@ -6,7 +6,7 @@ import { jsPDF } from 'jspdf';
 import { db, getMatchPoints, persistSnapshotStorage } from './db/database';
 import { nextPointNumber } from './db/pointNumbers';
 import type { ErrorCategory, Game, Match, Player, Point, ScoredPoint, SyncOperation, TennisSet } from './types';
-import { configuredSetNavigation, deriveGameScore, deriveSetScore, getServer, nextGameNumber, pointsToGame, sortedPoints } from './features/scoring/scoring';
+import { configuredSetNavigation, deriveGameScore, deriveSetScore, getServer, nextGameNumber, pointsToGame, resolvePointAction, sortedPoints, type PointAction } from './features/scoring/scoring';
 import { freeErrorStats, serveKpi, servicePlusOne } from './features/kpi/kpi';
 import './features/sports/sports.css';
 import {
@@ -32,6 +32,7 @@ import { useAuth } from './features/auth/AuthContext';
 import { useFamily } from './features/families/FamilyContextDefinition';
 import FamilyManager from './features/families/FamilyManager';
 import { useSync } from './sync/SyncContextDefinition';
+import './design.css';
 
 const stamp = () => new Date().toISOString();
 
@@ -76,7 +77,7 @@ export default function TennisApp() {
 
   return <div className="app-shell">
     <header className="topbar">
-      <div><span className="brand-mark">TK</span><strong>Tennis KPI</strong></div>
+      <div className="brand-lockup"><span className="brand-mark" aria-hidden="true"><span /></span><strong>Tennis KPI <b>Tracker</b></strong></div>
       <div className="topbar-actions">
         <span className={`status ${online ? 'online' : 'offline'}`}>{online ? 'Online' : 'Offline'}</span>
         <AuthStatus />
@@ -458,14 +459,6 @@ function Tracker() {
   }, [id, activeFamily?.id]) ?? { sets: [], games: [] };
   const [setNumber, setSetNumber] = useState(1);
   const [selectedGame, setSelectedGame] = useState<number | null>(null);
-  const [winner, setWinner] = useState<'player' | 'opponent'>('player');
-  const [shotCount, setShotCount] = useState(1);
-  const [doubleFault, setDoubleFault] = useState(false);
-  const [secondServe, setSecondServe] = useState(false);
-  const [freeError, setFreeError] = useState(false);
-  const [errorPlayer, setErrorPlayer] = useState<'player' | 'opponent'>('opponent');
-  const [attack, setAttack] = useState(false);
-  const [pressure, setPressure] = useState(false);
   const [trackerError, setTrackerError] = useState<string | null>(null);
   const [editingSet, setEditingSet] = useState<TennisSet | null>(null);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
@@ -484,23 +477,6 @@ function Tracker() {
   recordedGameNumbers.push(...points.filter(point => point.set_number === selectedSetNumber).map(point => point.game_number));
   const lastGameNumber = Math.max(currentGameNumber, ...recordedGameNumbers);
 
-  useEffect(() => {
-    if (doubleFault) setWinner('opponent');
-  }, [doubleFault]);
-  useEffect(() => {
-    if (freeError) setWinner(errorPlayer === 'player' ? 'opponent' : 'player');
-  }, [freeError, errorPlayer]);
-  useEffect(() => {
-    setWinner('player');
-    setShotCount(1);
-    setDoubleFault(false);
-    setSecondServe(false);
-    setFreeError(false);
-    setErrorPlayer('opponent');
-    setAttack(false);
-    setPressure(false);
-  }, [selectedSetNumber, gameNumber]);
-
   if (!match || !activeFamily) return <div className="page"><div className="empty-state">Partita non trovata</div></div>;
   const activeMatch = match;
 
@@ -508,7 +484,7 @@ function Tracker() {
     setSelectedGame(number === currentGameNumber ? null : number);
   }
 
-  async function savePoint() {
+  async function savePoint(action: PointAction) {
     if (gameComplete) return;
     const created_at = stamp();
     try {
@@ -552,13 +528,16 @@ function Tracker() {
             ? [{ ...stored, set_number: set.set_number, game_number: game.game_number }]
             : [];
         });
+        const result = resolvePointAction(action);
         const point: Point = {
           id: crypto.randomUUID(), family_id: activeMatch.family_id, game_id: tennisGame.id,
           point_number: nextPointNumber(scoredPoints.filter(existing => existing.game_id === tennisGame.id)),
-          winner, server: getServer(currentMatch, selectedSetNumber, gameNumber), second_serve: secondServe,
-          double_fault: doubleFault, shot_count: shotCount, free_error: freeError,
-          error_player: freeError ? errorPlayer : undefined, error_category: freeError ? 'other' : undefined,
-          attack_error: attack, pressure_situation: pressure, pressure_error_player: pressure ? errorPlayer : undefined,
+          winner: result.winner, server: getServer(currentMatch, selectedSetNumber, gameNumber),
+          second_serve: result.secondServe, double_fault: result.doubleFault,
+          shot_count: result.shotCount,
+          free_error: result.freeError, error_player: action === 'free_error' ? 'player' : undefined,
+          error_category: action === 'free_error' ? 'other' : undefined,
+          attack_error: false, pressure_situation: false, pressure_error_player: undefined,
           created_at, updated_at: created_at, version: 1, deleted: false,
         };
         const updatedPoints: ScoredPoint[] = [...scoredPoints, { ...point, set_number: selectedSetNumber, game_number: gameNumber }];
@@ -593,12 +572,6 @@ function Tracker() {
       return;
     }
     setTrackerError(null);
-    setDoubleFault(false);
-    setSecondServe(false);
-    setFreeError(false);
-    setAttack(false);
-    setPressure(false);
-    setShotCount(1);
   }
 
   async function removePoint(point: ScoredPoint) {
@@ -608,6 +581,17 @@ function Tracker() {
       setTrackerError(null);
     } catch (cause) {
       setTrackerError(cause instanceof Error ? cause.message : 'Impossibile eliminare il punto.');
+    }
+  }
+
+  async function undoLatestPoint() {
+    const latestPoint = gamePoints.at(-1);
+    if (!latestPoint) return;
+    try {
+      await softDeletePoint(activeMatch.family_id, latestPoint.id);
+      setTrackerError(null);
+    } catch (cause) {
+      setTrackerError(cause instanceof Error ? cause.message : 'Impossibile annullare il punto.');
     }
   }
 
@@ -695,31 +679,24 @@ function Tracker() {
       <button className="secondary" onClick={() => setEditingGame(currentGame)}>Modifica game {gameNumber}</button>
       <button className="danger" onClick={() => void removeGame(currentGame)}>Elimina game {gameNumber}</button>
     </div>}
-    <div className="tracking-controls">
-      <div className="winner-grid">
-        <button className={`winner player ${winner === 'player' ? 'active' : ''}`} onClick={() => setWinner('player')}>Punto tuo</button>
-        <button className={`winner opponent ${winner === 'opponent' ? 'active' : ''}`} onClick={() => setWinner('opponent')}>Punto avversario</button>
+    <div className="tracking-controls point-recorder">
+      <button className="undo-point" onClick={() => void undoLatestPoint()} disabled={!gamePoints.length}>
+        Annulla ultimo punto
+      </button>
+      <div className="point-action-group point-action-lost">
+        <div className="point-action-heading"><span>Punto perso</span><small>Il punto va all'avversario</small></div>
+        <button onClick={() => void savePoint('free_error')} disabled={gameComplete}>Errore gratuito</button>
+        <button onClick={() => void savePoint('double_fault')} disabled={gameComplete}>Doppio fallo</button>
+        <button onClick={() => void savePoint('lost')} disabled={gameComplete}>Perso</button>
       </div>
-      <div className="quick-options">
-        <button className={secondServe ? 'active' : ''} onClick={() => setSecondServe(value => !value)}>Seconda palla</button>
-        <button className={doubleFault ? 'active danger' : ''} onClick={() => setDoubleFault(value => !value)}>Doppio fallo</button>
-        <button className={freeError ? 'active' : ''} onClick={() => setFreeError(value => !value)}>Errore gratuito</button>
+      <div className="point-action-group point-action-won">
+        <div className="point-action-heading"><span>Punto vinto</span><small>Il punto è tuo</small></div>
+        <button onClick={() => void savePoint('great_shot')} disabled={gameComplete}>Bel colpo</button>
+        <button onClick={() => void savePoint('won')} disabled={gameComplete}>Vinto</button>
+        <button onClick={() => void savePoint('ace')} disabled={gameComplete}>Servizio vincente</button>
       </div>
-      {freeError && <div className="quick-options">
-        <button className={errorPlayer === 'player' ? 'active' : ''} onClick={() => setErrorPlayer('player')}>Errore mio</button>
-        <button className={errorPlayer === 'opponent' ? 'active' : ''} onClick={() => setErrorPlayer('opponent')}>Errore avversario</button>
-      </div>}
-      <label className="shot-control"><span>Colpi complessivi</span><div>
-        <button onClick={() => setShotCount(value => Math.max(1, value - 1))}>−</button><strong>{shotCount}</strong>
-        <button onClick={() => setShotCount(value => value + 1)}>+</button>
-      </div></label>
-      <div className="quick-options">
-        <button className={attack ? 'active' : ''} onClick={() => setAttack(value => !value)}>Errore in attacco</button>
-        <button className={pressure ? 'active' : ''} onClick={() => setPressure(value => !value)}>Pressione</button>
-      </div>
-      {gameComplete && <p className="completed-game-note">Game concluso. Per correggerlo, elimina il punto errato dalla lista qui sotto.</p>}
+      {gameComplete && <p className="completed-game-note">Game concluso.</p>}
       {trackerError && <p className="family-feedback error" role="alert">{trackerError}</p>}
-      <button className="primary save-point" disabled={gameComplete} onClick={() => void savePoint()}>Salva punto</button>
     </div>
     {gamePoints.length > 0 && <div className="point-history">
       <h3>Punti del game {gameNumber}</h3>

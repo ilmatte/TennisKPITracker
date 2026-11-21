@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Match, ScoredPoint } from '../../types';
-import { configuredSetNavigation, deriveGameScore, nextGameNumber, pointsToGame, tiebreakServer } from './scoring';
+import { configuredSetNavigation, deriveGameScore, nextGameNumber, pointsToGame, resolvePointAction, tiebreakServer } from './scoring';
 import { freeErrorStats, pressureStats, scorePressure, serveKpi, servicePlusOne } from '../kpi/kpi';
 
 const match = (overrides: Partial<Match> = {}): Match => ({
@@ -57,6 +57,14 @@ describe('scoring core', () => {
     const points = [1,2,3,4].map(()=>point({winner:'player'})).concat([1,2,3,4].map(()=>point({winner:'opponent'})));
     expect(deriveGameScore(points)).toEqual({ player: '40', opponent: '40' });
     expect(pointsToGame([...points, point({winner:'player'}), point({winner:'player'})], 'player')).toEqual({ player: 1, opponent: 0 });
+  });
+  it('maps all direct player actions to an automatic point result', () => {
+    expect(resolvePointAction('free_error')).toMatchObject({ winner: 'opponent', freeError: true });
+    expect(resolvePointAction('double_fault')).toMatchObject({ winner: 'opponent', doubleFault: true, secondServe: true });
+    expect(resolvePointAction('lost')).toMatchObject({ winner: 'opponent' });
+    expect(resolvePointAction('great_shot')).toMatchObject({ winner: 'player' });
+    expect(resolvePointAction('won')).toMatchObject({ winner: 'player' });
+    expect(resolvePointAction('ace')).toMatchObject({ winner: 'player', shotCount: 1 });
   });
   it('uses one-point deuce when enabled', () => {
     const points=[1,2,3].map(()=>point()).concat([1,2,3].map(()=>point({winner:'opponent'}))).concat([point()]);
