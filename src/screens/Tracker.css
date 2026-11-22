@@ -73,8 +73,6 @@
 
 .cg-footer{position:absolute;z-index:0;left:0;bottom:0;display:block;width:100%;height:auto;pointer-events:none}
 
-/* Hide the global bottom-nav padding while tracking */
-.app-shell.tracker-active{padding-bottom:0}
 
 @media(max-width:360px){.cg-scores{gap:28px}.cg-action{font-size:13px}.cg-actions{gap:8px}}
 

@@ -4,13 +4,40 @@ import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getMatchPoints } from '../db/database';
 import { deriveSetScore } from '../features/scoring/scoring';
-import { countMatchDescendants, softDeleteMatch, updateMatch, type MatchChanges } from '../db/sportsMutations';
+import type { MatchChanges } from '../db/sportsMutations';
+import { useAuth } from '../features/auth/AuthContext';
 import { useFamily } from '../features/families/FamilyContextDefinition';
+import { supabase } from '../services/supabase/client';
+import tennisLogo from '../assets/logo.svg';
 import tennisBallIcon from '../assets/icone/trasparente/512/pallina3d.png';
 import { stamp, queueOperation } from './shared';
-import type { Match } from '../types';
+import type { Match, ScoredPoint } from '../types';
+
+type MatchSummary = { match: Match; scoreText: string; outcome: 'won' | 'lost' | 'in-progress'; duration: string | null };
+
+function summarize(match: Match, points: ScoredPoint[]): MatchSummary {
+  let playerSets = 0;
+  let opponentSets = 0;
+  const labels: string[] = [];
+  for (let setNumber = 1; setNumber <= match.number_of_sets; setNumber += 1) {
+    const score = deriveSetScore(points, setNumber, match);
+    if (score.player > score.opponent) playerSets += 1;
+    if (score.opponent > score.player) opponentSets += 1;
+    if (score.player || score.opponent) labels.push(`${score.player}-${score.opponent}`);
+  }
+  const outcome = match.status !== 'completed' ? 'in-progress' : playerSets > opponentSets ? 'won' : 'lost';
+  const times = points.map(point => Date.parse(point.created_at)).filter(Number.isFinite);
+  const minutes = times.length > 1 ? Math.round((Math.max(...times) - Math.min(...times)) / 60000) : 0;
+  const duration = minutes > 0 ? (minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`) : null;
+  return { match, scoreText: labels.join(' '), outcome, duration };
+}
+
+const outcomeLabel = { won: 'Vinta', lost: 'Persa', 'in-progress': 'In corso' } as const;
+
 export function Matches() {
   const { activeFamily } = useFamily();
+  const { user, loading: authLoading } = useAuth();
+  const [authPending, setAuthPending] = useState(false);
   const matches = useLiveQuery(
     async () => activeFamily
       ? (await db.matches.where('family_id').equals(activeFamily.id).toArray())
@@ -18,24 +45,12 @@ export function Matches() {
       : [],
     [activeFamily?.id],
   ) ?? [];
-  const matchOutcomes = useLiveQuery(async () => {
-    if (!activeFamily) return [] as { id: string; won: boolean }[];
-    return (await Promise.all(matches.map(async match => {
-      const points = await getMatchPoints(activeFamily.id, match.id);
-      let playerSets = 0;
-      let opponentSets = 0;
-      for (let setNumber = 1; setNumber <= match.number_of_sets; setNumber += 1) {
-        const setScore = deriveSetScore(points, setNumber, match);
-        if (setScore.player > setScore.opponent) playerSets += 1;
-        if (setScore.opponent > setScore.player) opponentSets += 1;
-      }
-      return { id: match.id, won: playerSets > opponentSets };
-    }))).filter(item => matches.find(match => match.id === item.id)?.status === 'completed');
-  }, [activeFamily?.id, matches.map(match => match.id).join(',')]) ?? [];
+  const summaries = useLiveQuery(async () => {
+    if (!activeFamily) return [] as MatchSummary[];
+    return Promise.all(matches.map(async match => summarize(match, await getMatchPoints(activeFamily.id, match.id))));
+  }, [activeFamily?.id, matches.map(match => `${match.id}:${match.status}:${match.version}`).join(',')]) ?? [];
   const [newOpen, setNewOpen] = useState(false);
   const [filter, setFilter] = useState<'all' | 'won' | 'lost'>('all');
-  const [editing, setEditing] = useState<Match | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const players = useLiveQuery(
     async () => activeFamily
@@ -52,73 +67,54 @@ export function Matches() {
     setNewOpen(true);
   }
 
-  async function remove(match: Match) {
-    if (!activeFamily) return;
-    try {
-      const count = await countMatchDescendants(activeFamily.id, match.id);
-      const detail = `${count.sets} set, ${count.games} game e ${count.points} punti dipendenti`;
-      if (!window.confirm(`Eliminare logicamente questa partita? Verranno marcati come cancellati anche ${detail}.`)) return;
-      await softDeleteMatch(activeFamily.id, match.id);
-      setError(null);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Impossibile eliminare la partita.');
+  async function handleProfileAction() {
+    if (user) {
+      navigate('/settings');
+      return;
     }
+    if (!supabase || authPending) return;
+    setAuthPending(true);
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/` },
+    });
   }
 
-  const wonIds = new Set(matchOutcomes.filter(outcome => outcome.won).map(outcome => outcome.id));
-  const lostIds = new Set(matchOutcomes.filter(outcome => !outcome.won).map(outcome => outcome.id));
-  const visibleMatches = matches.filter(match => {
-    if (filter === 'won') return wonIds.has(match.id);
-    if (filter === 'lost') return lostIds.has(match.id);
-    return true;
-  });
+  const visible = summaries.filter(summary => filter === 'all' || summary.outcome === filter);
+  const filters = [['all', 'Tutte'], ['won', 'Vinte'], ['lost', 'Perse']] as const;
 
-  return <div className="page archive-page">
-    <div className="page-heading"><div><p className="eyebrow">Archivio</p><h1>Le mie partite</h1></div><button className="primary" onClick={openNewMatch}>+ Nuova partita</button></div>
-    <div className="archive-tabs" aria-label="Filtra partite">
-      <button className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>Tutte</button>
-      <button className={filter === 'won' ? 'active' : ''} onClick={() => setFilter('won')}>Vinte</button>
-      <button className={filter === 'lost' ? 'active' : ''} onClick={() => setFilter('lost')}>Perse</button>
-    </div>
+  return <div className="mg-page">
+    <svg className="mg-waves" width="390" height="140" viewBox="0 0 390 140" aria-hidden="true"><path d="M120 120C220 110 320 80 390 20V60C330 100 220 135 120 135z" fill="#2F8F3E" opacity=".55" /><path d="M200 128C280 120 340 95 390 60V84C340 112 280 134 200 136z" fill="#C8F03A" opacity=".35" /></svg>
+    <header className="mg-header">
+      <div className="mg-brand"><img src={tennisLogo} alt="" /><div>Tennis<br />KPI Tracker</div></div>
+      <button className="mg-profile" type="button" onClick={() => void handleProfileAction()} disabled={authPending || authLoading}
+        aria-label={user ? 'Apri impostazioni profilo' : 'Accedi con Google'} title={user ? 'Profilo' : 'Accedi con Google'}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="9" r="3.6" /><path d="M5 20c1-4 4-5.5 7-5.5s6 1.5 7 5.5" /></svg>
+      </button>
+      <h1>Le mie partite</h1>
+      <div className="mg-filters" role="group" aria-label="Filtra partite">
+        {filters.map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}
+        <button className="mg-new" onClick={openNewMatch} aria-label="Nuova partita" title="Nuova partita">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+        </button>
+      </div>
+    </header>
+    <section className="mg-panel">
+      {visible.map(({ match, scoreText, outcome, duration }) => <button key={match.id} className="mg-row" onClick={() => navigate(`/match/${match.id}`)}>
+        <img src={tennisBallIcon} alt="" />
+        <span className="mg-info">
+          <strong>{match.player_last_name_snapshot || match.player_first_name_snapshot} vs {match.opponent}</strong>
+          <small>{new Date(match.match_date).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}{duration && ` • ${duration}`}</small>
+        </span>
+        <span className="mg-score">{scoreText || '—'}</span>
+        <span className={`mg-badge ${outcome}`}>{outcomeLabel[outcome]}</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+      </button>)}
+      {!matches.length && <div className="mg-empty"><strong>Nessuna partita</strong><span>Crea la prima partita per iniziare il tracking.</span></div>}
+      {matches.length > 0 && !visible.length && <div className="mg-empty"><strong>{filter === 'won' ? 'Nessuna partita vinta' : 'Nessuna partita persa'}</strong></div>}
+    </section>
     {newOpen && <NewMatch onClose={() => setNewOpen(false)} />}
-    {error && <p className="family-feedback error" role="alert">{error}</p>}
-    <div className="match-list">
-      {visibleMatches.map(match => <MatchCard key={match.id} match={match} open={() => navigate(`/match/${match.id}`)}
-        onEdit={() => { setError(null); setEditing(match); }} onDelete={() => void remove(match)} />)}
-      {!matches.length && <div className="empty-state"><strong>Nessuna partita</strong><span>Crea la prima partita per iniziare il tracking.</span></div>}
-    </div>
-    {editing && <MatchEditor match={editing} error={error} onClose={() => setEditing(null)} onSave={async changes => {
-      if (!activeFamily) return;
-      try {
-        await updateMatch(activeFamily.id, editing.id, changes);
-        setEditing(null);
-        setError(null);
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : 'Impossibile salvare la partita.');
-      }
-    }} />}
   </div>;
-}
-
-function MatchCard({ match, open, onEdit, onDelete }: {
-  match: Match;
-  open: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const points = useLiveQuery(() => getMatchPoints(match.family_id, match.id), [match.family_id, match.id]) ?? [];
-  return <article className="match-card">
-    <button className="match-card-open" onClick={open}>
-    <div className="match-card-top"><span className={`chip ${match.status}`}>{match.status === 'completed' ? 'Terminata' : 'In corso'}</span><span>{new Date(match.match_date).toLocaleDateString('it-IT')}</span></div>
-    <strong>{match.player_first_name_snapshot} {match.player_last_name_snapshot} <span>vs</span> {match.opponent}</strong>
-    <div className="match-meta"><span>{match.player_ranking_snapshot} · {match.player_category_snapshot}</span><span>{match.tournament || 'Amichevole'}</span></div>
-    <div className="set-scores">{[1, 2, 3].map(number => {
-      const score = deriveSetScore(points, number, match);
-      return <span key={number}>{score.player}-{score.opponent}</span>;
-    })}</div>
-    </button>
-    <div className="record-actions"><button className="secondary" onClick={onEdit}>Modifica</button><button className="danger" onClick={onDelete}>Elimina</button></div>
-  </article>;
 }
 
 export function MatchEditor({ match, error, onClose, onSave }: {

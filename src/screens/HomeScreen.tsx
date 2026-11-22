@@ -120,7 +120,7 @@ export function DashboardHome() {
         aria-label={user ? 'Apri impostazioni profilo' : 'Accedi con Google'}
         title={user ? 'Profilo' : 'Accedi con Google'}
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="4"/><path d="M4 21c1-5 4-7 8-7s7 2 8 7"/></svg>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="9" r="3.6" /><path d="M5 20c1-4 4-5.5 7-5.5s6 1.5 7 5.5" /></svg>
       </button>
       <div className="hero-tennis-ball" aria-hidden="true"><span /></div>
       <div className="home-welcome"><p>Benvenuto!</p><span>Monitora, migliora, gioca meglio</span></div>

@@ -1,3 +1,6 @@
 .home-page{padding-bottom:24px}
 .home-page .summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .home-page .recent-match{display:flex;align-items:center;gap:10px;width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff;text-align:left}
+.home-page .recent-match>*{flex:none}
+.home-page .recent-match .recent-info{flex:1;min-width:0}
+.home-page .recent-match .match-result{min-width:58px;padding:0 8px}

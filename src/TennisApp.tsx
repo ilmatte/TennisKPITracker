@@ -5,8 +5,10 @@ import './features/sports/sports.css';
 import AuthStatus from './features/auth/AuthStatus';
 import { useFamily } from './features/families/FamilyContextDefinition';
 import matchesNavIcon from './assets/icone/trasparente/512/partite.png';
+import matchesActiveIcon from './assets/icone/chiaro/256/partite.png';
 import statisticsIcon from './assets/icone/trasparente/512/statistiche.png';
-import homeIcon from './assets/icone/scuro/512/home.png';
+import homeActiveIcon from './assets/icone/scuro/512/home.png';
+import homeIcon from './assets/icone/trasparente/512/home.png';
 import settingsIcon from './assets/icone/trasparente/512/impostazioni.png';
 import './design.css';
 import { HomeRoute } from './screens/HomeScreen';
@@ -34,8 +36,12 @@ export default function TennisApp() {
   }, []);
 
   const tracking = location.pathname.startsWith('/match/');
+  const onHome = location.pathname === '/';
+  const onMatches = location.pathname === '/matches';
 
-  return <div className={`app-shell${tracking ? ' tracker-active' : ''}`}>
+  const shellTheme = tracking || onMatches ? ' shell-dark' : onHome ? ' shell-light' : '';
+
+  return <div className={`app-shell${tracking || onMatches ? ' full-bleed' : ''}${shellTheme}`}>
     <header className="topbar">
       <img className="brand-logo" src="/tennis-kpi-logo.svg" alt="Tennis KPI Tracker" />
       <div className="topbar-actions">
@@ -64,10 +70,10 @@ export default function TennisApp() {
       <Route path="/settings" element={<Settings />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes></main>
-    <nav className={`bottom-nav${tracking ? ' tracker-hidden' : ''}`}>
-      <NavLink to="/" end><img src={homeIcon} alt="" />Home</NavLink>
+    <nav className={`bottom-nav${tracking ? ' tracker-hidden' : ''}${onMatches ? ' nav-dark' : ''}`}>
+      <NavLink to="/" end><img src={onHome ? homeActiveIcon : homeIcon} alt="" />Home</NavLink>
       <NavLink to="/dashboard"><img src={statisticsIcon} alt="" />Statistiche</NavLink>
-      <NavLink to="/matches"><img src={matchesNavIcon} alt="" />Partite</NavLink>
+      <NavLink to="/matches"><img src={onMatches ? matchesActiveIcon : matchesNavIcon} alt="" />Partite</NavLink>
       <NavLink to="/settings"><img src={settingsIcon} alt="" />Impostazioni</NavLink>
     </nav>
   </div>;
