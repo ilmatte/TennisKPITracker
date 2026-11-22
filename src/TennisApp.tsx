@@ -34,6 +34,15 @@ import FamilyManager from './features/families/FamilyManager';
 import { useSync } from './sync/SyncContextDefinition';
 import { supabase } from './services/supabase/client';
 import tennisLogo from './assets/logo.svg';
+import matchesIcon from './assets/icone/trasparente/256/partite.png';
+import matchesNavIcon from './assets/icone/trasparente/512/partite.png';
+import trendIcon from './assets/icone/trasparente/256/trend.png';
+import statisticsIcon from './assets/icone/trasparente/512/statistiche.png';
+import homeIcon from './assets/icone/scuro/512/home.png';
+import settingsIcon from './assets/icone/trasparente/512/impostazioni.png';
+import calendarIcon from './assets/icone/trasparente/512/calendario.png';
+import historyIcon from './assets/icone/trasparente/256/storico.png';
+import tennisBallIcon from './assets/icone/trasparente/512/pallina3d.png';
 import './design.css';
 
 const stamp = () => new Date().toISOString();
@@ -108,10 +117,10 @@ export default function TennisApp() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes></main>
     <nav className={`bottom-nav${location.pathname.startsWith('/match/') ? ' tracker-hidden' : ''}`}>
-      <NavLink to="/" end>Home</NavLink>
-      <NavLink to="/dashboard">Statistiche</NavLink>
-      <NavLink to="/matches">Partite</NavLink>
-      <NavLink to="/settings">Impostazioni</NavLink>
+      <NavLink to="/" end><img src={homeIcon} alt="" />Home</NavLink>
+      <NavLink to="/dashboard"><img src={statisticsIcon} alt="" />Statistiche</NavLink>
+      <NavLink to="/matches"><img src={matchesNavIcon} alt="" />Partite</NavLink>
+      <NavLink to="/settings"><img src={settingsIcon} alt="" />Impostazioni</NavLink>
     </nav>
   </div>;
 }
@@ -136,7 +145,15 @@ function DashboardHome() {
     [activeFamily?.id],
   ) ?? [];
   const [newOpen, setNewOpen] = useState(false);
+  const [initialPlayerId, setInitialPlayerId] = useState<string | undefined>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const players = useLiveQuery(
+    async () => activeFamily
+      ? (await db.players.where('family_id').equals(activeFamily.id).toArray()).filter(player => !player.deleted)
+      : [],
+    [activeFamily?.id],
+  ) ?? [];
 
   const results = useLiveQuery(async () => {
     if (!activeFamily) return [] as { match: Match; won: boolean }[];
@@ -151,17 +168,38 @@ function DashboardHome() {
       }
       return { match, won: playerSets > opponentSets };
     }))).filter(item => item.match.status === 'completed');
-  }, [activeFamily?.id, matches.map(match => match.id).join(',')]) ?? [];
+  }, [activeFamily?.id, matches.map(match => `${match.id}:${match.status}`).join(',')]) ?? [];
 
   const wins = results.filter(result => result.won).length;
   const winRate = results.length ? Math.round((wins / results.length) * 100) : 0;
+  useEffect(() => {
+    const state = location.state as { openNewMatch?: boolean; initialPlayerId?: string } | null;
+    if (state?.openNewMatch) {
+      setInitialPlayerId(state.initialPlayerId);
+      setNewOpen(true);
+      navigate('/', { replace: true, state: null });
+    }
+  }, [location.state, navigate]);
+
+  function openNewMatch() {
+    if (!players.length) {
+      navigate('/players', { state: { createMatchAfterPlayer: true } });
+      return;
+    }
+    setInitialPlayerId(undefined);
+    setNewOpen(true);
+  }
+
   const recentDetails = useLiveQuery(async () => {
     if (!activeFamily) return [] as { match: Match; points: ScoredPoint[] }[];
-    return Promise.all(matches.slice(0, 2).map(async match => ({
+    const inProgressMatches = matches.filter(match => match.status === 'in-progress');
+    const completedMatches = matches.filter(match => match.status === 'completed');
+    const recentMatches = [...inProgressMatches, ...completedMatches].slice(0, 2);
+    return Promise.all(recentMatches.map(async match => ({
       match,
       points: await getMatchPoints(activeFamily.id, match.id),
     })));
-  }, [activeFamily?.id, matches.map(match => match.id).join(',')]) ?? [];
+  }, [activeFamily?.id, matches.map(match => `${match.id}:${match.status}`).join(',')]) ?? [];
 
   async function handleProfileAction() {
     if (user) {
@@ -195,25 +233,25 @@ function DashboardHome() {
       </button>
       <div className="hero-tennis-ball" aria-hidden="true"><span /></div>
       <div className="home-welcome"><p>Benvenuto!</p><span>Monitora, migliora, gioca meglio</span></div>
-      <button className="lime-button" onClick={() => setNewOpen(true)}>
+      <button className="lime-button" onClick={openNewMatch}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
         <span>Nuova Partita</span>
       </button>
     </section>
     <section className="home-summary">
       <button className="summary-heading" onClick={() => navigate('/dashboard')}>
-        <span className="summary-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10h3v10H4Zm7 0V5h3v15h-3Zm7 0V13h3v7h-3Z"/></svg>I tuoi KPI</span>
+        <span className="summary-title"><img className="summary-kpi-icon" src={statisticsIcon} alt="" />I tuoi KPI</span>
         <svg className="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
       </button>
       <div className="summary-grid">
-        <div><strong>{winRate}%</strong><span>Vittorie</span><svg className="summary-icon trophy" viewBox="0 0 24 24"><path d="M7 3h10v3h4v3c0 3-2 5-5 5h-1c-.5 2-1.5 3-3 3s-2.5-1-3-3H8c-3 0-5-2-5-5V6h4V3Zm0 5H5v1c0 1.7 1 3 3 3V8Zm10 0v4c2 0 3-1.3 3-3V8h-3Zm-5 10h2v3h-2v-3Z"/></svg></div>
-        <div><strong>{wins ? `+${wins}` : '0%'}</strong><span>vs mese scorso</span><svg className="summary-icon trend" viewBox="0 0 24 24"><path d="m3 17 6-6 4 4 8-8"/><path d="M16 7h5v5"/></svg></div>
-        <div><strong>{matches.length}</strong><span>Partite</span><svg className="summary-icon calendar" viewBox="0 0 24 24"><path d="M4 5h16v15H4V5Zm0 5h16M8 3v4m8-4v4M8 13h2m4 0h2m-8 3h2m4 0h2"/></svg></div>
+        <div><strong>{winRate}%</strong><span>Vittorie</span><img className="summary-icon" src={matchesIcon} alt="" /></div>
+        <div><strong>{wins ? `+${wins}` : '0%'}</strong><span>vs mese scorso</span><img className="summary-icon" src={trendIcon} alt="" /></div>
+        <div><strong>{matches.length}</strong><span>Partite</span><img className="summary-icon" src={calendarIcon} alt="" /></div>
       </div>
     </section>
     <section className="home-recent">
       <button className="summary-heading" onClick={() => navigate('/matches')}>
-        <span className="summary-title"><svg className="recent-clock" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l4 2"/><path d="M4 4l2 2M20 4l-2 2"/></svg>Le tue ultime partite</span>
+        <span className="summary-title"><img className="recent-history-icon" src={historyIcon} alt="" />Le tue ultime partite</span>
         <svg className="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
       </button>
       <div className="recent-list">
@@ -225,21 +263,22 @@ function DashboardHome() {
             if (score.player > score.opponent) playerSets += 1;
             if (score.opponent > score.player) opponentSets += 1;
           }
-          const won = playerSets > opponentSets;
+          const inProgress = match.status === 'in-progress';
+          const won = !inProgress && playerSets > opponentSets;
           const setLabels = [1, 2, 3].map(setNumber => deriveSetScore(points, setNumber, match)).filter(score => score.player || score.opponent);
           const scoreText = setLabels.map(score => `${score.player}-${score.opponent}`).join(' ');
           return <button className="recent-match" key={match.id} onClick={() => navigate(`/match/${match.id}`)}>
-            <span className={`tennis-ball-badge ${won ? 'won' : 'lost'}`}><i /></span>
+            <img className="recent-match-ball" src={tennisBallIcon} alt="" />
             <span className="recent-info"><strong>{match.player_last_name_snapshot || match.player_first_name_snapshot} vs {match.opponent}</strong><small>{new Date(match.match_date).toLocaleDateString('it-IT')}</small></span>
             <strong className="recent-score">{scoreText || '—'}</strong>
-            <span className={`match-result ${won ? 'win' : 'loss'}`}>{won ? 'Vinta' : 'Persa'}</span>
+            <span className={`match-result ${inProgress ? 'in-progress' : won ? 'win' : 'loss'}`}>{inProgress ? 'In corso' : won ? 'Vinta' : 'Persa'}</span>
             <svg className="recent-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
           </button>;
         })}
         {!matches.length && <div className="empty-state"><strong>Nessuna partita</strong><span>Crea la prima partita per iniziare il tracking.</span></div>}
       </div>
     </section>
-    {newOpen && <NewMatch onClose={() => setNewOpen(false)} />}
+    {newOpen && <NewMatch initialPlayerId={initialPlayerId} onClose={() => setNewOpen(false)} />}
   </div>;
 }
 
@@ -271,6 +310,20 @@ function Matches() {
   const [editing, setEditing] = useState<Match | null>(null);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const players = useLiveQuery(
+    async () => activeFamily
+      ? (await db.players.where('family_id').equals(activeFamily.id).toArray()).filter(player => !player.deleted)
+      : [],
+    [activeFamily?.id],
+  ) ?? [];
+
+  function openNewMatch() {
+    if (!players.length) {
+      navigate('/players', { state: { createMatchAfterPlayer: true } });
+      return;
+    }
+    setNewOpen(true);
+  }
 
   async function remove(match: Match) {
     if (!activeFamily) return;
@@ -294,7 +347,7 @@ function Matches() {
   });
 
   return <div className="page archive-page">
-    <div className="page-heading"><div><p className="eyebrow">Archivio</p><h1>Le mie partite</h1></div><button className="primary" onClick={() => setNewOpen(true)}>+ Nuova partita</button></div>
+    <div className="page-heading"><div><p className="eyebrow">Archivio</p><h1>Le mie partite</h1></div><button className="primary" onClick={openNewMatch}>+ Nuova partita</button></div>
     <div className="archive-tabs" aria-label="Filtra partite">
       <button className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>Tutte</button>
       <button className={filter === 'won' ? 'active' : ''} onClick={() => setFilter('won')}>Vinte</button>
@@ -409,7 +462,7 @@ function MatchEditor({ match, error, onClose, onSave }: {
   </div></div>;
 }
 
-function NewMatch({ onClose }: { onClose: () => void }) {
+function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: string; onClose: () => void }) {
   const { activeFamily } = useFamily();
   const players = useLiveQuery(
     async () => activeFamily
@@ -418,7 +471,7 @@ function NewMatch({ onClose }: { onClose: () => void }) {
     [activeFamily?.id],
   ) ?? [];
   const navigate = useNavigate();
-  const [playerId, setPlayerId] = useState('');
+  const [playerId, setPlayerId] = useState(initialPlayerId ?? '');
   const [opponent, setOpponent] = useState('');
   const [matchDate, setMatchDate] = useState(new Date().toISOString().slice(0, 10));
   const [tournament, setTournament] = useState('');
@@ -500,6 +553,8 @@ function NewMatch({ onClose }: { onClose: () => void }) {
 function Players() {
   const { activeFamily } = useFamily();
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const players = useLiveQuery(
     async () => activeFamily
       ? (await db.players.where('family_id').equals(activeFamily.id).toArray()).filter(player => !player.deleted)
@@ -508,6 +563,20 @@ function Players() {
   ) ?? [];
   const [editing, setEditing] = useState<Player | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [continueToMatch, setContinueToMatch] = useState(Boolean((location.state as { createMatchAfterPlayer?: boolean } | null)?.createMatchAfterPlayer));
+
+  useEffect(() => {
+    const state = location.state as { createMatchAfterPlayer?: boolean } | null;
+    if (state?.createMatchAfterPlayer) setContinueToMatch(true);
+    if (state?.createMatchAfterPlayer && activeFamily && !players.length && !editing) {
+      const now = stamp();
+      setEditing({
+        id: crypto.randomUUID(), family_id: activeFamily.id, first_name: '', last_name: '',
+        birth_date: null, category: '', ranking: '', created_at: now, updated_at: now, version: 0, deleted: false,
+      });
+      navigate('/players', { replace: true, state: null });
+    }
+  }, [location.state, activeFamily, players.length, editing, navigate]);
 
   async function save(player: Player) {
     if (!activeFamily || player.family_id !== activeFamily.id) {
@@ -529,6 +598,9 @@ function Players() {
       }
       setError(null);
       setEditing(null);
+      if (continueToMatch) {
+        navigate('/', { state: { openNewMatch: true, initialPlayerId: player.id } });
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Impossibile salvare il giocatore.');
     }
@@ -654,19 +726,29 @@ function Tracker() {
           throw new Error('La partita non è più attiva nello spazio corrente.');
         }
         const existingSet = await db.sets.where('[match_id+set_number]').equals([currentMatch.id, selectedSetNumber]).first();
-        const tennisSet: TennisSet = existingSet ?? {
+        const tennisSet: TennisSet = existingSet ? {
+          ...existingSet,
+          player_games: existingSet.deleted ? 0 : existingSet.player_games,
+          opponent_games: existingSet.deleted ? 0 : existingSet.opponent_games,
+          deleted: false,
+        } : {
           id: crypto.randomUUID(), family_id: currentMatch.family_id, match_id: currentMatch.id, set_number: selectedSetNumber,
           player_games: 0, opponent_games: 0, created_at, updated_at: created_at, version: 1, deleted: false,
         };
-        if (tennisSet.family_id !== currentMatch.family_id || tennisSet.deleted) {
+        if (tennisSet.family_id !== currentMatch.family_id) {
           throw new Error('Il set selezionato non appartiene alla famiglia attiva.');
         }
         const existingGame = await db.games.where('[set_id+game_number]').equals([tennisSet.id, gameNumber]).first();
-        const tennisGame: Game = existingGame ?? {
+        const tennisGame: Game = existingGame ? {
+          ...existingGame,
+          player_points: existingGame.deleted ? 0 : existingGame.player_points,
+          opponent_points: existingGame.deleted ? 0 : existingGame.opponent_points,
+          deleted: false,
+        } : {
           id: crypto.randomUUID(), family_id: currentMatch.family_id, set_id: tennisSet.id, game_number: gameNumber,
           player_points: 0, opponent_points: 0, created_at, updated_at: created_at, version: 1, deleted: false,
         };
-        if (tennisGame.family_id !== currentMatch.family_id || tennisGame.deleted) {
+        if (tennisGame.family_id !== currentMatch.family_id) {
           throw new Error('Il game selezionato non appartiene alla famiglia attiva.');
         }
         await db.sets.put(tennisSet);
@@ -684,14 +766,15 @@ function Tracker() {
         const scoredPoints: ScoredPoint[] = storedPoints.flatMap(stored => {
           const game = gameById.get(stored.game_id);
           const set = game ? setById.get(game.set_id) : undefined;
-          return set && game && stored.family_id === currentMatch.family_id
+          return set && game && !stored.deleted && stored.family_id === currentMatch.family_id
             ? [{ ...stored, set_number: set.set_number, game_number: game.game_number }]
             : [];
         });
         const result = resolvePointAction(action);
+        const historicalGamePoints = await db.points.where('game_id').equals(tennisGame.id).toArray();
         const point: Point = {
           id: crypto.randomUUID(), family_id: activeMatch.family_id, game_id: tennisGame.id,
-          point_number: nextPointNumber(scoredPoints.filter(existing => existing.game_id === tennisGame.id)),
+          point_number: nextPointNumber(historicalGamePoints),
           winner: result.winner, server: getServer(currentMatch, selectedSetNumber, gameNumber),
           second_serve: result.secondServe, double_fault: result.doubleFault,
           shot_count: result.shotCount,
