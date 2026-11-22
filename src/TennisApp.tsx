@@ -527,8 +527,14 @@ function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: string; onCl
     navigate(`/match/${match.id}`);
   }
 
-  return <div className="modal-backdrop"><div className="modal-sheet">
-    <div className="modal-heading"><h2>Nuova partita</h2><button className="icon-button" onClick={onClose}>×</button></div>
+  return <div className="modal-backdrop new-match-backdrop"><div className="modal-sheet new-match-sheet">
+    <div className="new-match-hero">
+      <button className="new-match-back" aria-label="Indietro" onClick={onClose}><span>‹</span></button>
+      <img src={tennisBallIcon} alt="" />
+      <h2>Nuova partita</h2>
+    </div>
+    <div className="new-match-content">
+    <div className="new-match-fields">
     <label>Data partita<input type="date" value={matchDate} onChange={event => setMatchDate(event.target.value)} /></label>
     <label>Giocatore<select value={playerId} onChange={event => setPlayerId(event.target.value)}>
       <option value="">Seleziona un giocatore</option>
@@ -546,7 +552,9 @@ function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: string; onCl
     <label className="toggle-row"><span>Chi serve per primo</span><select value={firstServer} onChange={event => setFirstServer(event.target.value as 'player' | 'opponent')}><option value="player">Tu</option><option value="opponent">Avversario</option></select></label>
     <label className="toggle-row"><span>Punto secco al 40-40</span><input type="checkbox" checked={deuce} onChange={event => setDeuce(event.target.checked)} /></label>
     <label className="toggle-row"><span>Tie-break da 3-3</span><input type="checkbox" checked={tb363} onChange={event => setTb363(event.target.checked)} /></label>
-    <button className="primary wide" disabled={!selected || !opponent.trim()} onClick={() => void create()}>Avvia partita</button>
+    </div>
+    <button className="player-editor-save new-match-submit" disabled={!selected || !opponent.trim()} onClick={() => void create()}><span aria-hidden="true">▶</span>Avvia partita</button>
+    </div>
   </div></div>;
 }
 
