@@ -1,2 +1,23 @@
-.player-list{display:grid;gap:8px}
-.player-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:10px;border-bottom:1px solid var(--line);background:#fff}
+/* Giocatori */
+.pl-page{position:relative;isolation:isolate;width:100%;max-width:560px;min-height:100svh;margin:0 auto;padding:118px 14px 110px;box-sizing:border-box;background:#F4F7FC;color:#0B2A5B;font-family:'Plus Jakarta Sans',system-ui,sans-serif}
+.pl-page button{font-family:inherit;cursor:pointer}
+.pl-page button:focus-visible{outline:3px solid #C8F03A;outline-offset:2px}
+.pl-top{position:absolute;z-index:-1;left:0;right:0;top:0;height:170px;background:#02203d var(--pl-bg) center -14px/100% auto no-repeat}
+.pl-back{position:absolute;z-index:2;left:14px;top:66px;width:36px;height:36px;box-sizing:border-box;padding:0;border:1px solid rgba(255,255,255,.3);border-radius:18px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center}
+.pl-title{position:absolute;left:60px;top:66px;margin:0;font-size:30px;line-height:36px;font-weight:800;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.3)}
+.pl-card{border-radius:22px;background:#FFFFFF;padding:6px 14px;box-sizing:border-box;box-shadow:0 8px 24px rgba(11,42,91,.18)}
+.pl-row{width:100%;height:64px;box-sizing:border-box;display:flex;align-items:center;gap:14px;padding:0 8px;border:0;border-bottom:1px solid #E3E8F2;background:transparent;color:#0B2A5B;text-align:left}
+.pl-row:last-child{border-bottom:0}
+.pl-row svg{flex:none}
+.pl-avatar{width:40px;height:40px;flex:none;border-radius:20px;background:#0B2A5B;color:#C8F03A;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center;text-transform:uppercase}
+.pl-text{flex:1;min-width:0;display:flex;flex-direction:column}
+.pl-text strong{overflow:hidden;font-size:15.5px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+.pl-text small{margin-top:2px;font-size:12.5px;font-weight:500;color:#5C6B85}
+.pl-empty{display:flex;flex-direction:column;gap:4px;padding:22px 8px;text-align:center}
+.pl-empty strong{font-size:15px;font-weight:800}
+.pl-empty span{color:#5C6B85;font-size:13px}
+.pl-add{width:100%;height:56px;margin-top:14px;box-sizing:border-box;border:0;border-radius:28px;background:#C8F03A;color:#0B2A5B;font-size:17px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 8px 20px rgba(139,190,20,.35)}
+.pl-add:disabled{opacity:.5}
+
+/* Delete action inside the player editor */
+.player-editor-delete{height:48px;border:0;background:transparent;color:#D3343A;font-size:15px;font-weight:700;cursor:pointer}

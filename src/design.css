@@ -968,4 +968,5 @@ main { max-width: 1120px; }
   main { max-width: 560px; margin: 0 auto; }
   .app-shell.shell-light { background: #FFFFFF; }
   .app-shell.shell-dark { background: #011d38; }
+  .app-shell.shell-soft { background: #F4F7FC; }
 }

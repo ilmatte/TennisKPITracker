@@ -1,5 +1,5 @@
 import './Players.css';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
@@ -7,8 +7,14 @@ import { createPlayer, softDeletePlayer, updatePlayer } from '../db/sportsMutati
 import { useAuth } from '../features/auth/AuthContext';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import tennisBallIcon from '../assets/icone/trasparente/512/pallina3d.png';
+import settingsBackground from '../assets/background-settings.png';
 import { stamp } from './shared';
+import { BrandBar } from './BrandBar';
 import type { Player } from '../types';
+
+/** Where the player editor was opened from: decides where "Salva" goes next. */
+type EditorOrigin = 'new-match' | 'players';
+
 export function Players() {
   const { activeFamily } = useFamily();
   const { user } = useAuth();
@@ -20,22 +26,36 @@ export function Players() {
       : [],
     [activeFamily?.id],
   ) ?? [];
+  const matchCounts = useLiveQuery(async () => {
+    const counts = new Map<string, number>();
+    if (!activeFamily) return counts;
+    for (const match of await db.matches.where('family_id').equals(activeFamily.id).toArray()) {
+      if (!match.deleted) counts.set(match.player_id, (counts.get(match.player_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [activeFamily?.id]) ?? new Map<string, number>();
   const [editing, setEditing] = useState<Player | null>(null);
+  const [origin, setOrigin] = useState<EditorOrigin>('players');
   const [error, setError] = useState<string | null>(null);
-  const [continueToMatch, setContinueToMatch] = useState(Boolean((location.state as { createMatchAfterPlayer?: boolean } | null)?.createMatchAfterPlayer));
 
+  function blankPlayer(familyId: string): Player {
+    const now = stamp();
+    return {
+      id: crypto.randomUUID(), family_id: familyId, first_name: '', last_name: '',
+      birth_date: null, category: '', ranking: '', created_at: now, updated_at: now, version: 0, deleted: false,
+    };
+  }
+
+  // Opened from the "Nuova partita" button (no players yet): open the editor straight away.
   useEffect(() => {
     const state = location.state as { createMatchAfterPlayer?: boolean } | null;
-    if (state?.createMatchAfterPlayer) setContinueToMatch(true);
-    if (state?.createMatchAfterPlayer && activeFamily && !players.length && !editing) {
-      const now = stamp();
-      setEditing({
-        id: crypto.randomUUID(), family_id: activeFamily.id, first_name: '', last_name: '',
-        birth_date: null, category: '', ranking: '', created_at: now, updated_at: now, version: 0, deleted: false,
-      });
+    if (state?.createMatchAfterPlayer && activeFamily) {
+      setOrigin('new-match');
+      setError(null);
+      setEditing(blankPlayer(activeFamily.id));
       navigate('/players', { replace: true, state: null });
     }
-  }, [location.state, activeFamily, players.length, editing, navigate]);
+  }, [location.state, activeFamily, navigate]);
 
   async function save(player: Player) {
     if (!activeFamily || player.family_id !== activeFamily.id) {
@@ -57,7 +77,7 @@ export function Players() {
       }
       setError(null);
       setEditing(null);
-      if (continueToMatch) {
+      if (origin === 'new-match') {
         navigate('/', { state: { openNewMatch: true, initialPlayerId: player.id } });
       }
     } catch (cause) {
@@ -67,11 +87,15 @@ export function Players() {
 
   function add() {
     if (!activeFamily) return;
-    const now = stamp();
-    setEditing({
-      id: crypto.randomUUID(), family_id: activeFamily.id, first_name: '', last_name: '',
-      birth_date: null, category: '', ranking: '', created_at: now, updated_at: now, version: 0, deleted: false,
-    });
+    setOrigin('players');
+    setError(null);
+    setEditing(blankPlayer(activeFamily.id));
+  }
+
+  function edit(player: Player) {
+    setOrigin('players');
+    setError(null);
+    setEditing(player);
   }
 
   async function remove(player: Player) {
@@ -89,26 +113,39 @@ export function Players() {
     }
   }
 
-  return <div className="page">
-    <div className="page-heading"><div><p className="eyebrow">Anagrafica</p><h1>Giocatori</h1></div><button className="primary" onClick={add}>+ Aggiungi</button></div>
-    <div className="player-list">{players.map(player => <div className="player-row" key={player.id}>
-      <button className="player-row-open" onClick={() => setEditing(player)}>
-        <div className="avatar">{player.first_name[0]}{player.last_name[0]}</div>
-        <div><strong>{player.first_name} {player.last_name}</strong><span>{player.category || 'Nessuna categoria'} · {player.ranking || 'Nessuna classifica'}</span></div>
-      </button>
-      <div className="record-actions"><button className="secondary" onClick={() => setEditing(player)}>Modifica</button>
-        <button className="danger" onClick={() => void remove(player)}>Elimina</button></div>
-    </div>)}</div>
-    {!players.length && <div className="empty-state"><strong>Nessun giocatore</strong><span>Aggiungi manualmente il primo giocatore.</span></div>}
-    {editing && <PlayerModal player={editing} error={error} onClose={() => setEditing(null)} onSave={save} />}
+  return <div className="pl-page" style={{ '--pl-bg': `url(${settingsBackground})` } as CSSProperties}>
+    <div className="pl-top" aria-hidden="true" />
+    <BrandBar shadow />
+    <button className="pl-back" onClick={() => navigate('/settings')} aria-label="Indietro">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+    </button>
+    <h1 className="pl-title">Giocatori</h1>
+    <section className="pl-card">
+      {players.map(player => {
+        const count = matchCounts.get(player.id) ?? 0;
+        return <button className="pl-row" key={player.id} onClick={() => edit(player)}>
+          <span className="pl-avatar">{player.first_name[0]}{player.last_name[0]}</span>
+          <span className="pl-text"><strong>{player.first_name} {player.last_name}</strong><small>{count === 1 ? '1 partita' : `${count} partite`}</small></span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+        </button>;
+      })}
+      {!players.length && <div className="pl-empty"><strong>Nessun giocatore</strong><span>Aggiungi il primo giocatore per iniziare.</span></div>}
+    </section>
+    <button className="pl-add" onClick={add} disabled={!activeFamily}>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+      Aggiungi giocatore
+    </button>
+    {editing && <PlayerModal player={editing} error={error} onClose={() => setEditing(null)} onSave={save}
+      onDelete={editing.version > 0 ? () => void remove(editing) : undefined} />}
   </div>;
 }
 
-function PlayerModal({ player, error, onClose, onSave }: {
+function PlayerModal({ player, error, onClose, onSave, onDelete }: {
   player: Player;
   error: string | null;
   onClose: () => void;
   onSave: (player: Player) => void;
+  onDelete?: () => void;
 }) {
   const [draft, setDraft] = useState(player);
   const editingExisting = Boolean(draft.first_name || draft.last_name || draft.version > 0);
@@ -138,6 +175,7 @@ function PlayerModal({ player, error, onClose, onSave }: {
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>Salva
         </button>
         <button className="player-editor-cancel" onClick={onClose}>Annulla</button>
+        {onDelete && <button className="player-editor-delete" onClick={onDelete}>Elimina giocatore</button>}
       </div>
     </div>
   </section></div>;

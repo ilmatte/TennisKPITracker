@@ -10,6 +10,8 @@ import statisticsIcon from './assets/icone/trasparente/512/statistiche.png';
 import homeActiveIcon from './assets/icone/scuro/512/home.png';
 import homeIcon from './assets/icone/trasparente/512/home.png';
 import settingsIcon from './assets/icone/trasparente/512/impostazioni.png';
+import settingsActiveIcon from './assets/icone/chiaro/256/impostazioni.png';
+import playersActiveIcon from './assets/icone/scuro/256/players.png';
 import './design.css';
 import { HomeRoute } from './screens/HomeScreen';
 import { Matches } from './screens/MatchesScreen';
@@ -38,10 +40,14 @@ export default function TennisApp() {
   const tracking = location.pathname.startsWith('/match/');
   const onHome = location.pathname === '/';
   const onMatches = location.pathname === '/matches';
+  const onSettings = location.pathname === '/settings';
+  const onPlayers = location.pathname === '/players';
 
-  const shellTheme = tracking || onMatches ? ' shell-dark' : onHome ? ' shell-light' : '';
+  // Screens that paint their own background down to the bottom edge, and the colour of the side bands.
+  const fullBleed = tracking || onMatches || onSettings || onPlayers;
+  const shellTheme = tracking || onMatches || onSettings ? ' shell-dark' : onHome ? ' shell-light' : onPlayers ? ' shell-soft' : '';
 
-  return <div className={`app-shell${tracking || onMatches ? ' full-bleed' : ''}${shellTheme}`}>
+  return <div className={`app-shell${fullBleed ? ' full-bleed' : ''}${shellTheme}`}>
     <header className="topbar">
       <img className="brand-logo" src="/tennis-kpi-logo.svg" alt="Tennis KPI Tracker" />
       <div className="topbar-actions">
@@ -70,11 +76,13 @@ export default function TennisApp() {
       <Route path="/settings" element={<Settings />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes></main>
-    <nav className={`bottom-nav${tracking ? ' tracker-hidden' : ''}${onMatches ? ' nav-dark' : ''}`}>
+    <nav className={`bottom-nav${tracking ? ' tracker-hidden' : ''}${onMatches || onSettings ? ' nav-dark' : ''}`}>
       <NavLink to="/" end><img src={onHome ? homeActiveIcon : homeIcon} alt="" />Home</NavLink>
       <NavLink to="/dashboard"><img src={statisticsIcon} alt="" />Statistiche</NavLink>
       <NavLink to="/matches"><img src={onMatches ? matchesActiveIcon : matchesNavIcon} alt="" />Partite</NavLink>
-      <NavLink to="/settings"><img src={settingsIcon} alt="" />Impostazioni</NavLink>
+      {onPlayers
+        ? <NavLink to="/players"><img src={playersActiveIcon} alt="" />Giocatori</NavLink>
+        : <NavLink to="/settings"><img src={onSettings ? settingsActiveIcon : settingsIcon} alt="" />Impostazioni</NavLink>}
     </nav>
   </div>;
 }

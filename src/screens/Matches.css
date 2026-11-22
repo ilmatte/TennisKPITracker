@@ -5,12 +5,6 @@
 
 /* Header */
 .mg-header{position:relative;flex:none;height:204px}
-.mg-brand{position:absolute;left:20px;top:18px;display:flex;align-items:center;gap:10px}
-.mg-brand img{width:58px;height:40px;object-fit:contain}
-.mg-brand div{font-size:17px;font-weight:800;line-height:1.05;font-style:italic}
-.mg-profile{position:absolute;right:20px;top:16px;width:44px;height:44px;padding:0;border-radius:22px;border:0;background:linear-gradient(180deg,#17488F 0%,#0B2A5B 100%);display:flex;align-items:center;justify-content:center}
-.mg-profile:hover{background:linear-gradient(180deg,#1D56A8 0%,#0F3570 100%)}
-.mg-profile:disabled{cursor:wait;opacity:.65}
 .mg-header h1{position:absolute;left:20px;top:82px;margin:0;font-size:30px;line-height:1.1;font-weight:800;color:#fff}
 .mg-filters{position:absolute;left:20px;right:20px;top:138px;display:flex;align-items:center;gap:10px}
 .mg-filters button{height:44px;padding:0 22px;border-radius:22px;font-size:16px;background:rgba(255,255,255,.1);color:#fff;font-weight:700;border:1px solid rgba(255,255,255,.14)}

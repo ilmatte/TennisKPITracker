@@ -82,7 +82,7 @@ describe('automatic local workspace', () => {
     expect(await db.family_members.count()).toBe(0);
 
     await user.click(screen.getByRole('link', { name: 'Giocatori' }));
-    await user.click(screen.getByRole('button', { name: '+ Aggiungi' }));
+    await user.click(screen.getByRole('button', { name: 'Aggiungi giocatore' }));
     await user.type(screen.getByRole('textbox', { name: 'Nome' }), 'Ada');
     await user.type(screen.getByRole('textbox', { name: 'Cognome' }), 'Lovelace');
     await user.click(screen.getByRole('button', { name: 'Salva' }));
@@ -195,14 +195,14 @@ describe('automatic local workspace', () => {
     await screen.findByText('Nessuna partita');
 
     await user.click(screen.getByRole('link', { name: 'Giocatori' }));
-    await user.click(screen.getByRole('button', { name: '+ Aggiungi' }));
+    await user.click(screen.getByRole('button', { name: 'Aggiungi giocatore' }));
     await user.type(screen.getByRole('textbox', { name: 'Nome' }), 'Ada');
     await user.type(screen.getByRole('textbox', { name: 'Cognome' }), 'Lovelace');
     await user.click(screen.getByRole('button', { name: 'Salva' }));
     await screen.findByText('Ada Lovelace');
 
     await user.click(screen.getByRole('link', { name: 'Le mie partite' }));
-    await user.click(screen.getByRole('button', { name: '+ Nuova partita' }));
+    await user.click(screen.getByRole('button', { name: 'Nuova partita' }));
     const savedPlayer = await db.players.toCollection().first();
     await user.selectOptions(screen.getByLabelText('Giocatore'), savedPlayer!.id);
     await user.type(screen.getByLabelText('Avversario'), 'Avversaria');

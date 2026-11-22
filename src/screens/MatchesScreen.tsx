@@ -5,12 +5,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getMatchPoints } from '../db/database';
 import { deriveSetScore } from '../features/scoring/scoring';
 import type { MatchChanges } from '../db/sportsMutations';
-import { useAuth } from '../features/auth/AuthContext';
 import { useFamily } from '../features/families/FamilyContextDefinition';
-import { supabase } from '../services/supabase/client';
-import tennisLogo from '../assets/logo.svg';
 import tennisBallIcon from '../assets/icone/trasparente/512/pallina3d.png';
 import { stamp, queueOperation } from './shared';
+import { BrandBar } from './BrandBar';
 import type { Match, ScoredPoint } from '../types';
 
 type MatchSummary = { match: Match; scoreText: string; outcome: 'won' | 'lost' | 'in-progress'; duration: string | null };
@@ -36,8 +34,6 @@ const outcomeLabel = { won: 'Vinta', lost: 'Persa', 'in-progress': 'In corso' } 
 
 export function Matches() {
   const { activeFamily } = useFamily();
-  const { user, loading: authLoading } = useAuth();
-  const [authPending, setAuthPending] = useState(false);
   const matches = useLiveQuery(
     async () => activeFamily
       ? (await db.matches.where('family_id').equals(activeFamily.id).toArray())
@@ -67,30 +63,13 @@ export function Matches() {
     setNewOpen(true);
   }
 
-  async function handleProfileAction() {
-    if (user) {
-      navigate('/settings');
-      return;
-    }
-    if (!supabase || authPending) return;
-    setAuthPending(true);
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/` },
-    });
-  }
-
   const visible = summaries.filter(summary => filter === 'all' || summary.outcome === filter);
   const filters = [['all', 'Tutte'], ['won', 'Vinte'], ['lost', 'Perse']] as const;
 
   return <div className="mg-page">
     <svg className="mg-waves" width="390" height="140" viewBox="0 0 390 140" aria-hidden="true"><path d="M120 120C220 110 320 80 390 20V60C330 100 220 135 120 135z" fill="#2F8F3E" opacity=".55" /><path d="M200 128C280 120 340 95 390 60V84C340 112 280 134 200 136z" fill="#C8F03A" opacity=".35" /></svg>
     <header className="mg-header">
-      <div className="mg-brand"><img src={tennisLogo} alt="" /><div>Tennis<br />KPI Tracker</div></div>
-      <button className="mg-profile" type="button" onClick={() => void handleProfileAction()} disabled={authPending || authLoading}
-        aria-label={user ? 'Apri impostazioni profilo' : 'Accedi con Google'} title={user ? 'Profilo' : 'Accedi con Google'}>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="9" r="3.6" /><path d="M5 20c1-4 4-5.5 7-5.5s6 1.5 7 5.5" /></svg>
-      </button>
+      <BrandBar />
       <h1>Le mie partite</h1>
       <div className="mg-filters" role="group" aria-label="Filtra partite">
         {filters.map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}

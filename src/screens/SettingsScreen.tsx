@@ -1,20 +1,27 @@
 import './Settings.css';
-import { useState } from 'react';
-import { useLocation } from 'react-router-dom';
-import { jsPDF } from 'jspdf';
-import { db, getMatchPoints } from '../db/database';
+import { useState, type CSSProperties } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../db/database';
 import { useAuth } from '../features/auth/AuthContext';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import FamilyManager from '../features/families/FamilyManager';
 import { useSync } from '../sync/SyncContextDefinition';
 import { stamp, queueOperation } from './shared';
+import { BrandBar } from './BrandBar';
+import settingsBackground from '../assets/background-settings.png';
 import type { Game, Match, Player, Point, TennisSet } from '../types';
 export function Settings() {
   const { activeFamily } = useFamily();
   const { user } = useAuth();
   const { mapping, status, busy, error: syncError, conflicts, activate, syncNow, resolveConflict } = useSync();
   const location = useLocation();
+  const navigate = useNavigate();
   const [message, setMessage] = useState('');
+  const [openPanel, setOpenPanel] = useState<'sharing' | 'info' | null>(null);
+  const owner = useLiveQuery(async () => activeFamily
+    ? (await db.family_members.where('family_id').equals(activeFamily.id).toArray()).find(member => member.role === 'owner') ?? null
+    : null, [activeFamily?.id]);
   let pendingInvite = false;
   try { pendingInvite = Boolean(sessionStorage.getItem('tennis-kpi-pending-invite')); } catch { /* Continue without a cached invitation. */ }
   const invitationFlow = new URLSearchParams(location.hash.slice(1)).has('invite') || pendingInvite;
@@ -32,36 +39,6 @@ export function Settings() {
     const backup = { version: 2, exported_at: stamp(), family_id: activeFamily.id, players, matches, sets, games, points };
     download(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }), `tennis-kpi-backup-${new Date().toISOString().slice(0, 10)}.json`);
     setMessage('Backup JSON esportato');
-  }
-
-  async function csvExport() {
-    if (!activeFamily) return;
-    const matches = (await db.matches.where('family_id').equals(activeFamily.id).toArray()).filter(match => !match.deleted);
-    const sets = await db.sets.where('family_id').equals(activeFamily.id).toArray();
-    const games = await db.games.where('family_id').equals(activeFamily.id).toArray();
-    const setById = new Map(sets.map(set => [set.id, set]));
-    const matchById = new Map(matches.map(match => [match.id, match]));
-    const gameToMatch = new Map(games.flatMap(game => {
-      const set = setById.get(game.set_id);
-      return set && matchById.has(set.match_id) ? [[game.id, set.match_id] as const] : [];
-    }));
-    const allPoints = (await Promise.all(matches.map(match => getMatchPoints(activeFamily.id, match.id)))).flat().filter(point => !point.deleted);
-    const csv = [
-      'id,match_id,set,game,point,winner,server,shot_count,free_error',
-      ...allPoints.map(point => [point.id, gameToMatch.get(point.game_id) ?? '', point.set_number, point.game_number, point.point_number, point.winner, point.server, point.shot_count, point.free_error].join(',')),
-    ].join('\n');
-    download(new Blob([csv], { type: 'text/csv' }), 'tennis-kpi.csv');
-    setMessage('CSV esportato');
-  }
-
-  async function pdfExport() {
-    const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.text('Tennis KPI Report', 14, 20);
-    doc.setFontSize(11);
-    doc.text(`Generato il ${new Date().toLocaleString('it-IT')}`, 14, 30);
-    doc.save('tennis-kpi-report.pdf');
-    setMessage('PDF esportato');
   }
 
   async function restore(event: React.ChangeEvent<HTMLInputElement>) {
@@ -151,41 +128,75 @@ export function Settings() {
     URL.revokeObjectURL(url);
   }
 
-  return <div className="page">
-    <div className="page-heading"><div><p className="eyebrow">Dati e account</p><h1>Impostazioni</h1></div></div>
-    {invitationFlow && <FamilyManager />}
-    <section className="settings-section"><h2>Backup</h2>
-      <button className="setting-row" onClick={() => void jsonExport()} disabled={!activeFamily}><span>Esporta JSON dello spazio</span><b>›</b></button>
-      <button className="setting-row" onClick={() => void csvExport()} disabled={!activeFamily}><span>Esporta KPI CSV</span><b>›</b></button>
-      <button className="setting-row" onClick={() => void pdfExport()}><span>Esporta report PDF</span><b>›</b></button>
-      <label className="setting-row"><span>Ripristina backup JSON v2</span><b>›</b><input type="file" accept="application/json" onChange={event => void restore(event)} /></label>
-    </section>
-    <section className="settings-section"><h2>Sincronizzazione</h2>
-      <div className="cloud-state">
-        <span>{{
-          'local-only': 'Solo su questo dispositivo',
-          'signed-in-disabled': 'Accesso effettuato · sincronizzazione non attiva',
-          syncing: 'Connessione a Tennis Tracker Cloud in corso',
-          synced: 'Sincronizzato',
-          'offline-pending': 'Modifiche in attesa di connessione',
-          'retryable-error': 'Errore temporaneo · nuovo tentativo disponibile',
-          'needs-attention': 'È necessaria una scelta prima di continuare',
-          'permanent-error': 'Sincronizzazione sospesa · intervento necessario',
-        }[status]}</span>
-        <small>
-          {mapping?.remote_family_id
-            ? `Ruolo: ${mapping.role === 'owner' ? 'proprietario' : 'membro'} · ultimo download: ${mapping.last_download_completed_at
-              ? new Date(mapping.last_download_completed_at).toLocaleString('it-IT')
-              : 'non completato'}`
-            : 'L’accesso Google non attiva Tennis Tracker Cloud. Puoi continuare con i dati locali.'}
-        </small>
-      </div>
-      <button className="setting-row" onClick={() => void (mapping?.enabled ? syncNow() : activate())}
-        disabled={busy || !user || (status === 'needs-attention' && !mapping?.enabled)}>
-        <span>{busy ? 'Sincronizzazione…' : status === 'permanent-error'
-          ? 'Riprova sincronizzazione'
-          : mapping?.enabled ? 'Sincronizza ora' : 'Attiva sincronizzazione'}</span><b>›</b>
+  const syncOn = Boolean(mapping?.enabled);
+  const syncSubtitle = {
+    'local-only': 'Non attiva · solo su questo dispositivo',
+    'signed-in-disabled': 'Non attiva',
+    syncing: 'Sincronizzazione in corso…',
+    synced: 'Attiva',
+    'offline-pending': 'Attiva · modifiche in attesa di connessione',
+    'retryable-error': 'Errore temporaneo · riprova',
+    'needs-attention': 'Serve una tua scelta',
+    'permanent-error': 'Sospesa · intervento necessario',
+  }[status];
+  const userName = (user?.user_metadata as { full_name?: string } | undefined)?.full_name || user?.email;
+  const ownerLabel = activeFamily?.local_only || !owner
+    ? 'solo su questo dispositivo'
+    : owner.user_id === user?.id ? (userName ?? 'tu') : owner.member_email;
+  const togglePanel = (panel: 'sharing' | 'info') => setOpenPanel(current => current === panel ? null : panel);
+  const chevron = <svg className="stg-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>;
+
+  return <div className="stg-page" style={{ '--stg-bg': `url(${settingsBackground})` } as CSSProperties}>
+    <BrandBar shadow />
+    <h1 className="stg-title">Impostazioni</h1>
+    <section className="stg-card">
+      <button className="stg-row" onClick={() => navigate('/players')}>
+        <span className="stg-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.6-3.8 3.2-5.8 6.5-5.8s5.9 2 6.5 5.8" /><path d="M3.5 11.5c-.6.9-.8 1.9-.5 3" /><path d="M20.5 11.5c.6.9.8 1.9.5 3" /></svg></span>
+        <span className="stg-text"><strong>Giocatori</strong><small>Gestisci i tuoi giocatori</small></span>
+        {chevron}
       </button>
+      <div className="stg-row">
+        <span className="stg-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.3L4 9" /><path d="M4 4v5h5" /><path d="M4 13a8 8 0 0 0 14.3 4.3L20 15" /><path d="M20 20v-5h-5" /></svg></span>
+        <span className="stg-text"><strong>Sincronizzazione</strong><small>{busy ? 'Sincronizzazione in corso…' : user ? syncSubtitle : 'Accedi con Google per attivarla'}</small></span>
+        <button className={`stg-toggle${syncOn ? ' on' : ''}`} role="switch" aria-checked={syncOn} aria-label="Sincronizzazione"
+          onClick={() => void activate()} disabled={syncOn || busy || !user || status === 'needs-attention'}><span /></button>
+      </div>
+      <button className="stg-row" onClick={() => togglePanel('sharing')} aria-expanded={openPanel === 'sharing'}>
+        <span className="stg-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="2.6" /><circle cx="18" cy="6" r="2.6" /><circle cx="18" cy="18" r="2.6" /><path d="M8.3 10.8l7.4-3.6M8.3 13.2l7.4 3.6" /></svg></span>
+        <span className="stg-text"><strong>Condivisioni</strong><small>Workspace owner: {ownerLabel}</small></span>
+        {chevron}
+      </button>
+      <button className="stg-row" onClick={() => togglePanel('info')} aria-expanded={openPanel === 'info'}>
+        <span className="stg-icon"><svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#0B2A5B" /><circle cx="12" cy="7.6" r="1.4" fill="#fff" /><path d="M12 11v6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" /></svg></span>
+        <span className="stg-text"><strong>Informazioni</strong><small>Versione {__APP_VERSION__}</small></span>
+        {chevron}
+      </button>
+      <div className="stg-row">
+        <span className="stg-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 8.5z" /><path d="M12 17v-6M9.5 13.5L12 11l2.5 2.5" /></svg></span>
+        <span className="stg-text"><strong>Backup</strong><small>Salva i dati in un file JSON</small></span>
+        <button className="stg-export" onClick={() => void jsonExport()} disabled={!activeFamily}>Esporta</button>
+      </div>
+    </section>
+
+    {openPanel === 'info' && <section className="stg-card stg-panel">
+      <h2>Tennis KPI Tracker</h2>
+      <p>Versione {__APP_VERSION__}</p>
+      <p>{syncOn ? 'I dati sono salvati su questo dispositivo e sincronizzati con Tennis Tracker Cloud.' : 'I dati sono salvati solo su questo dispositivo.'}</p>
+    </section>}
+    {openPanel === 'sharing' && <section className="stg-card stg-panel">
+      <h2>Condivisioni</h2>
+      <p>Workspace owner: {ownerLabel}</p>
+      {mapping?.remote_family_id && <p>Il tuo ruolo: {mapping.role === 'owner' ? 'proprietario' : 'membro'}</p>}
+    </section>}
+    {(openPanel === 'sharing' || invitationFlow) && <div className="stg-card stg-panel"><FamilyManager /></div>}
+
+    {(syncError || conflicts.length > 0 || syncOn) && <section className="stg-card stg-panel">
+      <h2>Sincronizzazione</h2>
+      {mapping?.remote_family_id && <p>Ultimo download: {mapping.last_download_completed_at ? new Date(mapping.last_download_completed_at).toLocaleString('it-IT') : 'non completato'}</p>}
+      {syncOn && <button className="stg-row" onClick={() => void syncNow()} disabled={busy}>
+        <span className="stg-text"><strong>{busy ? 'Sincronizzazione…' : status === 'permanent-error' ? 'Riprova sincronizzazione' : 'Sincronizza ora'}</strong></span>
+        {chevron}
+      </button>}
       {syncError && <p className="family-feedback error" role="alert">{syncError}</p>}
       {conflicts.length > 0 && <div className="sync-conflicts">
         <p>{conflicts.length} conflitto/i: scegli quale versione mantenere per ogni record.</p>
@@ -201,7 +212,10 @@ export function Settings() {
             <button className="secondary" onClick={() => void resolveConflict(conflict.id, 'remote')}>Usa la versione di Tennis Tracker Cloud</button>}
         </div>)}
       </div>}
-    </section>
+    </section>}
+
+    {/* Restore is hidden from the UI for now; the logic stays available. */}
+    <label hidden><input type="file" accept="application/json" onChange={event => void restore(event)} /></label>
     {message && <div className="toast" role="status">{message}</div>}
   </div>;
 }
