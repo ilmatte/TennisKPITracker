@@ -1,0 +1,2 @@
+.player-list{display:grid;gap:8px}
+.player-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;padding:10px;border-bottom:1px solid var(--line);background:#fff}

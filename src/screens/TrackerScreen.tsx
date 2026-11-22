@@ -1,0 +1,488 @@
+import './Tracker.css';
+import { useEffect, useState, type CSSProperties } from 'react';
+import { useParams } from 'react-router-dom';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db, getMatchPoints } from '../db/database';
+import { nextPointNumber } from '../db/pointNumbers';
+import { configuredSetNavigation, deriveGameScore, deriveSetScore, getServer, nextGameNumber, pointsToGame, resolvePointAction, sortedPoints, type PointAction } from '../features/scoring/scoring';
+import { countGameDescendants, countMatchDescendants, countSetDescendants, softDeleteGame, softDeleteMatch, softDeletePoint, softDeleteSet, updateGame, updateMatch, updatePoint, updateSet, type PointChanges } from '../db/sportsMutations';
+import { useFamily } from '../features/families/FamilyContextDefinition';
+import currentGameBackground from '../assets/background-currentgame/background-currentgame-3x.png';
+import currentGameFooter from '../assets/footer-currentgame/footer-currentgame-3x.png';
+import freeErrorIcon from '../assets/icone/currentgame/errore-gratuito-chiaro.svg';
+import doubleFaultIcon from '../assets/icone/currentgame/doppio-fallo-chiaro.svg';
+import pointLostIcon from '../assets/icone/currentgame/perso-chiaro.svg';
+import greatShotIcon from '../assets/icone/currentgame/bel-colpo-chiaro.svg';
+import pointWonIcon from '../assets/icone/currentgame/vinto-chiaro.svg';
+import aceIcon from '../assets/icone/currentgame/ace-chiaro.svg';
+import { MatchEditor } from './MatchesScreen';
+import { stamp, mutationError, queueOperation } from './shared';
+import type { ErrorCategory, Game, Point, ScoredPoint, TennisSet } from '../types';
+export function Tracker() {
+  const { id } = useParams();
+  const { activeFamily } = useFamily();
+  const match = useLiveQuery(async () => {
+    if (!activeFamily || !id) return undefined;
+    const record = await db.matches.get(id);
+    return record?.family_id === activeFamily.id && !record.deleted ? record : undefined;
+  }, [id, activeFamily?.id]);
+  const points = useLiveQuery(
+    () => activeFamily && id ? getMatchPoints(activeFamily.id, id) : Promise.resolve([] as ScoredPoint[]),
+    [id, activeFamily?.id],
+  ) ?? [];
+  const hierarchy = useLiveQuery(async () => {
+    if (!activeFamily || !id) return { sets: [] as TennisSet[], games: [] as Game[] };
+    const sets = (await db.sets.where('family_id').equals(activeFamily.id).toArray())
+      .filter(set => set.match_id === id && !set.deleted);
+    const setIds = new Set(sets.map(set => set.id));
+    const games = (await db.games.where('family_id').equals(activeFamily.id).toArray())
+      .filter(game => setIds.has(game.set_id) && !game.deleted);
+    return { sets, games };
+  }, [id, activeFamily?.id]) ?? { sets: [], games: [] };
+  const [setNumber, setSetNumber] = useState(1);
+  const [selectedGame, setSelectedGame] = useState<number | null>(null);
+  const [trackerError, setTrackerError] = useState<string | null>(null);
+  const [editingSet, setEditingSet] = useState<TennisSet | null>(null);
+  const [editingGame, setEditingGame] = useState<Game | null>(null);
+  const [editingPoint, setEditingPoint] = useState<ScoredPoint | null>(null);
+  const [matchMenuOpen, setMatchMenuOpen] = useState(false);
+  const [editingMatch, setEditingMatch] = useState(false);
+
+  const setTabs = match ? configuredSetNavigation(match.number_of_sets, hierarchy.sets) : [];
+  const selectedSetNumber = match && setNumber > match.number_of_sets ? 1 : setNumber;
+  const currentGameNumber = match ? nextGameNumber(points, selectedSetNumber, match) : 1;
+  const gameNumber = selectedGame ?? currentGameNumber;
+  const currentSet = hierarchy.sets.find(set => set.set_number === selectedSetNumber);
+  const currentGame = hierarchy.games.find(game => game.set_id === currentSet?.id && game.game_number === gameNumber);
+  const gamePoints = sortedPoints(points, selectedSetNumber, gameNumber);
+  const gameComplete = match ? Boolean(pointsToGame(gamePoints, 'player', match.deuce_single_point)) : false;
+  const setScore = match ? deriveSetScore(points, selectedSetNumber, match) : { player: 0, opponent: 0 };
+  const recordedGameNumbers = hierarchy.games.filter(game => game.set_id === currentSet?.id).map(game => game.game_number);
+  recordedGameNumbers.push(...points.filter(point => point.set_number === selectedSetNumber).map(point => point.game_number));
+  const lastGameNumber = Math.max(currentGameNumber, ...recordedGameNumbers);
+
+  const completedSets = match ? hierarchy.sets.filter(set => {
+    const score = deriveSetScore(points, set.set_number, match);
+    const high = Math.max(score.player, score.opponent);
+    const low = Math.min(score.player, score.opponent);
+    return (high >= 6 && high - low >= 2) || (high >= 7 && high - low >= 1);
+  }) : [];
+  useEffect(() => {
+    if (!match) return;
+    const latestCompleted = Math.max(0, ...completedSets.map(set => set.set_number));
+    if (latestCompleted > 0 && (setNumber === 1 || completedSets.some(set => set.set_number === setNumber))) {
+      setSetNumber(Math.min(match.number_of_sets, latestCompleted + 1));
+      setSelectedGame(null);
+    }
+  }, [completedSets.map(set => set.set_number).join(','), match?.id, match?.number_of_sets]);
+
+  if (!match || !activeFamily) return <div className="page"><div className="empty-state">Partita non trovata</div></div>;
+  const activeMatch = match;
+
+  function selectGame(number: number) {
+    setSelectedGame(number === currentGameNumber ? null : number);
+  }
+
+  async function savePoint(action: PointAction) {
+    if (gameComplete) return;
+    const created_at = stamp();
+    try {
+      await db.transaction('rw', [db.matches, db.sets, db.games, db.points, db.syncQueue], async () => {
+        const currentMatch = await db.matches.get(activeMatch.id);
+        if (!currentMatch || currentMatch.family_id !== activeMatch.family_id || currentMatch.deleted) {
+          throw new Error('La partita non è più attiva nello spazio corrente.');
+        }
+        const existingSet = await db.sets.where('[match_id+set_number]').equals([currentMatch.id, selectedSetNumber]).first();
+        const tennisSet: TennisSet = existingSet ? {
+          ...existingSet,
+          player_games: existingSet.deleted ? 0 : existingSet.player_games,
+          opponent_games: existingSet.deleted ? 0 : existingSet.opponent_games,
+          deleted: false,
+        } : {
+          id: crypto.randomUUID(), family_id: currentMatch.family_id, match_id: currentMatch.id, set_number: selectedSetNumber,
+          player_games: 0, opponent_games: 0, created_at, updated_at: created_at, version: 1, deleted: false,
+        };
+        if (tennisSet.family_id !== currentMatch.family_id) {
+          throw new Error('Il set selezionato non appartiene alla famiglia attiva.');
+        }
+        const existingGame = await db.games.where('[set_id+game_number]').equals([tennisSet.id, gameNumber]).first();
+        const tennisGame: Game = existingGame ? {
+          ...existingGame,
+          player_points: existingGame.deleted ? 0 : existingGame.player_points,
+          opponent_points: existingGame.deleted ? 0 : existingGame.opponent_points,
+          deleted: false,
+        } : {
+          id: crypto.randomUUID(), family_id: currentMatch.family_id, set_id: tennisSet.id, game_number: gameNumber,
+          player_points: 0, opponent_points: 0, created_at, updated_at: created_at, version: 1, deleted: false,
+        };
+        if (tennisGame.family_id !== currentMatch.family_id) {
+          throw new Error('Il game selezionato non appartiene alla famiglia attiva.');
+        }
+        await db.sets.put(tennisSet);
+        await db.games.put(tennisGame);
+
+        const matchSets = await db.sets.where('family_id').equals(currentMatch.family_id)
+          .filter(set => set.match_id === currentMatch.id && !set.deleted).toArray();
+        const setIds = new Set(matchSets.map(set => set.id));
+        const matchGames = await db.games.where('family_id').equals(currentMatch.family_id)
+          .filter(game => setIds.has(game.set_id) && !game.deleted).toArray();
+        const gameIds = new Set(matchGames.map(game => game.id));
+        const storedPoints = gameIds.size ? await db.points.where('game_id').anyOf([...gameIds]).toArray() : [];
+        const setById = new Map(matchSets.map(set => [set.id, set]));
+        const gameById = new Map(matchGames.map(game => [game.id, game]));
+        const scoredPoints: ScoredPoint[] = storedPoints.flatMap(stored => {
+          const game = gameById.get(stored.game_id);
+          const set = game ? setById.get(game.set_id) : undefined;
+          return set && game && !stored.deleted && stored.family_id === currentMatch.family_id
+            ? [{ ...stored, set_number: set.set_number, game_number: game.game_number }]
+            : [];
+        });
+        const result = resolvePointAction(action);
+        const historicalGamePoints = await db.points.where('game_id').equals(tennisGame.id).toArray();
+        const point: Point = {
+          id: crypto.randomUUID(), family_id: activeMatch.family_id, game_id: tennisGame.id,
+          point_number: nextPointNumber(historicalGamePoints),
+          winner: result.winner, server: getServer(currentMatch, selectedSetNumber, gameNumber),
+          second_serve: result.secondServe, double_fault: result.doubleFault,
+          shot_count: result.shotCount,
+          free_error: result.freeError, error_player: action === 'free_error' ? 'player' : undefined,
+          error_category: action === 'free_error' ? 'other' : undefined,
+          attack_error: false, pressure_situation: false, pressure_error_player: undefined,
+          created_at, updated_at: created_at, version: 1, deleted: false,
+        };
+        const updatedPoints: ScoredPoint[] = [...scoredPoints, { ...point, set_number: selectedSetNumber, game_number: gameNumber }];
+        const updatedGamePoints = sortedPoints(updatedPoints, selectedSetNumber, gameNumber);
+        const updatedSetScore = deriveSetScore(updatedPoints, selectedSetNumber, currentMatch);
+        const updatedGame: Game = {
+          ...tennisGame,
+          player_points: updatedGamePoints.filter(existing => existing.winner === 'player').length,
+          opponent_points: updatedGamePoints.filter(existing => existing.winner === 'opponent').length,
+          updated_at: created_at,
+          version: existingGame ? existingGame.version + 1 : 1,
+        };
+        const updatedSet: TennisSet = {
+          ...tennisSet,
+          player_games: updatedSetScore.player,
+          opponent_games: updatedSetScore.opponent,
+          updated_at: created_at,
+          version: existingSet ? existingSet.version + 1 : 1,
+        };
+
+      await db.sets.put(updatedSet);
+      await db.games.put(updatedGame);
+      await db.points.add(point);
+      await db.syncQueue.bulkPut([
+        queueOperation(currentMatch.family_id, 'sets', updatedSet, created_at),
+        queueOperation(currentMatch.family_id, 'games', updatedGame, created_at),
+        queueOperation(currentMatch.family_id, 'points', point, created_at),
+      ]);
+      });
+    } catch (cause) {
+      setTrackerError(cause instanceof Error ? cause.message : 'Impossibile salvare il punto.');
+      return;
+    }
+    setTrackerError(null);
+  }
+
+  async function removePoint(point: ScoredPoint) {
+    if (!window.confirm(`Eliminare logicamente il punto ${point.point_number}? I punteggi e i KPI saranno ricalcolati.`)) return;
+    try {
+      await softDeletePoint(activeMatch.family_id, point.id);
+      setTrackerError(null);
+    } catch (cause) {
+      setTrackerError(cause instanceof Error ? cause.message : 'Impossibile eliminare il punto.');
+    }
+  }
+
+  async function undoLatestPoint() {
+    const latestPoint = gamePoints.at(-1);
+    if (!latestPoint) return;
+    try {
+      await softDeletePoint(activeMatch.family_id, latestPoint.id);
+      setTrackerError(null);
+    } catch (cause) {
+      setTrackerError(cause instanceof Error ? cause.message : 'Impossibile annullare il punto.');
+    }
+  }
+
+  async function removeSet(set: TennisSet) {
+    try {
+      const count = await countSetDescendants(activeMatch.family_id, set.id);
+      if (!window.confirm(`Eliminare logicamente il set? Verranno marcati come cancellati anche ${count.games} game e ${count.points} punti.`)) return;
+      await softDeleteSet(activeMatch.family_id, set.id);
+      setTrackerError(null);
+    } catch (cause) {
+      setTrackerError(cause instanceof Error ? cause.message : 'Impossibile eliminare il set.');
+    }
+  }
+
+  async function removeGame(game: Game) {
+    try {
+      const count = await countGameDescendants(activeMatch.family_id, game.id);
+      if (!window.confirm(`Eliminare logicamente il game? Verranno marcati come cancellati anche ${count} punti.`)) return;
+      await softDeleteGame(activeMatch.family_id, game.id);
+      setSelectedGame(null);
+      setTrackerError(null);
+    } catch (cause) {
+      setTrackerError(cause instanceof Error ? cause.message : 'Impossibile eliminare il game.');
+    }
+  }
+
+  async function savePointChanges(changes: PointChanges) {
+    if (!editingPoint) return;
+    await updatePoint(activeMatch.family_id, editingPoint.id, changes);
+    setEditingPoint(null);
+    setTrackerError(null);
+  }
+
+  async function completeMatch() {
+    try {
+      await db.transaction('rw', db.matches, db.syncQueue, async () => {
+        const current = await db.matches.get(activeMatch.id);
+        if (!current || current.family_id !== activeMatch.family_id || current.deleted) {
+          throw new Error('La partita non è più attiva nello spazio corrente.');
+        }
+        const updated_at = stamp();
+        const updated = { ...current, status: 'completed' as const, updated_at, version: current.version + 1 };
+        await db.matches.put(updated);
+        await db.syncQueue.put(queueOperation(activeMatch.family_id, 'matches', updated, updated_at));
+      });
+      setTrackerError(null);
+    } catch (cause) {
+      setTrackerError(cause instanceof Error ? cause.message : 'Impossibile completare la partita.');
+    }
+  }
+
+  async function removeCurrentMatch() {
+    const count = await countMatchDescendants(activeMatch.family_id, activeMatch.id);
+    const detail = `${count.sets} set, ${count.games} game e ${count.points} punti`;
+    if (!window.confirm(`Eliminare questa partita e i relativi ${detail}?`)) return;
+    await softDeleteMatch(activeMatch.family_id, activeMatch.id);
+    window.history.back();
+  }
+
+  const concludedSets = completedSets
+    .filter(set => set.set_number !== selectedSetNumber)
+    .sort((a, b) => b.set_number - a.set_number)
+    .map(set => ({ id: set.id, number: set.set_number, score: deriveSetScore(points, set.set_number, match) }));
+  const hasConcludedSets = concludedSets.length > 0;
+  const gameScore = deriveGameScore(gamePoints, match.deuce_single_point);
+  const lostActions: { action: PointAction; label: string; icon: string }[] = [
+    { action: 'free_error', label: 'Errore gratuito', icon: freeErrorIcon },
+    { action: 'double_fault', label: 'Doppio fallo', icon: doubleFaultIcon },
+    { action: 'lost', label: 'Perso', icon: pointLostIcon },
+  ];
+  const wonActions: { action: PointAction; label: string; icon: string }[] = [
+    { action: 'great_shot', label: 'Bel colpo', icon: greatShotIcon },
+    { action: 'ace', label: 'Ace', icon: aceIcon },
+    { action: 'won', label: 'Vinto', icon: pointWonIcon },
+  ];
+
+  return <div className={`cg-page${hasConcludedSets ? ' has-sets' : ''}`} style={{ '--cg-wave': `url(${currentGameBackground})` } as CSSProperties}>
+    <header className="cg-hero">
+      <button className="cg-round-button cg-back" onClick={() => window.history.back()} aria-label="Indietro">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+      </button>
+      <h1>Partita in corso</h1>
+      <button className="cg-round-button cg-menu" onClick={() => setMatchMenuOpen(true)} aria-label="Menu partita">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><circle cx="12" cy="5" r="2.2" /><circle cx="12" cy="12" r="2.2" /><circle cx="12" cy="19" r="2.2" /></svg>
+      </button>
+      <div className="cg-scores">
+        <div className="cg-score-card"><span>Tu</span><strong>{gameScore.player}</strong></div>
+        <div className="cg-score-card"><span>{match.opponent || 'Avversario'}</span><strong>{gameScore.opponent}</strong></div>
+      </div>
+      <div className="cg-ball" aria-hidden="true">
+        <svg width="34" height="34" viewBox="0 0 48 48"><defs><radialGradient id="cg-pb" cx=".35" cy=".3" r=".85"><stop offset="0" stopColor="#E9FB78" /><stop offset=".55" stopColor="#C8F03A" /><stop offset="1" stopColor="#9CCB1B" /></radialGradient><clipPath id="cg-pc"><circle cx="24" cy="24" r="22" /></clipPath></defs><circle cx="24" cy="24" r="22" fill="url(#cg-pb)" /><g clipPath="url(#cg-pc)" fill="none" stroke="#fff" strokeWidth="3.2"><path d="M10 0C24 14 24 34 10 48" /><path d="M38 0C24 14 24 34 38 48" /></g></svg>
+      </div>
+      {hasConcludedSets
+        ? <div className="cg-set-list">
+          <div className="cg-set-row current"><span>{setScore.player}</span><b>SET {selectedSetNumber}</b><span>{setScore.opponent}</span></div>
+          {concludedSets.map(set => <div key={set.id} className="cg-set-row">
+            <span className={set.score.player > set.score.opponent ? 'won' : ''}>{set.score.player}</span>
+            <b>SET {set.number}</b>
+            <span className={set.score.opponent > set.score.player ? 'won' : ''}>{set.score.opponent}</span>
+          </div>)}
+        </div>
+        : <div className="cg-set-pills">
+          <div className="cg-set-pill"><span className="cg-dot" />Set {selectedSetNumber}&nbsp;&nbsp;•&nbsp;&nbsp;{setScore.player}-{setScore.opponent}</div>
+        </div>}
+    </header>
+    <img className="cg-wave" src={currentGameBackground} alt="" />
+    <div className="cg-body">
+      <section className="cg-panel">
+        <div className="cg-heading">
+          <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#E5484D" /><path d="M8 8l8 8M16 8l-8 8" stroke="#fff" strokeWidth="3" strokeLinecap="round" /></svg>
+          <h2>Punto perso</h2>
+        </div>
+        <div className="cg-actions">
+          {lostActions.map(item => <button key={item.action} className="cg-action lost" onClick={() => void savePoint(item.action)} disabled={gameComplete}>
+            <img src={item.icon} alt="" /><span>{item.label}</span>
+          </button>)}
+        </div>
+        <div className="cg-spacer" />
+        <div className="cg-heading">
+          <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1FA64A" /><path d="M7 12.5l3.5 3.5L17 8.5" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <h2>Punto vinto</h2>
+        </div>
+        <div className="cg-actions">
+          {wonActions.map(item => <button key={item.action} className="cg-action won" onClick={() => void savePoint(item.action)} disabled={gameComplete}>
+            <img src={item.icon} alt="" /><span>{item.label}</span>
+          </button>)}
+        </div>
+        <button className="cg-undo" onClick={() => void undoLatestPoint()} disabled={!gamePoints.length}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 7 4 12l5 5M4 12h10a6 6 0 0 1 0 12" /></svg>
+          Annulla ultimo punto
+        </button>
+        {gameComplete && <p className="cg-note">Game concluso.</p>}
+        {trackerError && <p className="family-feedback error" role="alert">{trackerError}</p>}
+
+        <div className="cg-details">
+          {match.number_of_sets > 1 && <div className="cg-chip-row" aria-label="Seleziona set">{setTabs.map(({ set_number, exists }) =>
+            <button key={set_number} className={`cg-chip${set_number === selectedSetNumber ? ' active' : ''}`} onClick={() => { setSetNumber(set_number); setSelectedGame(null); }}>
+              Set {set_number}<span>{exists ? 'Registrato' : 'Da registrare'}</span>
+            </button>
+          )}</div>}
+          <div className="cg-chip-row" aria-label="Seleziona game">
+            {Array.from({ length: lastGameNumber }, (_, index) => index + 1).map(number => {
+              const selectedPoints = sortedPoints(points, selectedSetNumber, number);
+              const result = pointsToGame(selectedPoints, 'player', match.deuce_single_point);
+              const label = result ? `${result.player}-${result.opponent}` : 'in corso';
+              const isCurrent = number === currentGameNumber;
+              return <button key={number} className={`cg-chip${number === gameNumber ? ' active' : ''}${isCurrent ? ' current' : ''}`} onClick={() => selectGame(number)}>
+                Game {number}<span>{isCurrent ? 'Corrente' : label}</span>
+              </button>;
+            })}
+          </div>
+          {gamePoints.length > 0 && <div className="cg-history">
+            <h3>Punti del game {gameNumber}</h3>
+            {gamePoints.map(point => <div className="cg-history-row" key={point.id}>
+              <span>{point.point_number}</span><strong>{point.winner === 'player' ? 'Tu' : match.opponent}</strong>
+              <span>{point.shot_count} colpi</span>
+              <span className="cg-history-actions">
+                <button onClick={() => setEditingPoint(point)}>Modifica</button>
+                <button onClick={() => void removePoint(point)}>Elimina</button>
+              </span>
+            </div>)}
+          </div>}
+        </div>
+      </section>
+    </div>
+    <img className="cg-footer" src={currentGameFooter} alt="" aria-hidden="true" />
+    {editingSet && <SetEditor set={editingSet} onClose={() => setEditingSet(null)} onSave={async set_number => {
+      await updateSet(activeMatch.family_id, editingSet.id, { set_number });
+      setSetNumber(set_number);
+      setEditingSet(null);
+      setTrackerError(null);
+    }} />}
+    {editingGame && <GameEditor game={editingGame} onClose={() => setEditingGame(null)} onSave={async game_number => {
+      await updateGame(activeMatch.family_id, editingGame.id, { game_number });
+      setSelectedGame(game_number);
+      setEditingGame(null);
+      setTrackerError(null);
+    }} />}
+    {editingPoint && <PointEditor point={editingPoint} onClose={() => setEditingPoint(null)} onSave={savePointChanges} />}
+    {editingMatch && <MatchEditor match={activeMatch} error={trackerError} onClose={() => setEditingMatch(false)} onSave={async changes => {
+      try { await updateMatch(activeMatch.family_id, activeMatch.id, changes); setEditingMatch(false); setTrackerError(null); }
+      catch (cause) { setTrackerError(cause instanceof Error ? cause.message : 'Impossibile modificare la partita.'); }
+    }} />}
+    {matchMenuOpen && <div className="tracker-menu-backdrop" onClick={() => setMatchMenuOpen(false)}>
+      <div className="tracker-action-menu" role="dialog" aria-label="Menu partita" onClick={event => event.stopPropagation()}>
+        <span className="menu-section-label">GAME</span>
+        <button onClick={() => { setMatchMenuOpen(false); if (currentGame) setEditingGame(currentGame); }}>✎ <span>Modifica game</span></button>
+        <button className="menu-delete" onClick={() => { setMatchMenuOpen(false); if (currentGame) void removeGame(currentGame); }}>⌫ <span>Elimina game</span></button>
+        <hr /><span className="menu-section-label">SET</span>
+        <button onClick={() => { setMatchMenuOpen(false); if (currentSet) setEditingSet(currentSet); }}>✎ <span>Modifica set</span></button>
+        <button className="menu-delete" onClick={() => { setMatchMenuOpen(false); if (currentSet) void removeSet(currentSet); }}>⌫ <span>Elimina set</span></button>
+        <hr /><span className="menu-section-label">PARTITA</span>
+        <button onClick={() => { setMatchMenuOpen(false); setEditingMatch(true); }}>✎ <span>Modifica partita</span></button>
+        <button className="menu-delete" onClick={() => { setMatchMenuOpen(false); void removeCurrentMatch(); }}>⌫ <span>Elimina partita</span></button>
+        {match.status === 'in-progress' && <button onClick={() => { setMatchMenuOpen(false); void completeMatch(); }}>✓ <span>Termina partita</span></button>}
+      </div>
+    </div>}
+  </div>;
+}
+
+function SetEditor({ set, onClose, onSave }: {
+  set: TennisSet;
+  onClose: () => void;
+  onSave: (number: number) => Promise<void>;
+}) {
+  const [number, setNumber] = useState(String(set.set_number));
+  const [error, setError] = useState<string | null>(null);
+  return <div className="modal-backdrop"><div className="modal-sheet">
+    <div className="modal-heading"><h2>Modifica set</h2><button className="icon-button" onClick={onClose}>×</button></div>
+    <label>Numero set<input type="number" min="1" value={number} onChange={event => setNumber(event.target.value)} /></label>
+    <p className="family-feedback">I punteggi sono calcolati dai game e dai punti registrati.</p>
+    {error && <p className="family-feedback error" role="alert">{error}</p>}
+    <button className="primary wide" disabled={!Number.isInteger(Number(number)) || Number(number) < 1}
+      onClick={() => void onSave(Number(number)).catch(cause => setError(mutationError(cause, 'Impossibile modificare il set.', 'Esiste già un set con questo numero.')))}>Salva modifiche</button>
+  </div></div>;
+}
+
+function GameEditor({ game, onClose, onSave }: {
+  game: Game;
+  onClose: () => void;
+  onSave: (number: number) => Promise<void>;
+}) {
+  const [number, setNumber] = useState(String(game.game_number));
+  const [error, setError] = useState<string | null>(null);
+  return <div className="modal-backdrop"><div className="modal-sheet">
+    <div className="modal-heading"><h2>Modifica game</h2><button className="icon-button" onClick={onClose}>×</button></div>
+    <label>Numero game<input type="number" min="1" value={number} onChange={event => setNumber(event.target.value)} /></label>
+    <p className="family-feedback">I punteggi sono calcolati dai punti registrati.</p>
+    {error && <p className="family-feedback error" role="alert">{error}</p>}
+    <button className="primary wide" disabled={!Number.isInteger(Number(number)) || Number(number) < 1}
+      onClick={() => void onSave(Number(number)).catch(cause => setError(mutationError(cause, 'Impossibile modificare il game.', 'Esiste già un game con questo numero nel set.')))}>Salva modifiche</button>
+  </div></div>;
+}
+
+function PointEditor({ point, onClose, onSave }: {
+  point: ScoredPoint;
+  onClose: () => void;
+  onSave: (changes: PointChanges) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<PointChanges>({
+    winner: point.winner,
+    server: point.server,
+    second_serve: point.second_serve,
+    double_fault: point.double_fault,
+    shot_count: point.shot_count,
+    free_error: point.free_error,
+    error_player: point.error_player,
+    error_category: point.error_category,
+    attack_error: point.attack_error,
+    pressure_situation: point.pressure_situation,
+    pressure_error_player: point.pressure_error_player,
+  });
+  const field = <K extends keyof PointChanges>(key: K, value: PointChanges[K]) =>
+    setDraft(current => ({ ...current, [key]: value }));
+  const [error, setError] = useState<string | null>(null);
+
+  return <div className="modal-backdrop"><div className="modal-sheet">
+    <div className="modal-heading"><h2>Modifica punto {point.point_number}</h2><button className="icon-button" onClick={onClose}>×</button></div>
+    <div className="form-grid">
+      <label>Vincitore<select value={draft.winner} onChange={event => field('winner', event.target.value as Point['winner'])}><option value="player">Tu</option><option value="opponent">Avversario</option></select></label>
+      <label>Battitore<select value={draft.server} onChange={event => field('server', event.target.value as Point['server'])}><option value="player">Tu</option><option value="opponent">Avversario</option></select></label>
+    </div>
+    <div className="form-grid">
+      <label>Numero colpi<input type="number" min="1" value={draft.shot_count} onChange={event => field('shot_count', Number(event.target.value))} /></label>
+      <label>Autore errore<select value={draft.error_player ?? ''} onChange={event => field('error_player', event.target.value ? event.target.value as Point['error_player'] : undefined)}><option value="">Nessuno</option><option value="player">Tu</option><option value="opponent">Avversario</option></select></label>
+    </div>
+    <label>Categoria errore<select value={draft.error_category ?? ''} onChange={event => field('error_category', event.target.value ? event.target.value as ErrorCategory : undefined)}>
+      <option value="">Nessuna</option><option value="forehand">Dritto</option><option value="backhand">Rovescio</option>
+      <option value="serve">Servizio</option><option value="volley">Volée</option><option value="net">Rete</option><option value="other">Altro</option>
+    </select></label>
+    <label className="toggle-row"><span>Seconda di servizio</span><input type="checkbox" checked={draft.second_serve} onChange={event => field('second_serve', event.target.checked)} /></label>
+    <label className="toggle-row"><span>Doppio fallo</span><input type="checkbox" checked={draft.double_fault} onChange={event => field('double_fault', event.target.checked)} /></label>
+    <label className="toggle-row"><span>Errore gratuito</span><input type="checkbox" checked={draft.free_error} onChange={event => field('free_error', event.target.checked)} /></label>
+    <label className="toggle-row"><span>Errore in attacco</span><input type="checkbox" checked={draft.attack_error} onChange={event => field('attack_error', event.target.checked)} /></label>
+    <label className="toggle-row"><span>Situazione di pressione</span><input type="checkbox" checked={draft.pressure_situation} onChange={event => field('pressure_situation', event.target.checked)} /></label>
+    <label>Autore errore sotto pressione<select value={draft.pressure_error_player ?? ''} onChange={event => field('pressure_error_player', event.target.value ? event.target.value as Point['pressure_error_player'] : undefined)}>
+      <option value="">Nessuno</option><option value="player">Tu</option><option value="opponent">Avversario</option>
+    </select></label>
+    <p className="family-feedback">Il punteggio del game, quello del set e i KPI saranno ricalcolati al salvataggio.</p>
+    {error && <p className="family-feedback error" role="alert">{error}</p>}
+    <button className="primary wide" disabled={!Number.isInteger(draft.shot_count) || draft.shot_count < 1}
+      onClick={() => void onSave(draft).catch(cause => setError(mutationError(cause, 'Impossibile modificare il punto.', 'Modifica non consentita dal vincolo locale.')))}>Salva modifiche</button>
+  </div></div>;
+}

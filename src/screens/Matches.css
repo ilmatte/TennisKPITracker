@@ -1,0 +1,2 @@
+.match-list{display:grid;gap:10px}
+.match-card{border:1px solid var(--line);border-radius:10px;background:#fff;padding:14px}
