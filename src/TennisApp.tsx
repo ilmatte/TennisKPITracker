@@ -652,20 +652,36 @@ function PlayerModal({ player, error, onClose, onSave }: {
   onSave: (player: Player) => void;
 }) {
   const [draft, setDraft] = useState(player);
-  return <div className="modal-backdrop"><div className="modal-sheet">
-    <div className="modal-heading"><h2>{draft.first_name ? 'Modifica giocatore' : 'Nuovo giocatore'}</h2><button className="icon-button" onClick={onClose}>×</button></div>
-    <div className="form-grid">
-      <label>Nome<input value={draft.first_name} onChange={event => setDraft({ ...draft, first_name: event.target.value })} /></label>
-      <label>Cognome<input value={draft.last_name} onChange={event => setDraft({ ...draft, last_name: event.target.value })} /></label>
+  const editingExisting = Boolean(draft.first_name || draft.last_name || draft.version > 0);
+  return <div className="player-editor-backdrop"><section className="player-editor" role="dialog" aria-modal="true" aria-label={editingExisting ? 'Modifica giocatore' : 'Nuovo giocatore'}>
+    <header className="player-editor-header">
+      <img className="player-editor-ball" src={tennisBallIcon} alt="" />
+      <button className="player-editor-back" onClick={onClose} aria-label="Indietro">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
+      </button>
+      <h1>{editingExisting ? 'Modifica giocatore' : 'Nuovo giocatore'}</h1>
+    </header>
+    <div className="player-editor-panel">
+      <div className="player-editor-fields">
+        <div className="player-editor-row">
+          <label>Nome<input autoComplete="given-name" value={draft.first_name} onChange={event => setDraft({ ...draft, first_name: event.target.value })} /></label>
+          <label>Cognome<input autoComplete="family-name" value={draft.last_name} onChange={event => setDraft({ ...draft, last_name: event.target.value })} /></label>
+        </div>
+        <label>Data di nascita<input type="date" value={draft.birth_date ?? ''} onChange={event => setDraft({ ...draft, birth_date: event.target.value || null })} /></label>
+        <div className="player-editor-row">
+          <label>Categoria<input value={draft.category} onChange={event => setDraft({ ...draft, category: event.target.value })} /></label>
+          <label>Classifica FITP<input value={draft.ranking} onChange={event => setDraft({ ...draft, ranking: event.target.value })} /></label>
+        </div>
+      </div>
+      {error && <p className="family-feedback error" role="alert">{error}</p>}
+      <div className="player-editor-actions">
+        <button className="player-editor-save" disabled={!draft.first_name.trim()} onClick={() => onSave(draft)}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>Salva
+        </button>
+        <button className="player-editor-cancel" onClick={onClose}>Annulla</button>
+      </div>
     </div>
-    <label>Data di nascita<input type="date" value={draft.birth_date ?? ''} onChange={event => setDraft({ ...draft, birth_date: event.target.value || null })} /></label>
-    <div className="form-grid">
-      <label>Categoria<input value={draft.category} onChange={event => setDraft({ ...draft, category: event.target.value })} /></label>
-      <label>Classifica FITP<input value={draft.ranking} onChange={event => setDraft({ ...draft, ranking: event.target.value })} /></label>
-    </div>
-    {error && <p className="family-feedback error" role="alert">{error}</p>}
-    <button className="primary wide" disabled={!draft.first_name.trim()} onClick={() => onSave(draft)}>Salva</button>
-  </div></div>;
+  </section></div>;
 }
 
 function Tracker() {
