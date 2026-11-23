@@ -2,7 +2,8 @@ import './Players.css';
 import { useEffect, useState, type CSSProperties } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db/database';
+import { db, getMatchPoints } from '../db/database';
+import { deriveSetScore } from '../features/scoring/scoring';
 import { createPlayer, softDeletePlayer, updatePlayer } from '../db/sportsMutations';
 import { useAuth } from '../features/auth/AuthContext';
 import { useFamily } from '../features/families/FamilyContextDefinition';
@@ -26,14 +27,30 @@ export function Players() {
       : [],
     [activeFamily?.id],
   ) ?? [];
-  const matchCounts = useLiveQuery(async () => {
-    const counts = new Map<string, number>();
-    if (!activeFamily) return counts;
-    for (const match of await db.matches.where('family_id').equals(activeFamily.id).toArray()) {
-      if (!match.deleted) counts.set(match.player_id, (counts.get(match.player_id) ?? 0) + 1);
+  // Per player: matches played, completed and won (won = more sets than the opponent).
+  const playerStats = useLiveQuery(async () => {
+    const stats = new Map<string, { played: number; completed: number; won: number }>();
+    if (!activeFamily) return stats;
+    const matches = (await db.matches.where('family_id').equals(activeFamily.id).toArray()).filter(match => !match.deleted);
+    for (const match of matches) {
+      const entry = stats.get(match.player_id) ?? { played: 0, completed: 0, won: 0 };
+      entry.played += 1;
+      if (match.status === 'completed') {
+        entry.completed += 1;
+        const points = await getMatchPoints(activeFamily.id, match.id);
+        let playerSets = 0;
+        let opponentSets = 0;
+        for (let setNumber = 1; setNumber <= match.number_of_sets; setNumber += 1) {
+          const score = deriveSetScore(points, setNumber, match);
+          if (score.player > score.opponent) playerSets += 1;
+          if (score.opponent > score.player) opponentSets += 1;
+        }
+        if (playerSets > opponentSets) entry.won += 1;
+      }
+      stats.set(match.player_id, entry);
     }
-    return counts;
-  }, [activeFamily?.id]) ?? new Map<string, number>();
+    return stats;
+  }, [activeFamily?.id]) ?? new Map<string, { played: number; completed: number; won: number }>();
   const [editing, setEditing] = useState<Player | null>(null);
   const [origin, setOrigin] = useState<EditorOrigin>('players');
   const [error, setError] = useState<string | null>(null);
@@ -120,18 +137,37 @@ export function Players() {
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
     </button>
     <h1 className="pl-title">Giocatori</h1>
-    <section className="pl-card">
-      {players.map(player => {
-        const count = matchCounts.get(player.id) ?? 0;
-        return <button className="pl-row" key={player.id} onClick={() => edit(player)}>
-          <span className="pl-avatar">{player.first_name[0]}{player.last_name[0]}</span>
-          <span className="pl-text"><strong>{player.first_name} {player.last_name}</strong><small>{count === 1 ? '1 partita' : `${count} partite`}</small></span>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+    {players.length > 0 && players.length <= 2
+      ? <div className="pl-big-list">{players.map(player => {
+        const stats = playerStats.get(player.id) ?? { played: 0, completed: 0, won: 0 };
+        const details = [player.category, player.ranking && `FITP ${player.ranking}`].filter(Boolean).join(' • ');
+        return <button className="pl-big-card" key={player.id} onClick={() => edit(player)}>
+          <span className="pl-big-head">
+            <span className="pl-avatar big">{player.first_name[0]}{player.last_name[0]}</span>
+            <span className="pl-text"><strong className="big">{player.first_name} {player.last_name}</strong><small>{details || 'Nessuna categoria'}</small></span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+          </span>
+          <span className="pl-stats">
+            <span><b>{stats.played}</b><small>Partite</small></span>
+            <i aria-hidden="true" />
+            <span><b className="won">{stats.won}</b><small>Vinte</small></span>
+            <i aria-hidden="true" />
+            <span><b>{stats.completed ? `${Math.round((stats.won / stats.completed) * 100)}%` : '—'}</b><small>Vittorie</small></span>
+          </span>
         </button>;
-      })}
-      {!players.length && <div className="pl-empty"><strong>Nessun giocatore</strong><span>Aggiungi il primo giocatore per iniziare.</span></div>}
-    </section>
-    <button className="pl-add" onClick={add} disabled={!activeFamily}>
+      })}</div>
+      : <section className="pl-card">
+        {players.map(player => {
+          const count = playerStats.get(player.id)?.played ?? 0;
+          return <button className="pl-row" key={player.id} onClick={() => edit(player)}>
+            <span className="pl-avatar">{player.first_name[0]}{player.last_name[0]}</span>
+            <span className="pl-text"><strong>{player.first_name} {player.last_name}</strong><small>{count === 1 ? '1 partita' : `${count} partite`}</small></span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+          </button>;
+        })}
+        {!players.length && <div className="pl-empty"><strong>Nessun giocatore</strong><span>Aggiungi il primo giocatore per iniziare.</span></div>}
+      </section>}
+    <button className={`pl-add${players.length > 0 && players.length <= 2 ? ' compact' : ''}`} onClick={add} disabled={!activeFamily}>
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
       Aggiungi giocatore
     </button>

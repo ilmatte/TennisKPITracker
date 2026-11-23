@@ -21,3 +21,18 @@
 
 /* Delete action inside the player editor */
 .player-editor-delete{height:48px;border:0;background:transparent;color:#D3343A;font-size:15px;font-weight:700;cursor:pointer}
+
+/* One or two players: large cards with stats */
+.pl-big-list{display:flex;flex-direction:column;gap:10px}
+.pl-big-card{width:100%;height:136px;box-sizing:border-box;padding:12px 14px;border:0;border-radius:22px;background:#FFFFFF;box-shadow:0 8px 24px rgba(11,42,91,.18);display:flex;flex-direction:column;gap:10px;color:#0B2A5B;text-align:left}
+.pl-big-head{display:flex;align-items:center;gap:12px;height:44px}
+.pl-big-head svg{flex:none}
+.pl-avatar.big{width:44px;height:44px;border-radius:22px;font-size:16px}
+.pl-text strong.big{font-size:17px}
+.pl-stats{flex:1;align-self:stretch;border-radius:14px;background:#EEF3FB;display:flex;align-items:center;padding:0 6px}
+.pl-stats>span{flex:1;display:flex;flex-direction:column;align-items:center}
+.pl-stats b{font-size:22px;line-height:24px;font-weight:800;color:#0B2A5B}
+.pl-stats b.won{color:#1B7F3B}
+.pl-stats small{margin-top:2px;font-size:11.5px;font-weight:600;color:#5C6B85}
+.pl-stats i{width:1px;height:34px;flex:none;background:#D9E3F3}
+.pl-add.compact{height:52px;margin-top:12px}
