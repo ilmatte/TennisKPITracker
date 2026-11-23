@@ -816,16 +816,6 @@ main { max-width: 1120px; }
     font-style:italic;
   }
   .home-brand strong span { display:block; margin:0; font-size:inherit; line-height:inherit; color:#FFFFFF; }
-  .profile-avatar {
-    position:absolute; z-index:5; right:22px; top:44px;
-    width:44px; height:44px; display:grid; place-items:center;
-    padding:0; border:0; border-radius:50%; background:linear-gradient(180deg,#17488F 0%,#0B2A5B 100%);
-    cursor:pointer; -webkit-tap-highlight-color:transparent;
-  }
-  .profile-avatar:hover { background:linear-gradient(180deg,#1D56A8 0%,#0F3570 100%); }
-  .profile-avatar:focus-visible { outline:3px solid #C8F04A; outline-offset:3px; }
-  .profile-avatar:disabled { cursor:wait; opacity:.65; }
-  .profile-avatar svg { width:24px; height:24px; }
   .hero-tennis-ball {
     display: none;
     position:absolute; z-index:4;
@@ -970,3 +960,7 @@ main { max-width: 1120px; }
   .app-shell.shell-dark { background: #011d38; }
   .app-shell.shell-soft { background: #F4F7FC; }
 }
+
+/* Profile button position on the homepage hero */
+.home-profile { right: 22px; top: 44px; }
+@media (min-width: 900px) { .home-profile { top: 24px; right: 32px; } }

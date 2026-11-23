@@ -4,9 +4,8 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getMatchPoints } from '../db/database';
 import { deriveSetScore } from '../features/scoring/scoring';
-import { useAuth } from '../features/auth/AuthContext';
+import { ProfileButton } from '../features/auth/ProfileButton';
 import { useFamily } from '../features/families/FamilyContextDefinition';
-import { supabase } from '../services/supabase/client';
 import tennisLogo from '../assets/logo.svg';
 import matchesIcon from '../assets/icone/trasparente/256/partite.png';
 import trendIcon from '../assets/icone/trasparente/256/trend.png';
@@ -26,8 +25,6 @@ export function HomeRoute() {
 
 export function DashboardHome() {
   const { activeFamily } = useFamily();
-  const { user, loading: authLoading } = useAuth();
-  const [authPending, setAuthPending] = useState(false);
   const matches = useLiveQuery(
     async () => activeFamily
       ? (await db.matches.where('family_id').equals(activeFamily.id).toArray())
@@ -92,36 +89,13 @@ export function DashboardHome() {
     })));
   }, [activeFamily?.id, matches.map(match => `${match.id}:${match.status}`).join(',')]) ?? [];
 
-  async function handleProfileAction() {
-    if (user) {
-      navigate('/settings');
-      return;
-    }
-    if (!supabase || authPending) return;
-
-    setAuthPending(true);
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/` },
-    });
-  }
-
   return <div className="home-page">
     <section className="home-hero">
       <div className="home-brand">
         <img src={tennisLogo} alt="" />
         <strong>Tennis <span>KPI Tracker</span></strong>
       </div>
-      <button
-        className="profile-avatar"
-        type="button"
-        onClick={handleProfileAction}
-        disabled={authPending || authLoading}
-        aria-label={user ? 'Apri impostazioni profilo' : 'Accedi con Google'}
-        title={user ? 'Profilo' : 'Accedi con Google'}
-      >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="9" r="3.6" /><path d="M5 20c1-4 4-5.5 7-5.5s6 1.5 7 5.5" /></svg>
-      </button>
+      <ProfileButton className="home-profile" />
       <div className="hero-tennis-ball" aria-hidden="true"><span /></div>
       <div className="home-welcome"><p>Benvenuto!</p><span>Monitora, migliora, gioca meglio</span></div>
       <button className="lime-button" onClick={openNewMatch}>
