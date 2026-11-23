@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Match, ScoredPoint } from '../../types';
-import { configuredSetNavigation, deriveGameScore, nextGameNumber, pointsToGame, resolvePointAction, tiebreakServer } from './scoring';
+import { configuredSetNavigation, deriveGameScore, deriveSetScore, getServer, isSetComplete, nextGameNumber, pointsToGame, resolvePointAction, isActionAvailable, tiebreakServer, tiebreakTarget } from './scoring';
 import { freeErrorStats, pressureStats, scorePressure, serveKpi, servicePlusOne } from '../kpi/kpi';
 
 const match = (overrides: Partial<Match> = {}): Match => ({
@@ -66,6 +66,39 @@ describe('scoring core', () => {
     expect(resolvePointAction('won')).toMatchObject({ winner: 'player' });
     expect(resolvePointAction('ace')).toMatchObject({ winner: 'player', shotCount: 1 });
   });
+
+  it('assigns the default shot count when my player serves and the rally was not counted', () => {
+    expect(resolvePointAction('won', 'player').shotCount).toBe(1);
+    expect(resolvePointAction('lost', 'player').shotCount).toBe(3);
+    expect(resolvePointAction('double_fault', 'player').shotCount).toBe(1);
+    expect(resolvePointAction('free_error', 'player').shotCount).toBe(3);
+    expect(resolvePointAction('great_shot', 'player').shotCount).toBe(3);
+    expect(resolvePointAction('ace', 'player').shotCount).toBe(1);
+  });
+
+  it('assigns the default shot count when the opponent serves and the rally was not counted', () => {
+    expect(resolvePointAction('won', 'opponent').shotCount).toBe(2);
+    expect(resolvePointAction('lost', 'opponent').shotCount).toBe(1);
+    expect(resolvePointAction('free_error', 'opponent').shotCount).toBe(2);
+    expect(resolvePointAction('great_shot', 'opponent').shotCount).toBe(2);
+  });
+
+  it('disables ace and double fault only when the opponent serves', () => {
+    expect(isActionAvailable('ace', 'opponent')).toBe(false);
+    expect(isActionAvailable('double_fault', 'opponent')).toBe(false);
+    expect(isActionAvailable('won', 'opponent')).toBe(true);
+    expect(isActionAvailable('ace', 'player')).toBe(true);
+    expect(isActionAvailable('double_fault', 'player')).toBe(true);
+  });
+
+  it('disables ace and double fault when more than one shot has been counted', () => {
+    expect(isActionAvailable('ace', 'player', 0)).toBe(true);
+    expect(isActionAvailable('ace', 'player', 1)).toBe(true);
+    expect(isActionAvailable('ace', 'player', 2)).toBe(false);
+    expect(isActionAvailable('double_fault', 'player', 2)).toBe(false);
+    expect(isActionAvailable('won', 'player', 2)).toBe(true);
+    expect(isActionAvailable('free_error', 'opponent', 5)).toBe(true);
+  });
   it('uses one-point deuce when enabled', () => {
     const points=[1,2,3].map(()=>point()).concat([1,2,3].map(()=>point({winner:'opponent'}))).concat([point()]);
     expect(deriveGameScore(points, true)).toEqual({ player: 'AD', opponent: '40' });
@@ -76,10 +109,70 @@ describe('scoring core', () => {
     expect(pointsToGame(points, 'player')).toBeNull();
   });
   it('alternates the first tie-break server and then every two points', () => {
-    const m=match();
-    expect(tiebreakServer(m,1,0)).toBe('opponent');
-    expect(tiebreakServer(m,1,1)).toBe('player');
-    expect(tiebreakServer(m,1,2)).toBe('player');
+    expect([0, 1, 2, 3, 4, 5, 6].map(index => tiebreakServer('player', index)))
+      .toEqual(['player', 'opponent', 'opponent', 'player', 'player', 'opponent', 'opponent']);
+  });
+});
+
+/** Builds the points of a whole game won by `winner` (4 points to love). */
+const wonGame = (setNumber: number, gameNumber: number, winner: 'player' | 'opponent') =>
+  [1, 2, 3, 4].map(n => point({ set_number: setNumber, game_number: gameNumber, point_number: n, winner }));
+/** Games alternating player/opponent until the score is n-n. */
+const levelSet = (setNumber: number, n: number) =>
+  Array.from({ length: n * 2 }, (_, index) => wonGame(setNumber, index + 1, index % 2 === 0 ? 'player' : 'opponent')).flat();
+
+describe('tie-break', () => {
+  const sixGameSets = match({ tiebreak_starts_at_363: false, deuce_single_point: false });
+
+  it('starts a tie-break to 7 only at 6-6 in standard sets', () => {
+    const points = levelSet(1, 6);
+    expect(tiebreakTarget(points, sixGameSets, 1, 13)).toBe(7);
+    expect(tiebreakTarget(points, sixGameSets, 1, 12)).toBeNull();
+    expect(tiebreakTarget(levelSet(1, 5), sixGameSets, 1, 11)).toBeNull();
+  });
+
+  it('scores the tie-break with numbers and a two-point margin, and closes the set 7-6', () => {
+    const tiebreak = (winners: ('player' | 'opponent')[]) => winners.map((winner, index) => point({ set_number: 1, game_number: 13, point_number: index + 1, winner }));
+    const points = [...levelSet(1, 6), ...tiebreak(['player', 'player', 'player', 'player', 'player', 'player', 'opponent'])];
+    expect(deriveGameScore(points.filter(p => p.game_number === 13), false, 7)).toEqual({ player: 6, opponent: 1 });
+    expect(pointsToGame(points.filter(p => p.game_number === 13), 'player', false, 7)).toBeNull();
+    const finished = [...points, point({ set_number: 1, game_number: 13, point_number: 8, winner: 'player' })];
+    expect(deriveSetScore(finished, 1, sixGameSets)).toEqual({ player: 7, opponent: 6 });
+    expect(isSetComplete({ player: 7, opponent: 6 }, sixGameSets, 1)).toBe(true);
+    expect(isSetComplete({ player: 6, opponent: 6 }, sixGameSets, 1)).toBe(false);
+  });
+
+  it('changes server point by point inside the tie-break', () => {
+    const base = levelSet(1, 6); // 12 games played: game 13 is served by the first server
+    const servers = [0, 1, 2, 3, 4].map(played => getServer(sixGameSets, [
+      ...base,
+      ...Array.from({ length: played }, (_, index) => point({ set_number: 1, game_number: 13, point_number: index + 1, winner: index % 2 ? 'opponent' : 'player' })),
+    ], 1, 13));
+    expect(servers).toEqual(['player', 'opponent', 'opponent', 'player', 'player']);
+  });
+
+  it('continues the service alternation across sets', () => {
+    // Set 1 won 6-0: six games, so the first server of set 2 is again the first server of the match.
+    const set1 = Array.from({ length: 6 }, (_, index) => wonGame(1, index + 1, 'player')).flat();
+    expect(getServer(sixGameSets, set1, 2, 1)).toBe('player');
+    // Set 1 won 6-1: seven games, so set 2 starts with the other player serving.
+    const set1b = [...set1, ...wonGame(1, 7, 'opponent')];
+    expect(getServer(sixGameSets, set1b, 2, 1)).toBe('opponent');
+  });
+
+  it('plays short sets to 4 games with a tie-break at 3-3', () => {
+    const shortSets = match({ tiebreak_starts_at_363: true, deuce_single_point: false });
+    expect(tiebreakTarget(levelSet(1, 3), shortSets, 1, 7)).toBe(7);
+    expect(isSetComplete({ player: 4, opponent: 2 }, shortSets, 1)).toBe(true);
+    expect(isSetComplete({ player: 4, opponent: 3 }, shortSets, 1)).toBe(true);
+    expect(isSetComplete({ player: 3, opponent: 3 }, shortSets, 1)).toBe(false);
+  });
+
+  it('plays the deciding set as a super tie-break to 10 when configured', () => {
+    const superTiebreak = match({ third_set_type: 'super-tiebreak', number_of_sets: 3, tiebreak_starts_at_363: false });
+    expect(tiebreakTarget([], superTiebreak, 3, 1)).toBe(10);
+    expect(tiebreakTarget([], superTiebreak, 2, 1)).toBeNull();
+    expect(isSetComplete({ player: 1, opponent: 0 }, superTiebreak, 3)).toBe(true);
   });
 });
 

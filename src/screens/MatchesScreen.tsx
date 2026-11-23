@@ -130,7 +130,7 @@ export function MatchEditor({ match, error, onClose, onSave }: {
       <label>Numero set<select value={draft.number_of_sets} onChange={event => field('number_of_sets', Number(event.target.value) as 3 | 5)}><option value={3}>Al meglio dei 3</option><option value={5}>Al meglio dei 5</option></select></label>
     </div>
     <div className="form-grid">
-      <label>Terzo set<select value={draft.third_set_type} onChange={event => field('third_set_type', event.target.value as Match['third_set_type'])}><option value="normal">Normale</option><option value="super-tiebreak">Super tie-break</option></select></label>
+      <label>Set decisivo<select value={draft.third_set_type} onChange={event => field('third_set_type', event.target.value as Match['third_set_type'])}><option value="normal">Normale</option><option value="super-tiebreak">Super tie-break</option></select></label>
       <label>Target super tie-break<input type="number" min="1" value={draft.super_tiebreak_target} onChange={event => field('super_tiebreak_target', Number(event.target.value))} /></label>
     </div>
     <div className="form-grid">
@@ -140,7 +140,7 @@ export function MatchEditor({ match, error, onClose, onSave }: {
     <label>Stato<select value={draft.status} onChange={event => field('status', event.target.value as Match['status'])}><option value="in-progress">In corso</option><option value="completed">Terminata</option></select></label>
     <label>Risultato<input value={draft.result ?? ''} onChange={event => field('result', event.target.value || null)} /></label>
     <label className="toggle-row"><span>Punto secco al 40-40</span><input type="checkbox" checked={draft.deuce_single_point} onChange={event => field('deuce_single_point', event.target.checked)} /></label>
-    <label className="toggle-row"><span>Tie-break da 3-3</span><input type="checkbox" checked={draft.tiebreak_starts_at_363} onChange={event => field('tiebreak_starts_at_363', event.target.checked)} /></label>
+    <label className="toggle-row"><span>Set brevi a 4 game (tie-break sul 3-3)</span><input type="checkbox" checked={draft.tiebreak_starts_at_363} onChange={event => field('tiebreak_starts_at_363', event.target.checked)} /></label>
     {error && <p className="family-feedback error" role="alert">{error}</p>}
     <button className="primary wide" disabled={!draft.opponent.trim() || !draft.player_id || draft.tiebreak_target < 1 || draft.super_tiebreak_target < 1}
       onClick={() => onSave({
@@ -181,7 +181,7 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
   const [third, setThird] = useState<'normal' | 'super-tiebreak'>('normal');
   const [firstServer, setFirstServer] = useState<'player' | 'opponent'>('player');
   const [deuce, setDeuce] = useState(true);
-  const [tb363, setTb363] = useState(true);
+  const [tb363, setTb363] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const selected = players.find(player => player.id === playerId);
 
@@ -249,11 +249,11 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
     <label>Torneo<input value={tournament} onChange={event => setTournament(event.target.value)} /></label>
     <div className="form-grid">
       <label>Set<select value={sets} onChange={event => setSets(Number(event.target.value) as 3 | 5)}><option value={3}>Al meglio dei 3</option><option value={5}>Al meglio dei 5</option></select></label>
-      <label>Terzo set<select value={third} onChange={event => setThird(event.target.value as 'normal' | 'super-tiebreak')}><option value="normal">Normale</option><option value="super-tiebreak">Super tie-break</option></select></label>
+      <label>Set decisivo<select value={third} onChange={event => setThird(event.target.value as 'normal' | 'super-tiebreak')}><option value="normal">Normale</option><option value="super-tiebreak">Super tie-break</option></select></label>
     </div>
     <label className="toggle-row"><span>Chi serve per primo</span><select value={firstServer} onChange={event => setFirstServer(event.target.value as 'player' | 'opponent')}><option value="player">Tu</option><option value="opponent">Avversario</option></select></label>
     <label className="toggle-row"><span>Punto secco al 40-40</span><input type="checkbox" checked={deuce} onChange={event => setDeuce(event.target.checked)} /></label>
-    <label className="toggle-row"><span>Tie-break da 3-3</span><input type="checkbox" checked={tb363} onChange={event => setTb363(event.target.checked)} /></label>
+    <label className="toggle-row"><span>Set brevi a 4 game (tie-break sul 3-3)</span><input type="checkbox" checked={tb363} onChange={event => setTb363(event.target.checked)} /></label>
     </div>
     <button className="player-editor-save new-match-submit" disabled={!selected || !opponent.trim()} onClick={() => void create()}><span aria-hidden="true">▶</span>Avvia partita</button>
     </div>

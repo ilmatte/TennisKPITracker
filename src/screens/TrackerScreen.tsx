@@ -1,10 +1,10 @@
 import './Tracker.css';
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getMatchPoints } from '../db/database';
 import { nextPointNumber } from '../db/pointNumbers';
-import { configuredSetNavigation, deriveGameScore, deriveSetScore, getServer, nextGameNumber, pointsToGame, resolvePointAction, sortedPoints, type PointAction } from '../features/scoring/scoring';
+import { configuredSetNavigation, deriveGameScore, deriveSetScore, getServer, isActionAvailable, isSetComplete, unavailableReason, isSuperTiebreakSet, nextGameNumber, pointsToGame, tiebreakTarget, resolvePointAction, sortedPoints, type PointAction } from '../features/scoring/scoring';
 import { countGameDescendants, countMatchDescendants, countSetDescendants, softDeleteGame, softDeleteMatch, softDeletePoint, softDeleteSet, updateGame, updateMatch, updatePoint, updateSet, type PointChanges } from '../db/sportsMutations';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import currentGameBackground from '../assets/background-currentgame/background-currentgame-3x.png';
@@ -47,6 +47,12 @@ export function Tracker() {
   const [editingPoint, setEditingPoint] = useState<ScoredPoint | null>(null);
   const [matchMenuOpen, setMatchMenuOpen] = useState(false);
   const [editingMatch, setEditingMatch] = useState(false);
+  // Shot counter for the rally being played: +1 per shot, saved with the next point, then reset.
+  const [shotCount, setShotCount] = useState(0);
+  const [shotSheetOpen, setShotSheetOpen] = useState(false);
+  const [shotDraft, setShotDraft] = useState(0);
+  const swipeStartX = useRef<number | null>(null);
+  const swipeHandled = useRef(false);
 
   const setTabs = match ? configuredSetNavigation(match.number_of_sets, hierarchy.sets) : [];
   const selectedSetNumber = match && setNumber > match.number_of_sets ? 1 : setNumber;
@@ -55,18 +61,17 @@ export function Tracker() {
   const currentSet = hierarchy.sets.find(set => set.set_number === selectedSetNumber);
   const currentGame = hierarchy.games.find(game => game.set_id === currentSet?.id && game.game_number === gameNumber);
   const gamePoints = sortedPoints(points, selectedSetNumber, gameNumber);
-  const gameComplete = match ? Boolean(pointsToGame(gamePoints, 'player', match.deuce_single_point)) : false;
+  const currentTiebreak = match ? tiebreakTarget(points, match, selectedSetNumber, gameNumber) : null;
+  const gameComplete = match ? Boolean(pointsToGame(gamePoints, 'player', match.deuce_single_point, currentTiebreak)) : false;
+  const currentServer = match ? getServer(match, points, selectedSetNumber, gameNumber) : 'player';
   const setScore = match ? deriveSetScore(points, selectedSetNumber, match) : { player: 0, opponent: 0 };
   const recordedGameNumbers = hierarchy.games.filter(game => game.set_id === currentSet?.id).map(game => game.game_number);
   recordedGameNumbers.push(...points.filter(point => point.set_number === selectedSetNumber).map(point => point.game_number));
   const lastGameNumber = Math.max(currentGameNumber, ...recordedGameNumbers);
 
-  const completedSets = match ? hierarchy.sets.filter(set => {
-    const score = deriveSetScore(points, set.set_number, match);
-    const high = Math.max(score.player, score.opponent);
-    const low = Math.min(score.player, score.opponent);
-    return (high >= 6 && high - low >= 2) || (high >= 7 && high - low >= 1);
-  }) : [];
+  const completedSets = match
+    ? hierarchy.sets.filter(set => isSetComplete(deriveSetScore(points, set.set_number, match), match, set.set_number))
+    : [];
   useEffect(() => {
     if (!match) return;
     const latestCompleted = Math.max(0, ...completedSets.map(set => set.set_number));
@@ -84,7 +89,7 @@ export function Tracker() {
   }
 
   async function savePoint(action: PointAction) {
-    if (gameComplete) return;
+    if (gameComplete || !isActionAvailable(action, currentServer, shotCount)) return;
     const created_at = stamp();
     try {
       await db.transaction('rw', [db.matches, db.sets, db.games, db.points, db.syncQueue], async () => {
@@ -137,14 +142,17 @@ export function Tracker() {
             ? [{ ...stored, set_number: set.set_number, game_number: game.game_number }]
             : [];
         });
-        const result = resolvePointAction(action);
+        const server = getServer(currentMatch, scoredPoints, selectedSetNumber, gameNumber);
+        const reason = unavailableReason(action, server, shotCount);
+        if (reason) throw new Error(`${action === 'ace' ? 'Ace' : 'Doppio fallo'}: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}.`);
+        const result = resolvePointAction(action, server);
         const historicalGamePoints = await db.points.where('game_id').equals(tennisGame.id).toArray();
         const point: Point = {
           id: crypto.randomUUID(), family_id: activeMatch.family_id, game_id: tennisGame.id,
           point_number: nextPointNumber(historicalGamePoints),
-          winner: result.winner, server: getServer(currentMatch, selectedSetNumber, gameNumber),
+          winner: result.winner, server,
           second_serve: result.secondServe, double_fault: result.doubleFault,
-          shot_count: result.shotCount,
+          shot_count: shotCount > 0 ? shotCount : result.shotCount,
           free_error: result.freeError, error_player: action === 'free_error' ? 'player' : undefined,
           error_category: action === 'free_error' ? 'other' : undefined,
           attack_error: false, pressure_situation: false, pressure_error_player: undefined,
@@ -181,7 +189,32 @@ export function Tracker() {
       setTrackerError(cause instanceof Error ? cause.message : 'Impossibile salvare il punto.');
       return;
     }
+    setShotCount(0);
     setTrackerError(null);
+  }
+
+  // "+1 Colpo": a tap adds one shot; so does a horizontal swipe across the button.
+  function shotPointerDown(event: PointerEvent<HTMLButtonElement>) {
+    swipeStartX.current = event.clientX;
+    swipeHandled.current = false;
+  }
+  function shotPointerUp(event: PointerEvent<HTMLButtonElement>) {
+    if (swipeStartX.current !== null && Math.abs(event.clientX - swipeStartX.current) > 24) {
+      swipeHandled.current = true;
+      setShotCount(count => Math.min(99, count + 1));
+    }
+    swipeStartX.current = null;
+  }
+  function shotClick() {
+    if (swipeHandled.current) {
+      swipeHandled.current = false;
+      return;
+    }
+    setShotCount(count => Math.min(99, count + 1));
+  }
+  function openShotSheet() {
+    setShotDraft(shotCount);
+    setShotSheetOpen(true);
   }
 
   async function removePoint(point: ScoredPoint) {
@@ -266,7 +299,8 @@ export function Tracker() {
     .sort((a, b) => b.set_number - a.set_number)
     .map(set => ({ id: set.id, number: set.set_number, score: deriveSetScore(points, set.set_number, match) }));
   const hasConcludedSets = concludedSets.length > 0;
-  const gameScore = deriveGameScore(gamePoints, match.deuce_single_point);
+  const gameScore = deriveGameScore(gamePoints, match.deuce_single_point, currentTiebreak);
+  const tiebreakLabel = isSuperTiebreakSet(match, selectedSetNumber) ? 'Super tie-break' : 'Tie-break';
   const lostActions: { action: PointAction; label: string; icon: string }[] = [
     { action: 'free_error', label: 'Errore gratuito', icon: freeErrorIcon },
     { action: 'double_fault', label: 'Doppio fallo', icon: doubleFaultIcon },
@@ -283,7 +317,7 @@ export function Tracker() {
       <button className="cg-round-button cg-back" onClick={() => window.history.back()} aria-label="Indietro">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
       </button>
-      <h1>Partita in corso</h1>
+      <h1>{currentTiebreak ? tiebreakLabel : 'Partita in corso'}</h1>
       <button className="cg-round-button cg-menu" onClick={() => setMatchMenuOpen(true)} aria-label="Menu partita">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><circle cx="12" cy="5" r="2.2" /><circle cx="12" cy="12" r="2.2" /><circle cx="12" cy="19" r="2.2" /></svg>
       </button>
@@ -310,22 +344,28 @@ export function Tracker() {
     <img className="cg-wave" src={currentGameBackground} alt="" />
     <div className="cg-body">
       <section className="cg-panel">
-        <div className="cg-heading">
-          <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#E5484D" /><path d="M8 8l8 8M16 8l-8 8" stroke="#fff" strokeWidth="3" strokeLinecap="round" /></svg>
-          <h2>Punto perso</h2>
+        <div className="cg-shots">
+          <button className="cg-shots-count" onClick={openShotSheet} aria-label={`Modifica numero di colpi: ${shotCount}`}>
+            <span>Colpi</span>
+            <strong>{shotCount}</strong>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z" /></svg>
+          </button>
+          <button className="cg-shots-add" aria-label="Aggiungi un colpo" onClick={shotClick} onPointerDown={shotPointerDown} onPointerUp={shotPointerUp} onPointerCancel={() => { swipeStartX.current = null; }}>
+            <span className="cg-shots-plus">+1</span>
+            <span className="cg-shots-label"><strong>Colpo</strong><small>tocca o scorri</small></span>
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l6 6-6 6M12 6l6 6-6 6" /></svg>
+          </button>
         </div>
-        <div className="cg-actions">
-          {lostActions.map(item => <button key={item.action} className="cg-action lost" onClick={() => void savePoint(item.action)} disabled={gameComplete}>
+        <div className="cg-actions" role="group" aria-label="Punto perso">
+          {lostActions.map(item => <button key={item.action} className="cg-action lost" onClick={() => void savePoint(item.action)} disabled={gameComplete || !isActionAvailable(item.action, currentServer, shotCount)}
+            title={unavailableReason(item.action, currentServer, shotCount) ?? undefined}>
             <img src={item.icon} alt="" /><span>{item.label}</span>
           </button>)}
         </div>
         <div className="cg-spacer" />
-        <div className="cg-heading">
-          <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1FA64A" /><path d="M7 12.5l3.5 3.5L17 8.5" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          <h2>Punto vinto</h2>
-        </div>
-        <div className="cg-actions">
-          {wonActions.map(item => <button key={item.action} className="cg-action won" onClick={() => void savePoint(item.action)} disabled={gameComplete}>
+        <div className="cg-actions" role="group" aria-label="Punto vinto">
+          {wonActions.map(item => <button key={item.action} className="cg-action won" onClick={() => void savePoint(item.action)} disabled={gameComplete || !isActionAvailable(item.action, currentServer, shotCount)}
+            title={unavailableReason(item.action, currentServer, shotCount) ?? undefined}>
             <img src={item.icon} alt="" /><span>{item.label}</span>
           </button>)}
         </div>
@@ -345,11 +385,12 @@ export function Tracker() {
           <div className="cg-chip-row" aria-label="Seleziona game">
             {Array.from({ length: lastGameNumber }, (_, index) => index + 1).map(number => {
               const selectedPoints = sortedPoints(points, selectedSetNumber, number);
-              const result = pointsToGame(selectedPoints, 'player', match.deuce_single_point);
+              const target = tiebreakTarget(points, match, selectedSetNumber, number);
+              const result = pointsToGame(selectedPoints, 'player', match.deuce_single_point, target);
               const label = result ? `${result.player}-${result.opponent}` : 'in corso';
               const isCurrent = number === currentGameNumber;
               return <button key={number} className={`cg-chip${number === gameNumber ? ' active' : ''}${isCurrent ? ' current' : ''}`} onClick={() => selectGame(number)}>
-                Game {number}<span>{isCurrent ? 'Corrente' : label}</span>
+                {target ? tiebreakLabel : `Game ${number}`}<span>{isCurrent ? 'Corrente' : label}</span>
               </button>;
             })}
           </div>
@@ -368,6 +409,34 @@ export function Tracker() {
       </section>
     </div>
     <img className="cg-footer" src={currentGameFooter} alt="" aria-hidden="true" />
+    {shotSheetOpen && <div className="cg-sheet-backdrop" onClick={() => setShotSheetOpen(false)}>
+      <section className="cg-sheet" role="dialog" aria-modal="true" aria-labelledby="cg-sheet-title" onClick={event => event.stopPropagation()}>
+        <div className="cg-sheet-handle" aria-hidden="true" />
+        <div className="cg-sheet-head">
+          <h3 id="cg-sheet-title">Colpi dello scambio</h3>
+          <button className="cg-sheet-close" aria-label="Chiudi" onClick={() => setShotSheetOpen(false)}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          </button>
+        </div>
+        <p className="cg-sheet-note">Conteggio automatico: <b>{shotCount}</b>. Correggilo scegliendo un numero.</p>
+        <div className="cg-sheet-label">Numeri comuni</div>
+        <div className="cg-sheet-presets">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30].map(value =>
+            <button key={value} className={value === shotDraft ? 'selected' : ''} aria-pressed={value === shotDraft} onClick={() => setShotDraft(value)}>{value}</button>)}
+        </div>
+        <div className="cg-sheet-label custom">Numero personalizzato</div>
+        <div className="cg-sheet-stepper">
+          <button aria-label="Meno uno" onClick={() => setShotDraft(value => Math.max(0, value - 1))}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.8" strokeLinecap="round" aria-hidden="true"><path d="M5 12h14" /></svg>
+          </button>
+          <output aria-live="polite">{shotDraft}</output>
+          <button aria-label="Più uno" onClick={() => setShotDraft(value => Math.min(99, value + 1))}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          </button>
+        </div>
+        <button className="cg-sheet-confirm" onClick={() => { setShotCount(shotDraft); setShotSheetOpen(false); }}>Conferma {shotDraft} {shotDraft === 1 ? 'colpo' : 'colpi'}</button>
+      </section>
+    </div>}
     {editingSet && <SetEditor set={editingSet} onClose={() => setEditingSet(null)} onSave={async set_number => {
       await updateSet(activeMatch.family_id, editingSet.id, { set_number });
       setSetNumber(set_number);
