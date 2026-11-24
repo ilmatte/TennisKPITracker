@@ -12,7 +12,15 @@
 .cg-score-card{flex:1;min-width:0;height:118px;box-sizing:border-box;padding:0 10px;border-radius:22px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff}
 .cg-score-card span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;font-weight:700;opacity:.9}
 .cg-score-card strong{font-size:56px;line-height:1.05;font-weight:800}
-.cg-ball{position:absolute;left:50%;top:123px;margin-left:-17px;line-height:0}
+/* "Al servizio" player icon next to the server's points (cropped from the square icon to its 121x240 figure) */
+.cg-score-value{position:relative;display:grid;justify-items:center}
+/* The score and an invisible "AD" share the same cell: the box is always as wide as "AD", so the icon never moves. */
+.cg-score-value>strong{grid-area:1/1}
+.cg-score-sizer{visibility:hidden}
+.cg-serving{--serving-w:26.6px;position:absolute;bottom:8px;display:block;width:var(--serving-w);height:52.8px;object-fit:cover}
+.cg-serving.left{right:100%;margin-right:var(--serving-w)}
+.cg-serving.right{left:100%;margin-left:var(--serving-w)}
+.cg-ball{position:absolute;left:50%;top:125.55px;margin-left:-14.45px;line-height:0}
 .cg-set-pills{position:absolute;left:0;right:0;top:178px;display:flex;justify-content:center;gap:10px;padding:0 12px}
 .cg-set-pill{display:flex;align-items:center;gap:6px;height:36px;box-sizing:border-box;padding:0 16px;border-radius:18px;font-size:14px;font-weight:700;white-space:nowrap;background:#123B7A;border:1px solid rgba(255,255,255,.22);color:#fff}
 .cg-dot{width:8px;height:8px;border-radius:4px;background:#C8F03A}
@@ -23,7 +31,8 @@
 .has-sets .cg-score-card{height:90px;border-radius:20px}
 .has-sets .cg-score-card span{font-size:14px}
 .has-sets .cg-score-card strong{font-size:48px}
-.has-sets .cg-ball{top:98px}
+.has-sets .cg-serving{--serving-w:23px;height:45.6px}
+.has-sets .cg-ball{top:100.55px}
 .cg-set-list{display:flex;flex-direction:column;gap:2px}
 .cg-set-row{height:24px;border-radius:12px;display:grid;grid-template-columns:1fr 60px 1fr;align-items:center;justify-items:center}
 .cg-set-row b{font-size:12px;font-weight:800;letter-spacing:.06em;color:rgba(255,255,255,.7)}

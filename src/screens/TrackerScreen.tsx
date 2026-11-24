@@ -15,6 +15,7 @@ import pointLostIcon from '../assets/icone/currentgame/perso-chiaro.svg';
 import greatShotIcon from '../assets/icone/currentgame/bel-colpo-chiaro.svg';
 import pointWonIcon from '../assets/icone/currentgame/vinto-chiaro.svg';
 import aceIcon from '../assets/icone/currentgame/ace-chiaro.svg';
+import servingIcon from '../assets/icone/trasparente/512/tennista-servizio-trasparente-512.png';
 import { MatchEditor } from './MatchesScreen';
 import { stamp, mutationError, queueOperation } from './shared';
 import type { ErrorCategory, Game, Point, ScoredPoint, TennisSet } from '../types';
@@ -322,11 +323,25 @@ export function Tracker() {
         <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><circle cx="12" cy="5" r="2.2" /><circle cx="12" cy="12" r="2.2" /><circle cx="12" cy="19" r="2.2" /></svg>
       </button>
       <div className="cg-scores">
-        <div className="cg-score-card"><span>Tu</span><strong>{gameScore.player}</strong></div>
-        <div className="cg-score-card"><span>{match.opponent || 'Avversario'}</span><strong>{gameScore.opponent}</strong></div>
+        <div className="cg-score-card">
+          <span>Tu</span>
+          <div className="cg-score-value">
+            {currentServer === 'player' && <img className="cg-serving left" src={servingIcon} alt="Al servizio" title="Al servizio" />}
+            <strong>{gameScore.player}</strong>
+            <strong className="cg-score-sizer" aria-hidden="true">AD</strong>
+          </div>
+        </div>
+        <div className="cg-score-card">
+          <span>{match.opponent || 'Avversario'}</span>
+          <div className="cg-score-value">
+            {currentServer === 'opponent' && <img className="cg-serving right" src={servingIcon} alt="Al servizio" title="Al servizio" />}
+            <strong>{gameScore.opponent}</strong>
+            <strong className="cg-score-sizer" aria-hidden="true">AD</strong>
+          </div>
+        </div>
       </div>
       <div className="cg-ball" aria-hidden="true">
-        <svg width="34" height="34" viewBox="0 0 48 48"><defs><radialGradient id="cg-pb" cx=".35" cy=".3" r=".85"><stop offset="0" stopColor="#E9FB78" /><stop offset=".55" stopColor="#C8F03A" /><stop offset="1" stopColor="#9CCB1B" /></radialGradient><clipPath id="cg-pc"><circle cx="24" cy="24" r="22" /></clipPath></defs><circle cx="24" cy="24" r="22" fill="url(#cg-pb)" /><g clipPath="url(#cg-pc)" fill="none" stroke="#fff" strokeWidth="3.2"><path d="M10 0C24 14 24 34 10 48" /><path d="M38 0C24 14 24 34 38 48" /></g></svg>
+        <svg width="28.9" height="28.9" viewBox="0 0 48 48"><defs><radialGradient id="cg-pb" cx=".35" cy=".3" r=".85"><stop offset="0" stopColor="#E9FB78" /><stop offset=".55" stopColor="#C8F03A" /><stop offset="1" stopColor="#9CCB1B" /></radialGradient><clipPath id="cg-pc"><circle cx="24" cy="24" r="22" /></clipPath></defs><circle cx="24" cy="24" r="22" fill="url(#cg-pb)" /><g clipPath="url(#cg-pc)" fill="none" stroke="#fff" strokeWidth="3.2"><path d="M10 0C24 14 24 34 10 48" /><path d="M38 0C24 14 24 34 38 48" /></g></svg>
       </div>
       {hasConcludedSets
         ? <div className="cg-set-list">
