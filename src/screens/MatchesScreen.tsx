@@ -30,6 +30,14 @@ function summarize(match: Match, points: ScoredPoint[]): MatchSummary {
   return { match, scoreText: labels.join(' '), outcome, duration };
 }
 
+/** Labels for the "who serves first" choice: the player's name, and the opponent's name marked "(avversario)". */
+function ServerOptions({ playerName, opponent }: { playerName: string; opponent: string }) {
+  return <>
+    <option value="player">{playerName.trim() || 'Giocatore'}</option>
+    <option value="opponent">{opponent.trim() ? `${opponent.trim()} (avversario)` : 'Avversario'}</option>
+  </>;
+}
+
 const outcomeLabel = { won: 'Vinta', lost: 'Persa', 'in-progress': 'In corso' } as const;
 
 export function Matches() {
@@ -108,6 +116,10 @@ export function MatchEditor({ match, error, onClose, onSave }: {
     : [], [activeFamily?.id]) ?? [];
   const [draft, setDraft] = useState<Match>(match);
   const field = <K extends keyof Match>(key: K, value: Match[K]) => setDraft(current => ({ ...current, [key]: value }));
+  const editorPlayer = players.find(player => player.id === draft.player_id);
+  const editorPlayerName = editorPlayer
+    ? `${editorPlayer.first_name} ${editorPlayer.last_name}`
+    : `${match.player_first_name_snapshot} ${match.player_last_name_snapshot}`;
 
   return <div className="modal-backdrop"><div className="modal-sheet">
     <div className="modal-heading"><h2>Modifica partita</h2><button className="icon-button" onClick={onClose}>×</button></div>
@@ -135,7 +147,7 @@ export function MatchEditor({ match, error, onClose, onSave }: {
     </div>
     <div className="form-grid">
       <label>Target tie-break<input type="number" min="1" value={draft.tiebreak_target} onChange={event => field('tiebreak_target', Number(event.target.value))} /></label>
-      <label>Primo servizio<select value={draft.first_server} onChange={event => field('first_server', event.target.value as Match['first_server'])}><option value="player">Tu</option><option value="opponent">Avversario</option></select></label>
+      <label>Primo servizio<select value={draft.first_server} onChange={event => field('first_server', event.target.value as Match['first_server'])}><ServerOptions playerName={editorPlayerName} opponent={draft.opponent} /></select></label>
     </div>
     <label>Stato<select value={draft.status} onChange={event => field('status', event.target.value as Match['status'])}><option value="in-progress">In corso</option><option value="completed">Terminata</option></select></label>
     <label>Risultato<input value={draft.result ?? ''} onChange={event => field('result', event.target.value || null)} /></label>
@@ -251,7 +263,7 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
       <label>Set<select value={sets} onChange={event => setSets(Number(event.target.value) as 3 | 5)}><option value={3}>Al meglio dei 3</option><option value={5}>Al meglio dei 5</option></select></label>
       <label>Set decisivo<select value={third} onChange={event => setThird(event.target.value as 'normal' | 'super-tiebreak')}><option value="normal">Normale</option><option value="super-tiebreak">Super tie-break</option></select></label>
     </div>
-    <label className="toggle-row"><span>Chi serve per primo</span><select value={firstServer} onChange={event => setFirstServer(event.target.value as 'player' | 'opponent')}><option value="player">Tu</option><option value="opponent">Avversario</option></select></label>
+    <label className="toggle-row"><span>Chi serve per primo</span><select value={firstServer} onChange={event => setFirstServer(event.target.value as 'player' | 'opponent')}><ServerOptions playerName={selected ? `${selected.first_name} ${selected.last_name}` : ''} opponent={opponent} /></select></label>
     <label className="toggle-row"><span>Punto secco al 40-40</span><input type="checkbox" checked={deuce} onChange={event => setDeuce(event.target.checked)} /></label>
     <label className="toggle-row"><span>Set brevi a 4 game (tie-break sul 3-3)</span><input type="checkbox" checked={tb363} onChange={event => setTb363(event.target.checked)} /></label>
     </div>

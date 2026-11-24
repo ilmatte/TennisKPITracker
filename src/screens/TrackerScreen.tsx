@@ -4,7 +4,7 @@ import { useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getMatchPoints } from '../db/database';
 import { nextPointNumber } from '../db/pointNumbers';
-import { configuredSetNavigation, deriveGameScore, deriveSetScore, getServer, isActionAvailable, isSetComplete, unavailableReason, isSuperTiebreakSet, nextGameNumber, pointsToGame, tiebreakTarget, resolvePointAction, sortedPoints, type PointAction } from '../features/scoring/scoring';
+import { configuredSetNavigation, deriveGameScore, deriveSetScore, getGameServer, getServer, isActionAvailable, serverOverrideKey, tiebreakServer, type ServerOverrides, type Side, isSetComplete, unavailableReason, isSuperTiebreakSet, nextGameNumber, pointsToGame, tiebreakTarget, resolvePointAction, sortedPoints, type PointAction } from '../features/scoring/scoring';
 import { countGameDescendants, countMatchDescendants, countSetDescendants, softDeleteGame, softDeleteMatch, softDeletePoint, softDeleteSet, updateGame, updateMatch, updatePoint, updateSet, type PointChanges } from '../db/sportsMutations';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import currentGameBackground from '../assets/background-currentgame/background-currentgame-3x.png';
@@ -50,6 +50,8 @@ export function Tracker() {
   const [editingMatch, setEditingMatch] = useState(false);
   // Shot counter for the rally being played: +1 per shot, saved with the next point, then reset.
   const [shotCount, setShotCount] = useState(0);
+  // Server corrections for games with no points yet (once a point is saved, its stored server is the reference).
+  const [serverOverrides, setServerOverrides] = useState<ServerOverrides>({});
   const [shotSheetOpen, setShotSheetOpen] = useState(false);
   const [shotDraft, setShotDraft] = useState(0);
   const swipeStartX = useRef<number | null>(null);
@@ -64,7 +66,8 @@ export function Tracker() {
   const gamePoints = sortedPoints(points, selectedSetNumber, gameNumber);
   const currentTiebreak = match ? tiebreakTarget(points, match, selectedSetNumber, gameNumber) : null;
   const gameComplete = match ? Boolean(pointsToGame(gamePoints, 'player', match.deuce_single_point, currentTiebreak)) : false;
-  const currentServer = match ? getServer(match, points, selectedSetNumber, gameNumber) : 'player';
+  const currentServer = match ? getServer(match, points, selectedSetNumber, gameNumber, serverOverrides) : 'player';
+  const gameServer = match ? getGameServer(match, points, selectedSetNumber, gameNumber, serverOverrides) : 'player';
   const setScore = match ? deriveSetScore(points, selectedSetNumber, match) : { player: 0, opponent: 0 };
   const recordedGameNumbers = hierarchy.games.filter(game => game.set_id === currentSet?.id).map(game => game.game_number);
   recordedGameNumbers.push(...points.filter(point => point.set_number === selectedSetNumber).map(point => point.game_number));
@@ -143,7 +146,7 @@ export function Tracker() {
             ? [{ ...stored, set_number: set.set_number, game_number: game.game_number }]
             : [];
         });
-        const server = getServer(currentMatch, scoredPoints, selectedSetNumber, gameNumber);
+        const server = getServer(currentMatch, scoredPoints, selectedSetNumber, gameNumber, serverOverrides);
         const reason = unavailableReason(action, server, shotCount);
         if (reason) throw new Error(`${action === 'ace' ? 'Ace' : 'Doppio fallo'}: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}.`);
         const result = resolvePointAction(action, server);
@@ -216,6 +219,30 @@ export function Tracker() {
   function openShotSheet() {
     setShotDraft(shotCount);
     setShotSheetOpen(true);
+  }
+
+  /** Corrects who serves the selected game; the following games keep alternating from this one. */
+  async function swapGameServer() {
+    const newServer: Side = gameServer === 'player' ? 'opponent' : 'player';
+    if (!gamePoints.length) {
+      setServerOverrides(current => ({ ...current, [serverOverrideKey(selectedSetNumber, gameNumber)]: newServer }));
+      return;
+    }
+    try {
+      for (const [index, point] of gamePoints.entries()) {
+        const server = currentTiebreak ? tiebreakServer(newServer, index) : newServer;
+        if (point.server === server) continue;
+        await updatePoint(activeMatch.family_id, point.id, {
+          winner: point.winner, server, second_serve: point.second_serve, double_fault: point.double_fault,
+          shot_count: point.shot_count, free_error: point.free_error, error_player: point.error_player,
+          error_category: point.error_category, attack_error: point.attack_error,
+          pressure_situation: point.pressure_situation, pressure_error_player: point.pressure_error_player,
+        });
+      }
+      setTrackerError(null);
+    } catch (cause) {
+      setTrackerError(cause instanceof Error ? cause.message : 'Impossibile cambiare chi serve.');
+    }
   }
 
   async function removePoint(point: ScoredPoint) {
@@ -301,6 +328,8 @@ export function Tracker() {
     .map(set => ({ id: set.id, number: set.set_number, score: deriveSetScore(points, set.set_number, match) }));
   const hasConcludedSets = concludedSets.length > 0;
   const gameScore = deriveGameScore(gamePoints, match.deuce_single_point, currentTiebreak);
+  const playerName = `${match.player_first_name_snapshot} ${match.player_last_name_snapshot}`.trim() || 'Giocatore';
+  const opponentName = match.opponent || 'Avversario';
   const tiebreakLabel = isSuperTiebreakSet(match, selectedSetNumber) ? 'Super tie-break' : 'Tie-break';
   const lostActions: { action: PointAction; label: string; icon: string }[] = [
     { action: 'free_error', label: 'Errore gratuito', icon: freeErrorIcon },
@@ -324,7 +353,7 @@ export function Tracker() {
       </button>
       <div className="cg-scores">
         <div className="cg-score-card">
-          <span>Tu</span>
+          <span>{playerName}</span>
           <div className="cg-score-value">
             {currentServer === 'player' && <img className="cg-serving left" src={servingIcon} alt="Al servizio" title="Al servizio" />}
             <strong>{gameScore.player}</strong>
@@ -412,7 +441,7 @@ export function Tracker() {
           {gamePoints.length > 0 && <div className="cg-history">
             <h3>Punti del game {gameNumber}</h3>
             {gamePoints.map(point => <div className="cg-history-row" key={point.id}>
-              <span>{point.point_number}</span><strong>{point.winner === 'player' ? 'Tu' : match.opponent}</strong>
+              <span>{point.point_number}</span><strong>{point.winner === 'player' ? playerName : opponentName}</strong>
               <span>{point.shot_count} colpi</span>
               <span className="cg-history-actions">
                 <button onClick={() => setEditingPoint(point)}>Modifica</button>
@@ -464,7 +493,7 @@ export function Tracker() {
       setEditingGame(null);
       setTrackerError(null);
     }} />}
-    {editingPoint && <PointEditor point={editingPoint} onClose={() => setEditingPoint(null)} onSave={savePointChanges} />}
+    {editingPoint && <PointEditor point={editingPoint} playerName={playerName} opponentName={opponentName} onClose={() => setEditingPoint(null)} onSave={savePointChanges} />}
     {editingMatch && <MatchEditor match={activeMatch} error={trackerError} onClose={() => setEditingMatch(false)} onSave={async changes => {
       try { await updateMatch(activeMatch.family_id, activeMatch.id, changes); setEditingMatch(false); setTrackerError(null); }
       catch (cause) { setTrackerError(cause instanceof Error ? cause.message : 'Impossibile modificare la partita.'); }
@@ -472,6 +501,7 @@ export function Tracker() {
     {matchMenuOpen && <div className="tracker-menu-backdrop" onClick={() => setMatchMenuOpen(false)}>
       <div className="tracker-action-menu" role="dialog" aria-label="Menu partita" onClick={event => event.stopPropagation()}>
         <span className="menu-section-label">GAME</span>
+        <button onClick={() => { setMatchMenuOpen(false); void swapGameServer(); }}>⇄ <span>Fai servire {gameServer === 'player' ? opponentName : playerName}</span></button>
         <button onClick={() => { setMatchMenuOpen(false); if (currentGame) setEditingGame(currentGame); }}>✎ <span>Modifica game</span></button>
         <button className="menu-delete" onClick={() => { setMatchMenuOpen(false); if (currentGame) void removeGame(currentGame); }}>⌫ <span>Elimina game</span></button>
         <hr /><span className="menu-section-label">SET</span>
@@ -520,8 +550,10 @@ function GameEditor({ game, onClose, onSave }: {
   </div></div>;
 }
 
-function PointEditor({ point, onClose, onSave }: {
+function PointEditor({ point, playerName, opponentName, onClose, onSave }: {
   point: ScoredPoint;
+  playerName: string;
+  opponentName: string;
   onClose: () => void;
   onSave: (changes: PointChanges) => Promise<void>;
 }) {
@@ -545,12 +577,12 @@ function PointEditor({ point, onClose, onSave }: {
   return <div className="modal-backdrop"><div className="modal-sheet">
     <div className="modal-heading"><h2>Modifica punto {point.point_number}</h2><button className="icon-button" onClick={onClose}>×</button></div>
     <div className="form-grid">
-      <label>Vincitore<select value={draft.winner} onChange={event => field('winner', event.target.value as Point['winner'])}><option value="player">Tu</option><option value="opponent">Avversario</option></select></label>
-      <label>Battitore<select value={draft.server} onChange={event => field('server', event.target.value as Point['server'])}><option value="player">Tu</option><option value="opponent">Avversario</option></select></label>
+      <label>Vincitore<select value={draft.winner} onChange={event => field('winner', event.target.value as Point['winner'])}><option value="player">{playerName}</option><option value="opponent">{opponentName}</option></select></label>
+      <label>Battitore<select value={draft.server} onChange={event => field('server', event.target.value as Point['server'])}><option value="player">{playerName}</option><option value="opponent">{opponentName}</option></select></label>
     </div>
     <div className="form-grid">
       <label>Numero colpi<input type="number" min="1" value={draft.shot_count} onChange={event => field('shot_count', Number(event.target.value))} /></label>
-      <label>Autore errore<select value={draft.error_player ?? ''} onChange={event => field('error_player', event.target.value ? event.target.value as Point['error_player'] : undefined)}><option value="">Nessuno</option><option value="player">Tu</option><option value="opponent">Avversario</option></select></label>
+      <label>Autore errore<select value={draft.error_player ?? ''} onChange={event => field('error_player', event.target.value ? event.target.value as Point['error_player'] : undefined)}><option value="">Nessuno</option><option value="player">{playerName}</option><option value="opponent">{opponentName}</option></select></label>
     </div>
     <label>Categoria errore<select value={draft.error_category ?? ''} onChange={event => field('error_category', event.target.value ? event.target.value as ErrorCategory : undefined)}>
       <option value="">Nessuna</option><option value="forehand">Dritto</option><option value="backhand">Rovescio</option>
@@ -562,7 +594,7 @@ function PointEditor({ point, onClose, onSave }: {
     <label className="toggle-row"><span>Errore in attacco</span><input type="checkbox" checked={draft.attack_error} onChange={event => field('attack_error', event.target.checked)} /></label>
     <label className="toggle-row"><span>Situazione di pressione</span><input type="checkbox" checked={draft.pressure_situation} onChange={event => field('pressure_situation', event.target.checked)} /></label>
     <label>Autore errore sotto pressione<select value={draft.pressure_error_player ?? ''} onChange={event => field('pressure_error_player', event.target.value ? event.target.value as Point['pressure_error_player'] : undefined)}>
-      <option value="">Nessuno</option><option value="player">Tu</option><option value="opponent">Avversario</option>
+      <option value="">Nessuno</option><option value="player">{playerName}</option><option value="opponent">{opponentName}</option>
     </select></label>
     <p className="family-feedback">Il punteggio del game, quello del set e i KPI saranno ricalcolati al salvataggio.</p>
     {error && <p className="family-feedback error" role="alert">{error}</p>}

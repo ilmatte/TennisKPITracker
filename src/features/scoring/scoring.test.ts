@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Match, ScoredPoint } from '../../types';
-import { configuredSetNavigation, deriveGameScore, deriveSetScore, getServer, isSetComplete, nextGameNumber, pointsToGame, resolvePointAction, isActionAvailable, tiebreakServer, tiebreakTarget } from './scoring';
+import { configuredSetNavigation, deriveGameScore, deriveSetScore, getServer, isSetComplete, nextGameNumber, pointsToGame, resolvePointAction, isActionAvailable, serverOverrideKey, tiebreakServer, tiebreakTarget } from './scoring';
 import { freeErrorStats, pressureStats, scorePressure, serveKpi, servicePlusOne } from '../kpi/kpi';
 
 const match = (overrides: Partial<Match> = {}): Match => ({
@@ -114,10 +114,10 @@ describe('scoring core', () => {
   });
 });
 
-/** Builds the points of a whole game won by `winner` (4 points to love). */
-const wonGame = (setNumber: number, gameNumber: number, winner: 'player' | 'opponent') =>
-  [1, 2, 3, 4].map(n => point({ set_number: setNumber, game_number: gameNumber, point_number: n, winner }));
-/** Games alternating player/opponent until the score is n-n. */
+/** Builds the points of a whole game won by `winner` (4 points to love), served by `server`. */
+const wonGame = (setNumber: number, gameNumber: number, winner: 'player' | 'opponent', server: 'player' | 'opponent' = winner) =>
+  [1, 2, 3, 4].map(n => point({ set_number: setNumber, game_number: gameNumber, point_number: n, winner, server }));
+/** Games alternating player/opponent (each holding serve, player serving first) until the score is n-n. */
 const levelSet = (setNumber: number, n: number) =>
   Array.from({ length: n * 2 }, (_, index) => wonGame(setNumber, index + 1, index % 2 === 0 ? 'player' : 'opponent')).flat();
 
@@ -146,18 +146,33 @@ describe('tie-break', () => {
     const base = levelSet(1, 6); // 12 games played: game 13 is served by the first server
     const servers = [0, 1, 2, 3, 4].map(played => getServer(sixGameSets, [
       ...base,
-      ...Array.from({ length: played }, (_, index) => point({ set_number: 1, game_number: 13, point_number: index + 1, winner: index % 2 ? 'opponent' : 'player' })),
+      ...Array.from({ length: played }, (_, index) => point({ set_number: 1, game_number: 13, point_number: index + 1, winner: index % 2 ? 'opponent' : 'player', server: tiebreakServer('player', index) })),
     ], 1, 13));
     expect(servers).toEqual(['player', 'opponent', 'opponent', 'player', 'player']);
   });
 
   it('continues the service alternation across sets', () => {
     // Set 1 won 6-0: six games, so the first server of set 2 is again the first server of the match.
-    const set1 = Array.from({ length: 6 }, (_, index) => wonGame(1, index + 1, 'player')).flat();
+    const set1 = Array.from({ length: 6 }, (_, index) => wonGame(1, index + 1, 'player', index % 2 === 0 ? 'player' : 'opponent')).flat();
     expect(getServer(sixGameSets, set1, 2, 1)).toBe('player');
     // Set 1 won 6-1: seven games, so set 2 starts with the other player serving.
-    const set1b = [...set1, ...wonGame(1, 7, 'opponent')];
+    const set1b = [...set1, ...wonGame(1, 7, 'opponent', 'player')];
     expect(getServer(sixGameSets, set1b, 2, 1)).toBe('opponent');
+  });
+
+  it('restarts the alternation from a corrected server', () => {
+    // Game 2 was served again by the player (a mistake on court, recorded as such): game 3 goes to the opponent.
+    const points = [...wonGame(1, 1, 'player', 'player'), ...wonGame(1, 2, 'player', 'player')];
+    expect(getServer(sixGameSets, points, 1, 3)).toBe('opponent');
+    expect(getServer(sixGameSets, points, 1, 4)).toBe('player');
+  });
+
+  it('uses a manual correction for a game that has not started yet', () => {
+    const points = wonGame(1, 1, 'player', 'player');
+    expect(getServer(sixGameSets, points, 1, 2)).toBe('opponent');
+    const overrides = { [serverOverrideKey(1, 2)]: 'player' as const };
+    expect(getServer(sixGameSets, points, 1, 2, overrides)).toBe('player');
+    expect(getServer(sixGameSets, points, 1, 3, overrides)).toBe('opponent');
   });
 
   it('plays short sets to 4 games with a tie-break at 3-3', () => {
