@@ -114,7 +114,11 @@ export function MatchEditor({ match, error, onClose, onSave }: {
   const players = useLiveQuery(async () => activeFamily
     ? (await db.players.where('family_id').equals(activeFamily.id).toArray()).filter(player => !player.deleted)
     : [], [activeFamily?.id]) ?? [];
-  const [draft, setDraft] = useState<Match>(match);
+  const [draft, setDraft] = useState<Match>(() => ({
+    ...match,
+    tiebreak_target: match.tiebreak_target === 7 ? 7 : 10,
+    super_tiebreak_target: match.super_tiebreak_target === 7 ? 7 : 10,
+  }));
   const field = <K extends keyof Match>(key: K, value: Match[K]) => setDraft(current => ({ ...current, [key]: value }));
   const editorPlayer = players.find(player => player.id === draft.player_id);
   const editorPlayerName = editorPlayer
@@ -143,16 +147,22 @@ export function MatchEditor({ match, error, onClose, onSave }: {
     </div>
     <div className="form-grid">
       <label>Set decisivo<select value={draft.third_set_type} onChange={event => field('third_set_type', event.target.value as Match['third_set_type'])}><option value="normal">Normale</option><option value="super-tiebreak">Super tie-break</option></select></label>
-      <label>Target super tie-break<input type="number" min="1" value={draft.super_tiebreak_target} onChange={event => field('super_tiebreak_target', Number(event.target.value))} /></label>
+      <label>Target super tie-break<select value={draft.super_tiebreak_target} onChange={event => field('super_tiebreak_target', Number(event.target.value))}><option value={7}>7 punti</option><option value={10}>10 punti</option></select></label>
     </div>
     <div className="form-grid">
-      <label>Target tie-break<input type="number" min="1" value={draft.tiebreak_target} onChange={event => field('tiebreak_target', Number(event.target.value))} /></label>
+      <label>Target tie-break<select value={draft.tiebreak_target} onChange={event => field('tiebreak_target', Number(event.target.value))}><option value={7}>7 punti</option><option value={10}>10 punti</option></select></label>
       <label>Primo servizio<select value={draft.first_server} onChange={event => field('first_server', event.target.value as Match['first_server'])}><ServerOptions playerName={editorPlayerName} opponent={draft.opponent} /></select></label>
     </div>
     <label>Stato<select value={draft.status} onChange={event => field('status', event.target.value as Match['status'])}><option value="in-progress">In corso</option><option value="completed">Terminata</option></select></label>
     <label>Risultato<input value={draft.result ?? ''} onChange={event => field('result', event.target.value || null)} /></label>
     <label className="toggle-row"><span>Punto secco al 40-40</span><input type="checkbox" checked={draft.deuce_single_point} onChange={event => field('deuce_single_point', event.target.checked)} /></label>
-    <label className="toggle-row"><span>Set brevi a 4 game (tie-break sul 3-3)</span><input type="checkbox" checked={draft.tiebreak_starts_at_363} onChange={event => field('tiebreak_starts_at_363', event.target.checked)} /></label>
+    <div className="form-grid">
+      <label>Game per vincere il set<select value={draft.games_to_win_set ?? (draft.tiebreak_starts_at_363 ? 4 : 6)} onChange={event => {
+        const games = Number(event.target.value) as 4 | 6;
+        setDraft(current => ({ ...current, games_to_win_set: games, tiebreak_starts_at_363: games === 4 }));
+      }}><option value={4}>4 game</option><option value={6}>6 game</option></select></label>
+      {(draft.games_to_win_set ?? (draft.tiebreak_starts_at_363 ? 4 : 6)) === 4 && <label>Tie-break sul<select value={draft.short_set_tiebreak_at ?? 3} onChange={event => field('short_set_tiebreak_at', Number(event.target.value) as 3 | 4)}><option value={3}>3-3</option><option value={4}>4-4</option></select></label>}
+    </div>
     {error && <p className="family-feedback error" role="alert">{error}</p>}
     <button className="primary wide" disabled={!draft.opponent.trim() || !draft.player_id || draft.tiebreak_target < 1 || draft.super_tiebreak_target < 1}
       onClick={() => onSave({
@@ -167,7 +177,9 @@ export function MatchEditor({ match, error, onClose, onSave }: {
         third_set_type: draft.third_set_type,
         super_tiebreak_target: draft.super_tiebreak_target,
         tiebreak_target: draft.tiebreak_target,
-        tiebreak_starts_at_363: draft.tiebreak_starts_at_363,
+        games_to_win_set: draft.games_to_win_set ?? (draft.tiebreak_starts_at_363 ? 4 : 6),
+        short_set_tiebreak_at: draft.short_set_tiebreak_at ?? 3,
+        tiebreak_starts_at_363: (draft.games_to_win_set ?? (draft.tiebreak_starts_at_363 ? 4 : 6)) === 4,
         deuce_single_point: draft.deuce_single_point,
         first_server: draft.first_server,
         status: draft.status,
@@ -190,10 +202,13 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
   const [matchDate, setMatchDate] = useState(new Date().toISOString().slice(0, 10));
   const [tournament, setTournament] = useState('');
   const [sets, setSets] = useState<3 | 5>(3);
-  const [third, setThird] = useState<'normal' | 'super-tiebreak'>('normal');
+  const [third, setThird] = useState<'normal' | 'super-tiebreak'>('super-tiebreak');
   const [firstServer, setFirstServer] = useState<'player' | 'opponent'>('player');
   const [deuce, setDeuce] = useState(true);
-  const [tb363, setTb363] = useState(false);
+  const [gamesToWinSet, setGamesToWinSet] = useState<4 | 6>(4);
+  const [shortSetTiebreakAt, setShortSetTiebreakAt] = useState<3 | 4>(3);
+  const [superTiebreakTarget, setSuperTiebreakTarget] = useState<7 | 10>(10);
+  const [tiebreakTarget, setTiebreakTarget] = useState<7 | 10>(7);
   const [error, setError] = useState<string | null>(null);
   const selected = players.find(player => player.id === playerId);
 
@@ -213,9 +228,11 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
       tournament: tournament.trim(),
       number_of_sets: sets,
       third_set_type: third,
-      super_tiebreak_target: 10,
-      tiebreak_target: 7,
-      tiebreak_starts_at_363: tb363,
+      super_tiebreak_target: superTiebreakTarget,
+      tiebreak_target: tiebreakTarget,
+      tiebreak_starts_at_363: gamesToWinSet === 4,
+      games_to_win_set: gamesToWinSet,
+      short_set_tiebreak_at: shortSetTiebreakAt,
       deuce_single_point: deuce,
       first_server: firstServer,
       status: 'in-progress',
@@ -265,7 +282,14 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
     </div>
     <label className="toggle-row"><span>Chi serve per primo</span><select value={firstServer} onChange={event => setFirstServer(event.target.value as 'player' | 'opponent')}><ServerOptions playerName={selected ? `${selected.first_name} ${selected.last_name}` : ''} opponent={opponent} /></select></label>
     <label className="toggle-row"><span>Punto secco al 40-40</span><input type="checkbox" checked={deuce} onChange={event => setDeuce(event.target.checked)} /></label>
-    <label className="toggle-row"><span>Set brevi a 4 game (tie-break sul 3-3)</span><input type="checkbox" checked={tb363} onChange={event => setTb363(event.target.checked)} /></label>
+    <div className="form-grid">
+      <label>Game per vincere il set<select value={gamesToWinSet} onChange={event => setGamesToWinSet(Number(event.target.value) as 4 | 6)}><option value={4}>4 game</option><option value={6}>6 game</option></select></label>
+      {gamesToWinSet === 4 && <label>Tie-break sul<select value={shortSetTiebreakAt} onChange={event => setShortSetTiebreakAt(Number(event.target.value) as 3 | 4)}><option value={3}>3-3</option><option value={4}>4-4</option></select></label>}
+    </div>
+    <div className="form-grid">
+      <label>Punti tie-break<select value={tiebreakTarget} onChange={event => setTiebreakTarget(Number(event.target.value) as 7 | 10)}><option value={7}>7 punti</option><option value={10}>10 punti</option></select></label>
+      <label>Punti super tie-break<select value={superTiebreakTarget} onChange={event => setSuperTiebreakTarget(Number(event.target.value) as 7 | 10)}><option value={7}>7 punti</option><option value={10}>10 punti</option></select></label>
+    </div>
     </div>
     <button className="player-editor-save new-match-submit" disabled={!selected || !opponent.trim()} onClick={() => void create()}><span aria-hidden="true">▶</span>Avvia partita</button>
     </div>

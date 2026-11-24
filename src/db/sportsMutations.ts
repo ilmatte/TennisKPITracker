@@ -140,7 +140,7 @@ export async function updatePlayer(
 export type MatchChanges = Pick<Match,
   'match_date' | 'player_id' | 'opponent' | 'opponent_ranking' | 'opponent_category' |
   'tournament' | 'tournament_match_number' | 'number_of_sets' | 'third_set_type' |
-  'super_tiebreak_target' | 'tiebreak_target' | 'tiebreak_starts_at_363' |
+  'super_tiebreak_target' | 'tiebreak_target' | 'games_to_win_set' | 'short_set_tiebreak_at' | 'tiebreak_starts_at_363' |
   'deuce_single_point' | 'first_server' | 'status' | 'result'
 >;
 
@@ -162,9 +162,20 @@ export async function updateMatch(
     if (changes.tiebreak_target < 1 || changes.super_tiebreak_target < 1) {
       throw new Error('I target dei tie-break devono essere maggiori di zero.');
     }
+    const gamesToWinSet = changes.games_to_win_set ?? (changes.tiebreak_starts_at_363 ? 4 : 6);
+    const shortSetTiebreakAt = changes.short_set_tiebreak_at ?? current.short_set_tiebreak_at ?? 3;
+    if (gamesToWinSet !== 4 && gamesToWinSet !== 6) {
+      throw new Error('Il set deve essere impostato a 4 o 6 game.');
+    }
+    if (gamesToWinSet === 4 && shortSetTiebreakAt !== 3 && shortSetTiebreakAt !== 4) {
+      throw new Error('Il tie-break dei set a 4 game deve iniziare sul 3-3 o sul 4-4.');
+    }
     const next: Match = {
       ...updated(current, timestamp()),
       ...changes,
+      games_to_win_set: gamesToWinSet,
+      short_set_tiebreak_at: shortSetTiebreakAt,
+      tiebreak_starts_at_363: gamesToWinSet === 4,
       ...(player ? {
         player_first_name_snapshot: player.first_name,
         player_last_name_snapshot: player.last_name,

@@ -85,6 +85,8 @@ create table public.matches (
   third_set_type text not null check (third_set_type in ('normal', 'super-tiebreak')),
   super_tiebreak_target integer not null default 10 check (super_tiebreak_target > 0),
   tiebreak_target integer not null default 7 check (tiebreak_target > 0),
+  games_to_win_set integer not null default 4 check (games_to_win_set in (4, 6)),
+  short_set_tiebreak_at integer not null default 3 check (short_set_tiebreak_at in (3, 4)),
   tiebreak_starts_at_363 boolean not null default true,
   deuce_single_point boolean not null default true,
   first_server text not null check (first_server in ('player', 'opponent')),

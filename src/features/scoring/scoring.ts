@@ -111,14 +111,19 @@ export function deriveGameScore(points: ScoredPoint[], deuceSinglePoint = false,
 
 const otherSide = (side: Side): Side => side === 'player' ? 'opponent' : 'player';
 
-/** Set format. "Tie-break da 3-3" (tiebreak_starts_at_363) means short sets: first to 4 games, tie-break at 3-3. */
+/** Resolve current explicit settings, falling back to legacy records. */
 export function setFormat(match: Match): { gamesToWin: number; tiebreakAt: number } {
-  return match.tiebreak_starts_at_363 ? { gamesToWin: 4, tiebreakAt: 3 } : { gamesToWin: 6, tiebreakAt: 6 };
+  const gamesToWin = match.games_to_win_set ?? (match.tiebreak_starts_at_363 ? 4 : 6);
+  const tiebreakAt = gamesToWin === 4 ? (match.short_set_tiebreak_at ?? 3) : 6;
+  return { gamesToWin, tiebreakAt };
 }
 
 /** The deciding set is played as a single super tie-break when the match is configured that way. */
 export function isSuperTiebreakSet(match: Match, setNumber: number): boolean {
-  return match.third_set_type === 'super-tiebreak' && setNumber === match.number_of_sets;
+  // In best-of-three, the deciding set is replaced by a super tie-break.
+  // In best-of-five, the fifth set remains a normal set and only its closing
+  // tie-break is replaced by a super tie-break.
+  return match.number_of_sets === 3 && match.third_set_type === 'super-tiebreak' && setNumber === 3;
 }
 
 /** Games won by each side in a set, counting only games before `beforeGame` (all games when omitted). */
@@ -143,7 +148,10 @@ export function tiebreakTarget(points: ScoredPoint[], match: Match, setNumber: n
   if (gameNumber !== tiebreakAt * 2 + 1) return null;
   // Only the game after tiebreakAt-tiebreakAt can be a tie-break, so every game before it is a normal game.
   const score = countGames(points, setNumber, match, gameNumber);
-  return score.player === tiebreakAt && score.opponent === tiebreakAt ? (match.tiebreak_target || 7) : null;
+  if (score.player !== tiebreakAt || score.opponent !== tiebreakAt) return null;
+  return match.number_of_sets === 5 && match.third_set_type === 'super-tiebreak' && setNumber === 5
+    ? (match.super_tiebreak_target || 10)
+    : (match.tiebreak_target || 7);
 }
 
 export function isSetComplete(score: { player: number; opponent: number }, match: Match, setNumber: number): boolean {

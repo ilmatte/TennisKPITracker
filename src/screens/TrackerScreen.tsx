@@ -76,6 +76,12 @@ export function Tracker() {
   const completedSets = match
     ? hierarchy.sets.filter(set => isSetComplete(deriveSetScore(points, set.set_number, match), match, set.set_number))
     : [];
+  const setsToWin = match ? Math.floor(match.number_of_sets / 2) + 1 : Infinity;
+  const matchHasWinner = match ? (['player', 'opponent'] as const).some(side =>
+    completedSets.filter(set => {
+      const score = deriveSetScore(points, set.set_number, match);
+      return side === 'player' ? score.player > score.opponent : score.opponent > score.player;
+    }).length >= setsToWin) : false;
   useEffect(() => {
     if (!match) return;
     const latestCompleted = Math.max(0, ...completedSets.map(set => set.set_number));
@@ -93,7 +99,7 @@ export function Tracker() {
   }
 
   async function savePoint(action: PointAction) {
-    if (gameComplete || !isActionAvailable(action, currentServer, shotCount)) return;
+    if (matchHasWinner || activeMatch.status === 'completed' || gameComplete || !isActionAvailable(action, currentServer, shotCount)) return;
     const created_at = stamp();
     try {
       await db.transaction('rw', [db.matches, db.sets, db.games, db.points, db.syncQueue], async () => {
@@ -330,7 +336,9 @@ export function Tracker() {
   const gameScore = deriveGameScore(gamePoints, match.deuce_single_point, currentTiebreak);
   const playerName = `${match.player_first_name_snapshot} ${match.player_last_name_snapshot}`.trim() || 'Giocatore';
   const opponentName = match.opponent || 'Avversario';
-  const tiebreakLabel = isSuperTiebreakSet(match, selectedSetNumber) ? 'Super tie-break' : 'Tie-break';
+  const tiebreakLabel = isSuperTiebreakSet(match, selectedSetNumber) ||
+    (match.number_of_sets === 5 && match.third_set_type === 'super-tiebreak' && selectedSetNumber === 5 && currentTiebreak === match.super_tiebreak_target)
+    ? 'Super tie-break' : 'Tie-break';
   const lostActions: { action: PointAction; label: string; icon: string }[] = [
     { action: 'free_error', label: 'Errore gratuito', icon: freeErrorIcon },
     { action: 'double_fault', label: 'Doppio fallo', icon: doubleFaultIcon },
@@ -401,14 +409,14 @@ export function Tracker() {
           </button>
         </div>
         <div className="cg-actions" role="group" aria-label="Punto perso">
-          {lostActions.map(item => <button key={item.action} className="cg-action lost" onClick={() => void savePoint(item.action)} disabled={gameComplete || !isActionAvailable(item.action, currentServer, shotCount)}
+          {lostActions.map(item => <button key={item.action} className="cg-action lost" onClick={() => void savePoint(item.action)} disabled={matchHasWinner || activeMatch.status === 'completed' || gameComplete || !isActionAvailable(item.action, currentServer, shotCount)}
             title={unavailableReason(item.action, currentServer, shotCount) ?? undefined}>
             <img src={item.icon} alt="" /><span>{item.label}</span>
           </button>)}
         </div>
         <div className="cg-spacer" />
         <div className="cg-actions" role="group" aria-label="Punto vinto">
-          {wonActions.map(item => <button key={item.action} className="cg-action won" onClick={() => void savePoint(item.action)} disabled={gameComplete || !isActionAvailable(item.action, currentServer, shotCount)}
+          {wonActions.map(item => <button key={item.action} className="cg-action won" onClick={() => void savePoint(item.action)} disabled={matchHasWinner || activeMatch.status === 'completed' || gameComplete || !isActionAvailable(item.action, currentServer, shotCount)}
             title={unavailableReason(item.action, currentServer, shotCount) ?? undefined}>
             <img src={item.icon} alt="" /><span>{item.label}</span>
           </button>)}

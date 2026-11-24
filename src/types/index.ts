@@ -60,6 +60,10 @@ export interface Match {
   third_set_type: 'normal' | 'super-tiebreak';
   super_tiebreak_target: number;
   tiebreak_target: number;
+  /** Games required to win a standard set; optional for legacy local records. */
+  games_to_win_set?: 4 | 6;
+  /** In four-game sets, start the tie-break at 3-3 or 4-4. */
+  short_set_tiebreak_at?: 3 | 4;
   tiebreak_starts_at_363: boolean;
   deuce_single_point: boolean;
   first_server: 'player' | 'opponent';
