@@ -25,6 +25,14 @@ I target dei tie-break sono modificabili nella schermata di modifica della parti
 
 La schermata di creazione usa 4 game, tie-break sul 3-3, target tie-break 7 e target super tie-break 10 come valori predefiniti. Entrambi i target si possono impostare solo a 7 o 10 punti, sia in creazione sia dall’editor durante la partita. Anche game per set, soglia del tie-break e punto secco restano modificabili durante la partita. In ogni tie-break servono almeno 2 punti di vantaggio.
 
+## Regole di alternanza del servizio
+
+- Il primo battitore è quello selezionato in creazione. Nei game normali ciascun giocatore serve per un game intero e i battitori si alternano dopo ogni game. L’alternanza continua tra i set senza ripartire da capo.
+- Nel tie-break e nel super tie-break, chi inizia serve il primo punto; l’avversario serve i due successivi. Da lì ciascun giocatore serve per due punti, alternandosi fino alla fine. Il target configurato deve essere raggiunto con almeno 2 punti di vantaggio.
+- Il primo battitore del tie-break riceve nel primo game del set successivo: quindi serve il giocatore che non ha iniziato il tie-break. Il servizio del primo punto di ogni game viene registrato insieme al punto; il primo battitore della partita resta salvato nella configurazione del match. Questi dati consentono di ricostruire l’alternanza anche dopo la chiusura e riapertura dell’app.
+- I super tie-break decisivi terminano la partita, quindi non hanno un game successivo.
+- Nei tie-break e nei super tie-break si cambia campo dopo ogni 6 punti. Nei game normali il cambio campo segue la regola dei game dispari: dopo il primo game e poi dopo ogni ulteriore numero dispari di game. Il tracker mostra un promemoria al momento del cambio.
+
 Local-first tennis match tracking PWA built with React, TypeScript, Vite, Dexie/IndexedDB, Supabase Auth, and Supabase PostgreSQL.
 
 ## Local development

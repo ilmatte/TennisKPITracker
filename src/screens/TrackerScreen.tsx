@@ -334,6 +334,9 @@ export function Tracker() {
     .map(set => ({ id: set.id, number: set.set_number, score: deriveSetScore(points, set.set_number, match) }));
   const hasConcludedSets = concludedSets.length > 0;
   const gameScore = deriveGameScore(gamePoints, match.deuce_single_point, currentTiebreak);
+  const courtChangeDue = selectedGame === null && (currentTiebreak !== null
+    ? gamePoints.length > 0 && gamePoints.length % 6 === 0
+    : gameNumber > 1 && gameNumber % 2 === 0);
   const playerName = `${match.player_first_name_snapshot} ${match.player_last_name_snapshot}`.trim() || 'Giocatore';
   const opponentName = match.opponent || 'Avversario';
   const tiebreakLabel = isSuperTiebreakSet(match, selectedSetNumber) ||
@@ -426,6 +429,7 @@ export function Tracker() {
           Annulla ultimo punto
         </button>
         {gameComplete && <p className="cg-note">Game concluso.</p>}
+        {courtChangeDue && <p className="cg-court-change" role="status">Cambio campo</p>}
         {trackerError && <p className="family-feedback error" role="alert">{trackerError}</p>}
 
         <div className="cg-details">

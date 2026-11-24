@@ -171,24 +171,33 @@ export function tiebreakServer(firstServer: Side, pointIndex: number): Side {
 export type ServerOverrides = Record<string, Side>;
 export const serverOverrideKey = (setNumber: number, gameNumber: number) => `${setNumber}:${gameNumber}`;
 
-/** Who served (or serves first, for a tie-break) a game, if it is known: the server stored on the game's first
- *  recorded point, or a manual correction for a game not started yet. */
+/** The first point of each game persists its server. For tie-breaks this is also the
+ *  persisted first tie-break server, which determines who opens the following set. */
 function recordedGameServer(points: ScoredPoint[], setNumber: number, gameNumber: number, overrides: ServerOverrides): Side | null {
   const first = sortedPoints(points, setNumber, gameNumber)[0];
   return first?.server ?? overrides[serverOverrideKey(setNumber, gameNumber)] ?? null;
 }
 
-/** Who serves a game (the first point, for a tie-break).
- *  Service alternates every game across the whole match (a tie-break counts as one game, so whoever served first in
- *  the tie-break receives in the first game of the next set). A game whose server is recorded or corrected restarts
- *  the alternation from there, so a correction carries on to the following games. */
+function nextSetFirstServerAfterTiebreak(tiebreakFirstServer: Side): Side {
+  // The player who opened the tie-break receives; the other player serves first.
+  return otherSide(tiebreakFirstServer);
+}
+
+/** Determine service from the match's persisted first server and recorded point servers.
+ *  Completed ordinary games advance service once. A completed tie-break has its own
+ *  point-by-point order; for the next set, its first server receives and the other
+ *  player serves first. Recorded or corrected game servers anchor later alternation. */
 export function getGameServer(match: Match, points: ScoredPoint[], setNumber: number, gameNumber: number, overrides: ServerOverrides = {}): Side {
   let expected: Side = match.first_server;
   for (let set = 1; set <= setNumber; set += 1) {
     const score = set < setNumber ? countGames(points, set, match) : null;
     const gamesInSet = score ? score.player + score.opponent : gameNumber - 1;
     for (let game = 1; game <= gamesInSet; game += 1) {
-      expected = otherSide(recordedGameServer(points, set, game, overrides) ?? expected);
+      const gameServer = recordedGameServer(points, set, game, overrides) ?? expected;
+      const isFinalTieBreak = game === gamesInSet && tiebreakTarget(points, match, set, game) !== null;
+      // The tie-break is not an ordinary game transition: its first server receives
+      // the opening game of the next set, so the other player serves that game.
+      expected = isFinalTieBreak ? nextSetFirstServerAfterTiebreak(gameServer) : otherSide(gameServer);
     }
   }
   return recordedGameServer(points, setNumber, gameNumber, overrides) ?? expected;

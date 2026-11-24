@@ -60,6 +60,7 @@
 .cg-undo{margin-top:8px;width:100%;height:54px;box-sizing:border-box;border-radius:27px;border:1.5px solid #17488F;background:#fff;color:#17488F;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px}
 .cg-undo:disabled{opacity:.5}
 .cg-note{margin:4px 0 0;color:#5C6B85;font-size:13px;font-weight:600;text-align:center}
+.cg-court-change{margin:6px 0 0;padding:7px;border-radius:7px;background:#FFF3CC;color:#745400;font-size:13px;font-weight:800;text-align:center}
 .cg-page button:focus-visible{outline:3px solid #C8F03A;outline-offset:2px}
 
 /* Set / game navigation and point history (below the main controls) */
