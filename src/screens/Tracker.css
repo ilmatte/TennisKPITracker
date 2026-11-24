@@ -9,17 +9,17 @@
 .cg-back{left:16px}
 .cg-menu{right:16px}
 .cg-scores{position:absolute;left:20px;right:20px;top:76px;display:flex;gap:40px}
-.cg-score-card{flex:1;min-width:0;height:118px;box-sizing:border-box;padding:0 10px;border-radius:22px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff}
+.cg-score-card{position:relative;flex:1;min-width:0;height:118px;box-sizing:border-box;padding:0 10px;border-radius:22px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff}
 .cg-score-card span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;font-weight:700;opacity:.9}
 .cg-score-card strong{font-size:56px;line-height:1.05;font-weight:800}
 /* "Al servizio" player icon next to the server's points (cropped from the square icon to its 121x240 figure) */
-.cg-score-value{position:relative;display:grid;justify-items:center}
+.cg-score-value{display:grid;justify-items:center}
 /* The score and an invisible "AD" share the same cell: the box is always as wide as "AD", so the icon never moves. */
 .cg-score-value>strong{grid-area:1/1}
 .cg-score-sizer{visibility:hidden}
-.cg-serving{--serving-w:26.6px;position:absolute;bottom:8px;display:block;width:var(--serving-w);height:52.8px;object-fit:cover}
-.cg-serving.left{right:100%;margin-right:var(--serving-w)}
-.cg-serving.right{left:100%;margin-left:var(--serving-w)}
+.cg-serving{--serving-w:26.6px;position:absolute;top:50%;display:block;width:var(--serving-w);height:52.8px;object-fit:cover;transform:translateY(-50%)}
+.cg-serving.left{left:var(--serving-w);transform:translate(-50%,-50%)}
+.cg-serving.right{right:var(--serving-w);transform:translate(50%,-50%)}
 .cg-ball{position:absolute;left:50%;top:125.55px;margin-left:-14.45px;line-height:0}
 .cg-set-pills{position:absolute;left:0;right:0;top:178px;display:flex;justify-content:center;gap:10px;padding:0 12px}
 .cg-set-pill{display:flex;align-items:center;gap:6px;height:36px;box-sizing:border-box;padding:0 16px;border-radius:18px;font-size:14px;font-weight:700;white-space:nowrap;background:#123B7A;border:1px solid rgba(255,255,255,.22);color:#fff}
