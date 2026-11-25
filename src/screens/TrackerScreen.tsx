@@ -339,11 +339,14 @@ export function Tracker() {
     window.history.back();
   }
 
-  const concludedSets = completedSets
-    .filter(set => set.set_number !== selectedSetNumber)
-    .sort((a, b) => b.set_number - a.set_number)
-    .map(set => ({ id: set.id, number: set.set_number, score: deriveSetScore(points, set.set_number, match) }));
-  const hasConcludedSets = concludedSets.length > 0;
+  // Header set list: every concluded set plus the set being played (and the selected one), always ordered from the
+  // most recent at the top down to set 1. The lime row marks the selected set without moving it.
+  const completedSetNumbers = completedSets.map(set => set.set_number);
+  const playingSetNumber = matchHasWinner ? null : Math.min(match.number_of_sets, Math.max(0, ...completedSetNumbers) + 1);
+  const headerSets = [...new Set([...completedSetNumbers, selectedSetNumber, ...(playingSetNumber ? [playingSetNumber] : [])])]
+    .sort((a, b) => b - a)
+    .map(number => ({ number, score: deriveSetScore(points, number, match), completed: completedSetNumbers.includes(number) }));
+  const hasConcludedSets = completedSetNumbers.length > 0;
   const gameScore = deriveGameScore(gamePoints, match.deuce_single_point, currentTiebreak);
   // Change of ends: before every even game of a set (after the odd ones), every 6 points of a tie-break, and at the
   // start of a set when the previous set ended with an odd number of games (a tie-break counts as one game).
@@ -403,11 +406,11 @@ export function Tracker() {
       </div>
       {hasConcludedSets
         ? <div className="cg-set-list">
-          <div className="cg-set-row current"><span>{setScore.player}</span><b>SET {selectedSetNumber}</b><span>{setScore.opponent}</span></div>
-          {concludedSets.map(set => <div key={set.id} className="cg-set-row">
-            <span className={set.score.player > set.score.opponent ? 'won' : ''}>{set.score.player}</span>
+          {headerSets.map(set => <div key={set.number} className={`cg-set-row${set.number === selectedSetNumber ? ' current' : ''}`}
+            aria-current={set.number === selectedSetNumber ? 'true' : undefined}>
+            <span className={set.completed && set.score.player > set.score.opponent ? 'won' : ''}>{set.score.player}</span>
             <b>SET {set.number}</b>
-            <span className={set.score.opponent > set.score.player ? 'won' : ''}>{set.score.opponent}</span>
+            <span className={set.completed && set.score.opponent > set.score.player ? 'won' : ''}>{set.score.opponent}</span>
           </div>)}
         </div>
         : <div className="cg-set-pills">
