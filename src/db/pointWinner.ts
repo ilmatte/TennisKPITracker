@@ -24,8 +24,8 @@ export const LEGACY_POINT_FIELDS = [
  *    `error_category` and `pressure_error_player` are dropped;
  *  - a free error on a won point (the opponent's error, recorded before the point type referred only to my player)
  *    becomes an ordinary won point.
- *  Payloads already in the current shape, and non-objects, are returned unchanged. Used by the local database
- *  upgrades, backup restore, queued sync operations and remote changes written before the migrations. */
+ *  Payloads already in the current shape, and non-objects, are returned unchanged. Used when restoring version 2
+ *  JSON backups, which were written with the older point fields. */
 export function migrateLegacyPointPayload<T>(payload: T): T {
   if (!payload || typeof payload !== 'object') return payload;
   const legacy = payload as Record<string, unknown>;

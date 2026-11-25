@@ -135,26 +135,38 @@ create table public.games (
   foreign key (family_id, set_id) references public.sets(family_id, id) on delete cascade
 );
 
+-- Point types lookup table. Ids are stable and mirrored by the app (src/features/scoring/pointTypes.ts) and by the
+-- Dexie point_types store: never renumber them. Like points.won, every type refers to my player.
+create table public.point_types (
+  id smallint primary key,
+  code text not null unique,
+  label text not null
+);
+
+insert into public.point_types (id, code, label) values
+  (1, 'double_fault', 'Doppio fallo'),
+  (2, 'free_error', 'Errore gratuito'),
+  (3, 'lose', 'Perso'),
+  (4, 'win', 'Vinto'),
+  (5, 'ace', 'Ace'),
+  (6, 'great_shot', 'Bel colpo');
+
+-- won: true when my player won the point. serving: true when my player served it.
+-- point_type_id: outcome of the point from my player's point of view.
 create table public.points (
   id uuid primary key,
   family_id uuid not null references public.families(id) on delete cascade,
   game_id uuid not null,
   point_number integer not null check (point_number > 0),
-  winner text not null check (winner in ('player', 'opponent')),
-  server text not null check (server in ('player', 'opponent')),
   second_serve boolean not null default false,
-  double_fault boolean not null default false,
   shot_count integer not null check (shot_count > 0),
-  free_error boolean not null default false,
-  error_player text check (error_player in ('player', 'opponent')),
-  error_category text check (error_category in ('forehand', 'backhand', 'serve', 'volley', 'net', 'other')),
-  attack_error boolean not null default false,
-  pressure_situation boolean not null default false,
-  pressure_error_player text check (pressure_error_player in ('player', 'opponent')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   version integer not null default 1 check (version > 0),
   deleted boolean not null default false,
+  won boolean not null,
+  serving boolean not null,
+  point_type_id smallint not null references public.point_types(id),
   unique (family_id, id),
   unique (game_id, point_number),
   foreign key (family_id, game_id) references public.games(family_id, id) on delete cascade
@@ -168,6 +180,7 @@ create index matches_family_player_idx on public.matches(family_id, player_id);
 create index sets_family_match_idx on public.sets(family_id, match_id, set_number);
 create index games_family_set_idx on public.games(family_id, set_id, game_number);
 create index points_family_game_idx on public.points(family_id, game_id, point_number);
+create index points_point_type_idx on public.points(point_type_id);
 
 create function private.is_family_member(_family_id uuid)
 returns boolean
@@ -928,5 +941,17 @@ grant execute on function public.pull_sync_changes(uuid, bigint, integer) to aut
 grant execute on function public.apply_sync_record(uuid, uuid, text, uuid, integer, jsonb) to authenticated;
 grant execute on function public.begin_initial_snapshot(uuid) to authenticated;
 grant execute on function public.list_initial_snapshot(uuid, bigint, text, uuid, integer) to authenticated;
+
+commit;
+
+-- Point types are read-only reference data for signed-in users.
+begin;
+
+revoke all on table public.point_types from public, anon;
+grant select on table public.point_types to authenticated;
+alter table public.point_types enable row level security;
+create policy "authenticated users can read point types"
+  on public.point_types for select to authenticated
+  using (true);
 
 commit;

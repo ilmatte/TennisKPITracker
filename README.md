@@ -48,19 +48,21 @@ The app remains usable without signing in or connecting to the internet. To enab
 
 ## Supabase database setup
 
-`supabase/001_initial_schema.sql` defines families, members, one-time email invitations, family-scoped sporting records, RLS, and family-management functions. For an existing installation, review and apply `002_single_workspace_per_owner.sql` if the one-owner-family constraint is not already present. Apply `003_sync_protocol.sql` before activating cross-device sync; it adds an ordered per-family change log and version-checked write/read RPCs, and removes direct authenticated write access to sporting tables. These SQL scripts are delivered for manual review and are never run by the app or build. If `pgcrypto` is absent, the initial schema installs it in `extensions`; if it already exists elsewhere, the schema uses its actual namespace without moving the extension. The `private` schema contains RLS helper functions and must not be added to Supabase's exposed API schemas.
+`supabase/initial_schema.sql` is the single, consolidated schema script. It defines families, members, one-time email invitations, family-scoped sporting records (players, matches, sets, games, points), the `point_types` lookup table, RLS policies, family-management functions and the cross-device sync protocol (ordered per-family change log and version-checked write/read RPCs; authenticated users have no direct write access to sporting tables). The script is delivered for manual review and is never run by the app or build. If `pgcrypto` is absent, it installs it in `extensions`; if it already exists elsewhere, the schema uses its actual namespace without moving the extension. The `private` schema contains RLS helper functions and must not be added to Supabase's exposed API schemas.
 
-For a **new, empty** Supabase project, run `001_initial_schema.sql`, then `003_sync_protocol.sql`, in the Supabase SQL Editor. `002_single_workspace_per_owner.sql` is incremental and may also be run when desired; its duplicate-owner check stops rather than deleting or merging data.
+For a **new, empty** Supabase project, run `initial_schema.sql` once in the Supabase SQL Editor.
 
-For an existing Supabase project, apply `002_match_set_format_options.sql` to add the set length and short-set tie-break threshold fields. The migration keeps each match's existing 4-game or 6-game behavior and defaults the new 4-game threshold to 3-3. New installations already get these columns from the initial schema.
+The script replaces the earlier incremental migrations (`002`–`006`: set-format options, `points.won`, `points.serving`, `point_types`, removal of the point error-detail fields). A project that already applied all of them has exactly the same schema as one created from the current script — verified by comparing the PostgreSQL catalog (columns and their order, constraints, indexes, policies, functions, privileges, RLS) of both databases — so it needs no action. A project at an older schema version has no upgrade script in the repository any more: the removed migrations are available in the git history.
 
-For a project with former Tennis KPI tables, review `supabase/000_reset_application.sql` carefully. It is **destructive** and removes only the application's listed tables and functions (including the RLS helpers in `private`); it does not use `CASCADE` and does not touch Supabase Auth or OAuth configuration. Only after verifying the script and confirming the application data can be discarded, run it manually in the SQL Editor, then run `001_initial_schema.sql`. Neither script is executed by the app or build.
+Point rows reference `point_types` by id (`1` double_fault, `2` free_error, `3` lose, `4` win, `5` ace, `6` great_shot). The ids are mirrored by the app (`src/features/scoring/pointTypes.ts`) and must never be renumbered. Like `points.won` (my player won the point) and `points.serving` (my player served it), every point type refers to my player.
 
 Configure Google as an enabled Supabase Auth provider and allow the app's redirect URL, including `http://localhost:5173/` for local development and the production app URL when deployed. Only a family owner can create invitations. Invitations use a random one-time token; only its SHA-256 hash is stored in PostgreSQL, and the token expires after seven days. The app provides a link that the inviter can send to the invited email address. Acceptance requires a signed-in account with a confirmed email matching the invitation.
 
 ## Local database and privacy
 
-Dexie uses a versioned database with family-scoped sports stores. Dexie schema version 2 additively creates sync metadata and conflict stores; it preserves existing workspaces, sporting records, UUIDs, tombstones, and queued operations. It does not reset or delete the local database. The one-time reset for the earlier development schema is already guarded by its local marker and is not repeated by this sync change.
+Dexie uses a single schema version (`src/db/database.ts`) whose stores mirror the Supabase tables: the sport records have the same fields as the corresponding PostgreSQL rows, so sync sends records without any conversion. IndexedDB cannot index boolean values, so fields such as `points.won` and `points.serving` are stored but not indexed. The schema also contains the local-only `syncQueue`, `syncMetadata` and `syncConflicts` stores. The `point_types` store is seeded when the database is created.
+
+The schema version number is 7, the last version that shipped with step-by-step migrations: browsers refuse to open a database with a lower version than the one already stored on the device, so the number cannot go back. The step-by-step upgrades were removed; a device whose local database is older than version 7 opens with the current stores but its existing records are not converted. A future schema change must add `version(8)` with its own upgrade function. JSON backups written with the older point fields (backup version 2) are still converted on restore.
 
 The app automatically creates and reuses one technical local workspace. It remains usable without signing in. Google login alone neither creates a remote family nor activates sync; the user must explicitly activate sync in Settings. A member accepting an invitation is associated with that existing remote family and downloads its data if the local device has no independent sports records. If it does have local sports data, automatic association/download is paused and the app records a needs-attention state instead of merging or overwriting anything.
 
@@ -69,6 +71,19 @@ Players, matches, sets, games, and points keep their UUIDs. A persistent local m
 The synchronization implementation and SQL migration are not a substitute for production verification. PostgreSQL concurrency, RPC privileges, and RLS have not been exercised against a live or isolated Supabase instance. Do not activate sync until the reviewed SQL migration has been applied to the intended Supabase project. No remote project is modified by this repository change.
 
 Family owners can revoke member access and delete a family. RLS restricts remote family and sporting-data access to current members; application users never receive an elevated service-role credential.
+
+## Il campo `version` e i conflitti di sincronizzazione
+
+Tutte le tabelle sincronizzate (`players`, `matches`, `sets`, `games`, `points`) hanno un campo `version`: è un **contatore delle modifiche** del record. Non ha un significato tennistico; serve alla sincronizzazione per capire se due dispositivi hanno modificato lo stesso record nello stesso momento.
+
+- Un record nuovo nasce con `version = 1`. Ogni modifica, compresa l’eliminazione logica (`deleted = true`), incrementa il numero di 1 (`updated()` in `src/db/sportsMutations.ts`).
+- Quando l’app invia una modifica a Supabase, manda il record insieme alla **versione di base**, cioè la versione da cui è partita la modifica.
+- La funzione di sincronizzazione su Supabase confronta la versione di base con quella salvata:
+  - se **coincidono**, nessun altro ha modificato il record nel frattempo: la modifica viene applicata e il server assegna la versione successiva;
+  - se **non coincidono**, un altro dispositivo ha modificato lo stesso record nel frattempo: il server non sovrascrive nulla e segnala un **conflitto**, che si risolve in Impostazioni scegliendo quale versione tenere.
+- In ricezione, un dispositivo ignora le modifiche con versione uguale o più vecchia di quella che ha già (`src/sync/syncEngine.ts`), così una modifica vecchia non sovrascrive mai una più recente.
+
+Esempio: il punto 3 è alla versione 2 su due telefoni, A e B. A cambia il battitore (versione 3) e si sincronizza: Supabase ora ha la versione 3. B, ancora offline, cambia il numero di colpi partendo dalla versione 2. Quando B si sincronizza dichiara “parto dalla 2”, ma Supabase ha la 3: viene segnalato un conflitto invece di perdere silenziosamente la modifica di A.
 
 ## Vercel deployment
 
@@ -85,5 +100,5 @@ Open the deployed HTTPS URL in Safari, choose Share, then Add to Home Screen. Th
 - IndexedDB is the operational store; scoring and KPI features remain available offline.
 - Match snapshots remain independent from later player-profile changes.
 - Family deletion removes local cached family records on the device performing the deletion; remote deletion cascades through that family's data.
-- JSON backups are version 2 and scoped to the active family.
+- JSON backups are version 3 and scoped to the active family. Restore also accepts version 2 backups and converts their points to the current point fields.
 - Sync activation is explicit; when enabled, the app syncs on startup, foreground/connection restoration, local queued changes, or manual request. iOS background sync is not assumed.

@@ -1,6 +1,5 @@
-import Dexie, { type EntityTable, type Table, type Transaction } from 'dexie';
-import { LEGACY_POINT_FIELDS, migrateLegacyPointPayload } from './pointWinner';
-import { POINT_TYPE, POINT_TYPES } from '../features/scoring/pointTypes';
+import Dexie, { type EntityTable, type Table } from 'dexie';
+import { POINT_TYPES } from '../features/scoring/pointTypes';
 import type {
   Family,
   FamilyInvitation,
@@ -33,7 +32,11 @@ export class TennisDatabase extends Dexie {
 
   constructor(name = 'TennisKPITracker') {
     super(name);
-    const schema = {
+    // Single schema version, aligned with supabase/initial_schema.sql. The number stays at 7 (the last version that
+    // shipped with step-by-step migrations) because browsers refuse to open a database with a lower version than the
+    // one already stored on the device. A new schema change adds version(8) with its own upgrade.
+    // Booleans (points.won, points.serving, ...) are not valid IndexedDB keys, so they are stored but not indexed.
+    this.version(7).stores({
       families: 'id, created_by, local_only, updated_at',
       family_members: '[family_id+user_id], family_id, user_id, role',
       family_invitations: 'id, family_id, invited_email, expires_at',
@@ -41,64 +44,15 @@ export class TennisDatabase extends Dexie {
       matches: 'id, family_id, match_date, player_id, status, tournament, updated_at, deleted',
       sets: 'id, family_id, match_id, set_number, &[match_id+set_number], updated_at, deleted',
       games: 'id, family_id, set_id, game_number, &[set_id+game_number], updated_at, deleted',
-      points: 'id, family_id, game_id, &[game_id+point_number], point_number, winner, server, updated_at, deleted',
-      syncQueue: 'id, family_id, entity_type, entity_id, created_at, attempts',
-    };
-    this.version(1).stores(schema);
-    this.version(2).stores({
-      ...schema,
+      points: 'id, family_id, game_id, &[game_id+point_number], point_number, point_type_id, updated_at, deleted',
+      point_types: 'id, &code',
+      syncQueue: 'id, operation_id, family_id, entity_type, entity_id, created_at, attempts',
       syncMetadata: 'key, updated_at',
       syncConflicts: 'id, family_id, entity_type, entity_id, status, created_at',
     });
-    this.version(3).stores({
-      syncQueue: 'id, operation_id, family_id, entity_type, entity_id, created_at, attempts',
-    });
-    // v4: points.winner ('player' | 'opponent') becomes points.won (boolean). Booleans are not valid IndexedDB keys,
-    // so the field is no longer indexed. Queued sync operations and stored conflicts are converted too.
-    this.version(4).stores({
-      points: 'id, family_id, game_id, &[game_id+point_number], point_number, server, updated_at, deleted',
-    }).upgrade(transaction => convertLegacyPoints(transaction, ['winner']));
-    // v5: points.server ('player' | 'opponent') becomes points.serving (boolean, true when my player serves).
-    this.version(5).stores({
-      points: 'id, family_id, game_id, &[game_id+point_number], point_number, updated_at, deleted',
-    }).upgrade(transaction => convertLegacyPoints(transaction, ['winner', 'server']));
-    // v6: point_types lookup table; points.double_fault / free_error become points.point_type_id (FK),
-    // points.attack_error / pressure_situation are removed. Mirrors supabase/005_point_types.sql.
-    this.version(6).stores({
-      points: 'id, family_id, game_id, &[game_id+point_number], point_number, point_type_id, updated_at, deleted',
-      point_types: 'id, &code',
-    }).upgrade(async transaction => {
-      await transaction.table('point_types').bulkPut([...POINT_TYPES]);
-      await convertLegacyPoints(transaction, [...LEGACY_POINT_FIELDS]);
-    });
-    // v7: points.error_player / error_category / pressure_error_player are removed; the point type refers to my
-    // player, so a free error on a won point becomes a won point. Mirrors supabase/006_points_remove_error_details.sql.
-    // No index changes: the upgrade converts every point (not only those carrying a legacy field).
-    this.version(7).stores({}).upgrade(async transaction => {
-      await convertLegacyPoints(transaction, [...LEGACY_POINT_FIELDS]);
-      await transaction.table('points').toCollection().modify((point: Record<string, unknown>) => {
-        if (point.point_type_id === POINT_TYPE.free_error && point.won === true) point.point_type_id = POINT_TYPE.win;
-      });
-    });
-    // A brand-new database is created directly at the latest version (no upgrade runs): seed the lookup table.
+    // The point_types lookup table is seeded when the database is created (same rows as supabase/initial_schema.sql).
     this.on('populate', transaction => transaction.table('point_types').bulkAdd([...POINT_TYPES]));
   }
-}
-
-/** Converts stored points, queued point operations and point conflicts to the current point shape,
- *  removing the given legacy fields. */
-async function convertLegacyPoints(transaction: Transaction, legacyFields: string[]): Promise<void> {
-  await transaction.table('points').toCollection().modify((point: Record<string, unknown>) => {
-    Object.assign(point, migrateLegacyPointPayload(point));
-    for (const field of legacyFields) delete point[field];
-  });
-  await transaction.table('syncQueue').where('entity_type').equals('points').modify((operation: { payload: unknown }) => {
-    operation.payload = migrateLegacyPointPayload(operation.payload);
-  });
-  await transaction.table('syncConflicts').where('entity_type').equals('points').modify((conflict: { local_payload: unknown; remote_payload: unknown }) => {
-    conflict.local_payload = migrateLegacyPointPayload(conflict.local_payload);
-    conflict.remote_payload = migrateLegacyPointPayload(conflict.remote_payload);
-  });
 }
 
 export const db = new TennisDatabase();

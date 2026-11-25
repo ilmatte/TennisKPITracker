@@ -37,10 +37,10 @@ describe('local database initialization', () => {
       'sets',
       'games',
       'points',
+      'point_types',
       'syncQueue',
       'syncMetadata',
       'syncConflicts',
-      'point_types',
     ]);
     expect(db.sets.schema.indexes.find(index => index.name === '[match_id+set_number]')?.unique).toBe(true);
     expect(db.games.schema.indexes.find(index => index.name === '[set_id+game_number]')?.unique).toBe(true);
