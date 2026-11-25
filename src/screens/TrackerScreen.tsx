@@ -17,6 +17,7 @@ import greatShotIcon from '../assets/icone/currentgame/bel-colpo-chiaro.svg';
 import pointWonIcon from '../assets/icone/currentgame/vinto-chiaro.svg';
 import aceIcon from '../assets/icone/currentgame/ace-chiaro.svg';
 import servingIcon from '../assets/icone/trasparente/512/tennista-servizio-trasparente-512.png';
+import trophyIcon from '../assets/icone/currentgame/vinto-scuro.svg';
 import { MatchEditor } from './MatchesScreen';
 import { stamp, mutationError, queueOperation } from './shared';
 import type { Game, Match, Point, ScoredPoint, TennisSet } from '../types';
@@ -83,7 +84,8 @@ export function Tracker() {
   const completedSets = match
     ? hierarchy.sets.filter(set => isSetComplete(deriveSetScore(points, set.set_number, match), match, set.set_number))
     : [];
-  const matchHasWinner = match ? matchWinner(points, match) !== null : false;
+  const winnerSide = match ? matchWinner(points, match) : null;
+  const matchHasWinner = winnerSide !== null;
   // A match with a winner is completed automatically (also for matches finished before this rule existed).
   useEffect(() => {
     if (match && matchHasWinner && match.status === 'in-progress') {
@@ -387,7 +389,9 @@ export function Tracker() {
         <div className="cg-score-card">
           <span>{playerName}</span>
           <div className="cg-score-value">
-            {currentServer === 'player' && <img className="cg-serving left" src={servingIcon} alt="Al servizio" title="Al servizio" />}
+            {matchOver
+              ? winnerSide === 'player' && <img className="cg-serving cg-trophy left" src={trophyIcon} alt="Vincitore" title="Vincitore" />
+              : currentServer === 'player' && <img className="cg-serving left" src={servingIcon} alt="Al servizio" title="Al servizio" />}
             <strong>{gameScore.player}</strong>
             <strong className="cg-score-sizer" aria-hidden="true">AD</strong>
           </div>
@@ -395,7 +399,9 @@ export function Tracker() {
         <div className="cg-score-card">
           <span>{match.opponent || 'Avversario'}</span>
           <div className="cg-score-value">
-            {currentServer === 'opponent' && <img className="cg-serving right" src={servingIcon} alt="Al servizio" title="Al servizio" />}
+            {matchOver
+              ? winnerSide === 'opponent' && <img className="cg-serving cg-trophy right" src={trophyIcon} alt="Vincitore" title="Vincitore" />
+              : currentServer === 'opponent' && <img className="cg-serving right" src={servingIcon} alt="Al servizio" title="Al servizio" />}
             <strong>{gameScore.opponent}</strong>
             <strong className="cg-score-sizer" aria-hidden="true">AD</strong>
           </div>

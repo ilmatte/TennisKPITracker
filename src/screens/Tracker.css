@@ -32,6 +32,9 @@
 .has-sets .cg-score-card span{font-size:14px}
 .has-sets .cg-score-card strong{font-size:48px}
 .has-sets .cg-serving{--serving-w:23px;height:45.6px}
+/* Finished match: trophy in the winner's box, at the serving icon's anchor point (square icon, white base for the dark box) */
+.cg-trophy{width:40px;height:40px;object-fit:contain}
+.has-sets .cg-trophy{width:34px;height:34px}
 .has-sets .cg-ball{top:100.55px}
 .cg-set-list{display:flex;flex-direction:column;gap:2px}
 .cg-set-row{height:24px;border-radius:12px;display:grid;grid-template-columns:1fr 60px 1fr;align-items:center;justify-items:center}
