@@ -177,6 +177,23 @@ export function isSetComplete(score: { player: number; opponent: number }, match
   return (high >= gamesToWin && high - low >= 2) || (high === tiebreakAt + 1 && low === tiebreakAt);
 }
 
+/** Winner of the match once a player has won the sets needed (2 in best of 3, 3 in best of 5), otherwise null.
+ *  A deciding super tie-break counts as a set won 1-0. */
+export function matchWinner(points: ScoredPoint[], match: Match): Side | null {
+  const setsToWin = Math.floor(match.number_of_sets / 2) + 1;
+  let player = 0;
+  let opponent = 0;
+  for (let setNumber = 1; setNumber <= match.number_of_sets; setNumber += 1) {
+    const score = countGames(points, setNumber, match);
+    if (!isSetComplete(score, match, setNumber)) continue;
+    if (score.player > score.opponent) player += 1;
+    else if (score.opponent > score.player) opponent += 1;
+  }
+  if (player >= setsToWin) return 'player';
+  if (opponent >= setsToWin) return 'opponent';
+  return null;
+}
+
 /** Tie-break service order: the first server serves one point, then each player serves two points in turn. */
 export function tiebreakServer(firstServer: Side, pointIndex: number): Side {
   return Math.floor((pointIndex + 1) / 2) % 2 === 0 ? firstServer : otherSide(firstServer);

@@ -4,7 +4,7 @@ import { useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getMatchPoints } from '../db/database';
 import { nextPointNumber } from '../db/pointNumbers';
-import { configuredSetNavigation, deriveGameScore, deriveSetScore, getGameServer, getServer, isActionAvailable, serverOverrideKey, tiebreakServer, type ServerOverrides, type Side, isSetComplete, unavailableReason, isSuperTiebreakSet, nextGameNumber, pointsToGame, tiebreakTarget, resolvePointAction, sortedPoints, type PointAction } from '../features/scoring/scoring';
+import { configuredSetNavigation, deriveGameScore, deriveSetScore, getGameServer, getServer, isActionAvailable, matchWinner, serverOverrideKey, tiebreakServer, type ServerOverrides, type Side, isSetComplete, unavailableReason, isSuperTiebreakSet, nextGameNumber, pointsToGame, tiebreakTarget, resolvePointAction, sortedPoints, type PointAction } from '../features/scoring/scoring';
 import { countGameDescendants, countMatchDescendants, countSetDescendants, softDeleteGame, softDeleteMatch, softDeletePoint, softDeleteSet, updateGame, updateMatch, updatePoint, updateSet, type PointChanges } from '../db/sportsMutations';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import { isWinningPointType, POINT_TYPES } from '../features/scoring/pointTypes';
@@ -19,7 +19,7 @@ import aceIcon from '../assets/icone/currentgame/ace-chiaro.svg';
 import servingIcon from '../assets/icone/trasparente/512/tennista-servizio-trasparente-512.png';
 import { MatchEditor } from './MatchesScreen';
 import { stamp, mutationError, queueOperation } from './shared';
-import type { Game, Point, ScoredPoint, TennisSet } from '../types';
+import type { Game, Match, Point, ScoredPoint, TennisSet } from '../types';
 export function Tracker() {
   const { id } = useParams();
   const { activeFamily } = useFamily();
@@ -83,12 +83,14 @@ export function Tracker() {
   const completedSets = match
     ? hierarchy.sets.filter(set => isSetComplete(deriveSetScore(points, set.set_number, match), match, set.set_number))
     : [];
-  const setsToWin = match ? Math.floor(match.number_of_sets / 2) + 1 : Infinity;
-  const matchHasWinner = match ? (['player', 'opponent'] as const).some(side =>
-    completedSets.filter(set => {
-      const score = deriveSetScore(points, set.set_number, match);
-      return side === 'player' ? score.player > score.opponent : score.opponent > score.player;
-    }).length >= setsToWin) : false;
+  const matchHasWinner = match ? matchWinner(points, match) !== null : false;
+  // A match with a winner is completed automatically (also for matches finished before this rule existed).
+  useEffect(() => {
+    if (match && matchHasWinner && match.status === 'in-progress') {
+      void setMatchStatus(match.family_id, match.id, 'completed').catch(cause =>
+        setTrackerError(cause instanceof Error ? cause.message : 'Impossibile completare la partita.'));
+    }
+  }, [match?.id, match?.status, matchHasWinner]);
   useEffect(() => {
     if (!match) return;
     const latestCompleted = Math.max(0, ...completedSets.map(set => set.set_number));
@@ -99,6 +101,8 @@ export function Tracker() {
   }, [completedSets.map(set => set.set_number).join(','), match?.id, match?.number_of_sets]);
 
   if (!match || !activeFamily) return <div className="page"><div className="empty-state">Partita non trovata</div></div>;
+  // A finished match accepts no more points: outcome buttons, shot counter and first/second ball selector are disabled.
+  const matchOver = matchHasWinner || match.status === 'completed';
   const activeMatch = match;
 
   function selectGame(number: number) {
@@ -106,7 +110,7 @@ export function Tracker() {
   }
 
   async function savePoint(action: PointAction) {
-    if (matchHasWinner || activeMatch.status === 'completed' || gameComplete || !isActionAvailable(action, currentServer, shotCount)) return;
+    if (matchOver || gameComplete || !isActionAvailable(action, currentServer, shotCount)) return;
     const created_at = stamp();
     try {
       await db.transaction('rw', [db.matches, db.sets, db.games, db.points, db.syncQueue], async () => {
@@ -215,6 +219,7 @@ export function Tracker() {
     swipeHandled.current = false;
   }
   function shotPointerUp(event: PointerEvent<HTMLButtonElement>) {
+    if (matchOver) return;
     if (swipeStartX.current !== null && Math.abs(event.clientX - swipeStartX.current) > 24) {
       swipeHandled.current = true;
       setShotCount(count => Math.min(99, count + 1));
@@ -222,6 +227,7 @@ export function Tracker() {
     swipeStartX.current = null;
   }
   function shotClick() {
+    if (matchOver) return;
     if (swipeHandled.current) {
       swipeHandled.current = false;
       return;
@@ -255,10 +261,20 @@ export function Tracker() {
     }
   }
 
+  /** Deleting the deciding point of a match completed by its result reopens the match. */
+  async function deletePointAndReopen(point: ScoredPoint) {
+    const hadWinner = matchWinner(points, activeMatch) !== null;
+    await softDeletePoint(activeMatch.family_id, point.id);
+    const remaining = points.filter(existing => existing.id !== point.id);
+    if (activeMatch.status === 'completed' && hadWinner && matchWinner(remaining, activeMatch) === null) {
+      await setMatchStatus(activeMatch.family_id, activeMatch.id, 'in-progress');
+    }
+  }
+
   async function removePoint(point: ScoredPoint) {
     if (!window.confirm(`Eliminare logicamente il punto ${point.point_number}? I punteggi e i KPI saranno ricalcolati.`)) return;
     try {
-      await softDeletePoint(activeMatch.family_id, point.id);
+      await deletePointAndReopen(point);
       setTrackerError(null);
     } catch (cause) {
       setTrackerError(cause instanceof Error ? cause.message : 'Impossibile eliminare il punto.');
@@ -269,7 +285,7 @@ export function Tracker() {
     const latestPoint = gamePoints.at(-1);
     if (!latestPoint) return;
     try {
-      await softDeletePoint(activeMatch.family_id, latestPoint.id);
+      await deletePointAndReopen(latestPoint);
       setTrackerError(null);
     } catch (cause) {
       setTrackerError(cause instanceof Error ? cause.message : 'Impossibile annullare il punto.');
@@ -308,16 +324,7 @@ export function Tracker() {
 
   async function completeMatch() {
     try {
-      await db.transaction('rw', db.matches, db.syncQueue, async () => {
-        const current = await db.matches.get(activeMatch.id);
-        if (!current || current.family_id !== activeMatch.family_id || current.deleted) {
-          throw new Error('La partita non è più attiva nello spazio corrente.');
-        }
-        const updated_at = stamp();
-        const updated = { ...current, status: 'completed' as const, updated_at, version: current.version + 1 };
-        await db.matches.put(updated);
-        await db.syncQueue.put(queueOperation(activeMatch.family_id, 'matches', updated, updated_at));
-      });
+      await setMatchStatus(activeMatch.family_id, activeMatch.id, 'completed');
       setTrackerError(null);
     } catch (cause) {
       setTrackerError(cause instanceof Error ? cause.message : 'Impossibile completare la partita.');
@@ -411,12 +418,12 @@ export function Tracker() {
     <div className="cg-body">
       <section className="cg-panel">
         <div className="cg-shots">
-          <button className="cg-shots-count" onClick={openShotSheet} aria-label={`Modifica numero di colpi: ${shotCount}`}>
+          <button className="cg-shots-count" onClick={openShotSheet} disabled={matchOver} aria-label={`Modifica numero di colpi: ${shotCount}`}>
             <span>Colpi</span>
             <strong>{shotCount}</strong>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z" /></svg>
           </button>
-          <button className="cg-shots-add" aria-label="Aggiungi un colpo" onClick={shotClick} onPointerDown={shotPointerDown} onPointerUp={shotPointerUp} onPointerCancel={() => { swipeStartX.current = null; }}>
+          <button className="cg-shots-add" aria-label="Aggiungi un colpo" disabled={matchOver} onClick={shotClick} onPointerDown={shotPointerDown} onPointerUp={shotPointerUp} onPointerCancel={() => { swipeStartX.current = null; }}>
             <span className="cg-shots-plus">+1</span>
             <span className="cg-shots-label"><strong>Colpo</strong><small>tocca o scorri</small></span>
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l6 6-6 6M12 6l6 6-6 6" /></svg>
@@ -424,18 +431,18 @@ export function Tracker() {
         </div>
         {currentServer === 'player' && <div className="cg-serve-balls" role="group" aria-label="Servizio">
           <span>Servizio</span>
-          <button className={secondServe ? '' : 'selected'} aria-pressed={!secondServe} onClick={() => setSecondServe(false)}>Solo 1ª palla</button>
-          <button className={secondServe ? 'selected' : ''} aria-pressed={secondServe} onClick={() => setSecondServe(true)}>Anche 2ª palla</button>
+          <button className={secondServe ? '' : 'selected'} aria-pressed={!secondServe} disabled={matchOver} onClick={() => setSecondServe(false)}>Solo 1ª palla</button>
+          <button className={secondServe ? 'selected' : ''} aria-pressed={secondServe} disabled={matchOver} onClick={() => setSecondServe(true)}>Anche 2ª palla</button>
         </div>}
         <div className="cg-actions" role="group" aria-label="Punto perso">
-          {lostActions.map(item => <button key={item.action} className="cg-action lost" onClick={() => { if (item.action === 'double_fault') setSecondServe(true); void savePoint(item.action); }} disabled={matchHasWinner || activeMatch.status === 'completed' || gameComplete || !isActionAvailable(item.action, currentServer, shotCount)}
+          {lostActions.map(item => <button key={item.action} className="cg-action lost" onClick={() => { if (item.action === 'double_fault') setSecondServe(true); void savePoint(item.action); }} disabled={matchOver || gameComplete || !isActionAvailable(item.action, currentServer, shotCount)}
             title={unavailableReason(item.action, currentServer, shotCount) ?? undefined}>
             <img src={item.icon} alt="" /><span>{item.label}</span>
           </button>)}
         </div>
         <div className="cg-spacer" />
         <div className="cg-actions" role="group" aria-label="Punto vinto">
-          {wonActions.map(item => <button key={item.action} className="cg-action won" onClick={() => void savePoint(item.action)} disabled={matchHasWinner || activeMatch.status === 'completed' || gameComplete || !isActionAvailable(item.action, currentServer, shotCount)}
+          {wonActions.map(item => <button key={item.action} className="cg-action won" onClick={() => void savePoint(item.action)} disabled={matchOver || gameComplete || !isActionAvailable(item.action, currentServer, shotCount)}
             title={unavailableReason(item.action, currentServer, shotCount) ?? undefined}>
             <img src={item.icon} alt="" /><span>{item.label}</span>
           </button>)}
@@ -544,6 +551,21 @@ export function Tracker() {
       </div>
     </div>}
   </div>;
+}
+
+/** Saves the match status (and queues it for sync). */
+async function setMatchStatus(familyId: string, matchId: string, status: Match['status']): Promise<void> {
+  await db.transaction('rw', db.matches, db.syncQueue, async () => {
+    const current = await db.matches.get(matchId);
+    if (!current || current.family_id !== familyId || current.deleted) {
+      throw new Error('La partita non è più attiva nello spazio corrente.');
+    }
+    if (current.status === status) return;
+    const updated_at = stamp();
+    const updated = { ...current, status, updated_at, version: current.version + 1 };
+    await db.matches.put(updated);
+    await db.syncQueue.put(queueOperation(familyId, 'matches', updated, updated_at));
+  });
 }
 
 const CHANGEOVER_SECONDS = 90;

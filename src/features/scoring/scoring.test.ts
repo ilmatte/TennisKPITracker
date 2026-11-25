@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Match, ScoredPoint } from '../../types';
-import { configuredSetNavigation, deriveGameScore, deriveSetScore, getServer, isSetComplete, nextGameNumber, pointsToGame, resolvePointAction, isActionAvailable, serverOverrideKey, tiebreakServer, tiebreakTarget } from './scoring';
+import { configuredSetNavigation, deriveGameScore, deriveSetScore, getServer, isSetComplete, nextGameNumber, pointsToGame, resolvePointAction, isActionAvailable, matchWinner, serverOverrideKey, tiebreakServer, tiebreakTarget } from './scoring';
 import { freeErrorStats, serveKpi, servicePlusOne } from '../kpi/kpi';
 import { POINT_TYPE } from './pointTypes';
 
@@ -200,6 +200,32 @@ describe('tie-break', () => {
     expect(isSetComplete({ player: 4, opponent: 2 }, shortSets, 1)).toBe(true);
     expect(isSetComplete({ player: 4, opponent: 3 }, shortSets, 1)).toBe(true);
     expect(isSetComplete({ player: 3, opponent: 3 }, shortSets, 1)).toBe(false);
+  });
+
+  it('declares the match winner when the deciding super tie-break ends (best of 3)', () => {
+    const m = match({ third_set_type: 'super-tiebreak', number_of_sets: 3, tiebreak_starts_at_363: false, deuce_single_point: false });
+    const sixLove = (setNumber: number, winner: 'player' | 'opponent') =>
+      Array.from({ length: 6 }, (_, index) => wonGame(setNumber, index + 1, winner)).flat();
+    const superTiebreak = (wins: number, losses: number) => [
+      ...Array.from({ length: wins }, (_, index) => point({ set_number: 3, game_number: 1, point_number: index + 1, won: true })),
+      ...Array.from({ length: losses }, (_, index) => point({ set_number: 3, game_number: 1, point_number: wins + index + 1, won: false })),
+    ];
+    const oneSetAll = [...sixLove(1, 'player'), ...sixLove(2, 'opponent')];
+    expect(matchWinner(oneSetAll, m)).toBeNull();
+    expect(matchWinner([...oneSetAll, ...superTiebreak(9, 8)], m)).toBeNull();
+    expect(matchWinner([...oneSetAll, ...superTiebreak(10, 8)], m)).toBe('player');
+    expect(matchWinner([...oneSetAll, ...superTiebreak(8, 10)], m)).toBe('opponent');
+  });
+
+  it('declares the match winner after two sets in best of 3 and three sets in best of 5', () => {
+    const sixLove = (setNumber: number, winner: 'player' | 'opponent') =>
+      Array.from({ length: 6 }, (_, index) => wonGame(setNumber, index + 1, winner)).flat();
+    const bestOf3 = match({ number_of_sets: 3, tiebreak_starts_at_363: false, deuce_single_point: false });
+    expect(matchWinner(sixLove(1, 'player'), bestOf3)).toBeNull();
+    expect(matchWinner([...sixLove(1, 'player'), ...sixLove(2, 'player')], bestOf3)).toBe('player');
+    const bestOf5 = match({ number_of_sets: 5, tiebreak_starts_at_363: false, deuce_single_point: false });
+    expect(matchWinner([...sixLove(1, 'opponent'), ...sixLove(2, 'opponent')], bestOf5)).toBeNull();
+    expect(matchWinner([...sixLove(1, 'opponent'), ...sixLove(2, 'opponent'), ...sixLove(3, 'opponent')], bestOf5)).toBe('opponent');
   });
 
   it('plays the deciding set as a super tie-break to 10 when configured', () => {
