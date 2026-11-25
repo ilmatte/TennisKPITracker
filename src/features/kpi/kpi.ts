@@ -1,5 +1,5 @@
 import type { Point } from '../../types';
-import { pointWinnerSide } from '../../db/pointWinner';
+import { pointServerSide, pointWinnerSide } from '../../db/pointWinner';
 
 export type Side = 'player' | 'opponent';
 
@@ -14,7 +14,7 @@ export interface ServeKpi {
 }
 
 export function serveKpi(points: Point[], side: Side): ServeKpi {
-  const served = points.filter(p => !p.deleted && p.server === side);
+  const served = points.filter(p => !p.deleted && pointServerSide(p) === side);
   const doubleFaults = served.filter(p => p.double_fault).length;
   const validFirst = served.filter(p => !p.second_serve && !p.double_fault).length;
   const firstAttempts = served.filter(p => !p.second_serve).length;
@@ -43,7 +43,7 @@ export function freeErrorStats(points: Point[], side: Side) {
 }
 
 export function servicePlusOne(points: Point[], side: Side) {
-  const served = points.filter(p => !p.deleted && p.server === side);
+  const served = points.filter(p => !p.deleted && pointServerSide(p) === side);
   const pattern = served.filter(p => pointWinnerSide(p) === side && p.shot_count <= 4 && p.free_error);
   return {
     won: pattern.length,

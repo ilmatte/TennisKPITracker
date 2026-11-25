@@ -227,7 +227,7 @@ export async function updateGame(
 }
 
 export type PointChanges = Pick<Point,
-  'won' | 'server' | 'second_serve' | 'double_fault' | 'shot_count' | 'free_error' |
+  'won' | 'serving' | 'second_serve' | 'double_fault' | 'shot_count' | 'free_error' |
   'error_player' | 'error_category' | 'attack_error' | 'pressure_situation' | 'pressure_error_player'
 >;
 

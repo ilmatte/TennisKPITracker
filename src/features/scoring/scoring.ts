@@ -176,7 +176,8 @@ export const serverOverrideKey = (setNumber: number, gameNumber: number) => `${s
  *  persisted first tie-break server, which determines who opens the following set. */
 function recordedGameServer(points: ScoredPoint[], setNumber: number, gameNumber: number, overrides: ServerOverrides): Side | null {
   const first = sortedPoints(points, setNumber, gameNumber)[0];
-  return first?.server ?? overrides[serverOverrideKey(setNumber, gameNumber)] ?? null;
+  if (first) return first.serving ? 'player' : 'opponent';
+  return overrides[serverOverrideKey(setNumber, gameNumber)] ?? null;
 }
 
 function nextSetFirstServerAfterTiebreak(tiebreakFirstServer: Side): Side {

@@ -1,4 +1,4 @@
-import Dexie, { type EntityTable, type Table } from 'dexie';
+import Dexie, { type EntityTable, type Table, type Transaction } from 'dexie';
 import { migrateLegacyPointPayload } from './pointWinner';
 import type {
   Family,
@@ -54,20 +54,28 @@ export class TennisDatabase extends Dexie {
     // so the field is no longer indexed. Queued sync operations and stored conflicts are converted too.
     this.version(4).stores({
       points: 'id, family_id, game_id, &[game_id+point_number], point_number, server, updated_at, deleted',
-    }).upgrade(async transaction => {
-      await transaction.table('points').toCollection().modify((point: Record<string, unknown>) => {
-        Object.assign(point, migrateLegacyPointPayload(point));
-        delete point.winner;
-      });
-      await transaction.table('syncQueue').where('entity_type').equals('points').modify((operation: { payload: unknown }) => {
-        operation.payload = migrateLegacyPointPayload(operation.payload);
-      });
-      await transaction.table('syncConflicts').where('entity_type').equals('points').modify((conflict: { local_payload: unknown; remote_payload: unknown }) => {
-        conflict.local_payload = migrateLegacyPointPayload(conflict.local_payload);
-        conflict.remote_payload = migrateLegacyPointPayload(conflict.remote_payload);
-      });
-    });
+    }).upgrade(transaction => convertLegacyPoints(transaction, ['winner']));
+    // v5: points.server ('player' | 'opponent') becomes points.serving (boolean, true when my player serves).
+    this.version(5).stores({
+      points: 'id, family_id, game_id, &[game_id+point_number], point_number, updated_at, deleted',
+    }).upgrade(transaction => convertLegacyPoints(transaction, ['winner', 'server']));
   }
+}
+
+/** Converts stored points, queued point operations and point conflicts to the current point shape,
+ *  removing the given legacy fields. */
+async function convertLegacyPoints(transaction: Transaction, legacyFields: string[]): Promise<void> {
+  await transaction.table('points').toCollection().modify((point: Record<string, unknown>) => {
+    Object.assign(point, migrateLegacyPointPayload(point));
+    for (const field of legacyFields) delete point[field];
+  });
+  await transaction.table('syncQueue').where('entity_type').equals('points').modify((operation: { payload: unknown }) => {
+    operation.payload = migrateLegacyPointPayload(operation.payload);
+  });
+  await transaction.table('syncConflicts').where('entity_type').equals('points').modify((conflict: { local_payload: unknown; remote_payload: unknown }) => {
+    conflict.local_payload = migrateLegacyPointPayload(conflict.local_payload);
+    conflict.remote_payload = migrateLegacyPointPayload(conflict.remote_payload);
+  });
 }
 
 export const db = new TennisDatabase();

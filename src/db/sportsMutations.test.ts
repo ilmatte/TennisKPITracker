@@ -63,7 +63,7 @@ function tennisGame(id: string, set_id = 'set-1', game_number = 1): Game {
 
 function point(id: string, point_number: number): Point {
   return {
-    id, family_id: 'family-1', game_id: 'game-1', point_number, won: true, server: 'player',
+    id, family_id: 'family-1', game_id: 'game-1', point_number, won: true, serving: true,
     second_serve: false, double_fault: false, shot_count: 3, free_error: false, error_player: undefined,
     error_category: undefined, attack_error: false, pressure_situation: false, pressure_error_player: undefined,
     created_at: now, updated_at: now, version: 1, deleted: false,
@@ -230,7 +230,7 @@ describe('sport entity mutations', () => {
     await updateGame('family-1', 'game-4', { game_number: 2 });
     await updateGame('family-1', 'game-5', { game_number: 2 });
     const pointChanges: PointChanges = {
-      won: false, server: 'player', second_serve: false, double_fault: false, shot_count: 3,
+      won: false, serving: true, second_serve: false, double_fault: false, shot_count: 3,
       free_error: false, error_player: undefined, error_category: undefined, attack_error: false,
       pressure_situation: false, pressure_error_player: undefined,
     };
@@ -252,7 +252,7 @@ describe('sport entity mutations', () => {
   it('edits point statistics and recalculates game/set scores atomically', async () => {
     await seedMatch(true);
     const changes: PointChanges = {
-      won: false, server: 'opponent', second_serve: true, double_fault: true,
+      won: false, serving: false, second_serve: true, double_fault: true,
       shot_count: 5, free_error: true, error_player: 'player', error_category: 'backhand',
       attack_error: true, pressure_situation: true, pressure_error_player: 'player',
     };

@@ -110,7 +110,8 @@ export interface Point {
   point_number: number;
   /** true when my player won the point, false when the opponent won it. */
   won: boolean;
-  server: 'player' | 'opponent';
+  /** true when my player served the point, false when the opponent served it. */
+  serving: boolean;
   second_serve: boolean;
   double_fault: boolean;
   shot_count: number;

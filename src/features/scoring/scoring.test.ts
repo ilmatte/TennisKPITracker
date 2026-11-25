@@ -15,7 +15,7 @@ const match = (overrides: Partial<Match> = {}): Match => ({
 
 const point = (overrides: Partial<ScoredPoint> = {}): ScoredPoint => ({
   id: crypto.randomUUID(), family_id: 'f1', game_id: 'g1', set_number: 1, game_number: 1, point_number: 1,
-  won: true, server: 'player', second_serve: false, double_fault: false, shot_count: 1,
+  won: true, serving: true, second_serve: false, double_fault: false, shot_count: 1,
   free_error: false, attack_error: false, pressure_situation: false,
   created_at: '2026-11-17', updated_at: '2026-11-17', version: 1, deleted: false, ...overrides,
 });
@@ -116,7 +116,7 @@ describe('scoring core', () => {
 
 /** Builds the points of a whole game won by `winner` (4 points to love), served by `server`. */
 const wonGame = (setNumber: number, gameNumber: number, winner: 'player' | 'opponent', server: 'player' | 'opponent' = winner) =>
-  [1, 2, 3, 4].map(n => point({ set_number: setNumber, game_number: gameNumber, point_number: n, won: winner === 'player', server }));
+  [1, 2, 3, 4].map(n => point({ set_number: setNumber, game_number: gameNumber, point_number: n, won: winner === 'player', serving: server === 'player' }));
 /** Games alternating player/opponent (each holding serve, player serving first) until the score is n-n. */
 const levelSet = (setNumber: number, n: number) =>
   Array.from({ length: n * 2 }, (_, index) => wonGame(setNumber, index + 1, index % 2 === 0 ? 'player' : 'opponent')).flat();
@@ -146,7 +146,7 @@ describe('tie-break', () => {
     const base = levelSet(1, 6); // 12 games played: game 13 is served by the first server
     const servers = [0, 1, 2, 3, 4].map(played => getServer(sixGameSets, [
       ...base,
-      ...Array.from({ length: played }, (_, index) => point({ set_number: 1, game_number: 13, point_number: index + 1, won: index % 2 === 0, server: tiebreakServer('player', index) })),
+      ...Array.from({ length: played }, (_, index) => point({ set_number: 1, game_number: 13, point_number: index + 1, won: index % 2 === 0, serving: tiebreakServer('player', index) === 'player' })),
     ], 1, 13));
     expect(servers).toEqual(['player', 'opponent', 'opponent', 'player', 'player']);
   });

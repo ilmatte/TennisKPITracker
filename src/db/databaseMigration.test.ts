@@ -45,7 +45,7 @@ describe('sync metadata schema migration', () => {
 
     const migrated = new TennisDatabase(databaseName);
     await migrated.open();
-    expect(migrated.verno).toBe(4);
+    expect(migrated.verno).toBe(5);
     expect(await migrated.table('families').get(family.id)).toEqual(family);
     expect(await migrated.table('players').get(player.id)).toEqual(player);
     expect(await migrated.table('syncQueue').get(operation.id)).toEqual(operation);
@@ -57,7 +57,7 @@ describe('sync metadata schema migration', () => {
     migrated.close();
   });
 
-  it('converts points.winner into the boolean points.won, including queued operations and conflicts', async () => {
+  it('converts points.winner/server into the booleans points.won/serving, including queued operations and conflicts', async () => {
     const legacy = new Dexie(databaseName);
     legacy.version(3).stores({
       families: 'id, created_by, local_only, updated_at',
@@ -73,8 +73,9 @@ describe('sync metadata schema migration', () => {
       syncConflicts: 'id, family_id, entity_type, entity_id, status, created_at',
     });
     await legacy.open();
+    // The lost point was served by the opponent, so `server` and `winner` are both converted to false.
     const point = (id: string, winner: 'player' | 'opponent', point_number: number) => ({
-      id, family_id: 'f1', game_id: 'g1', point_number, winner, server: 'player', second_serve: false,
+      id, family_id: 'f1', game_id: 'g1', point_number, winner, server: winner, second_serve: false,
       double_fault: false, shot_count: 1, free_error: false, attack_error: false, pressure_situation: false,
       created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z', version: 1, deleted: false,
     });
@@ -94,13 +95,16 @@ describe('sync metadata schema migration', () => {
     await migrated.open();
     const wonPoint = await migrated.table('points').get('won-point');
     const lostPoint = await migrated.table('points').get('lost-point');
-    expect(wonPoint).toMatchObject({ won: true });
-    expect(lostPoint).toMatchObject({ won: false });
+    expect(wonPoint).toMatchObject({ won: true, serving: true });
+    expect(lostPoint).toMatchObject({ won: false, serving: false });
     expect(wonPoint).not.toHaveProperty('winner');
+    expect(wonPoint).not.toHaveProperty('server');
     expect(migrated.points.schema.indexes.map(index => index.name)).not.toContain('winner');
+    expect(migrated.points.schema.indexes.map(index => index.name)).not.toContain('server');
     const queued = await migrated.table('syncQueue').get('queue-point');
-    expect(queued.payload).toMatchObject({ won: false });
+    expect(queued.payload).toMatchObject({ won: false, serving: false });
     expect(queued.payload).not.toHaveProperty('winner');
+    expect(queued.payload).not.toHaveProperty('server');
     const conflict = await migrated.table('syncConflicts').get('conflict-point');
     expect(conflict.local_payload).toMatchObject({ won: true });
     expect(conflict.remote_payload).toMatchObject({ won: false });

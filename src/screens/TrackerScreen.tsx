@@ -50,7 +50,7 @@ export function Tracker() {
   const [editingMatch, setEditingMatch] = useState(false);
   // Shot counter for the rally being played: +1 per shot, saved with the next point, then reset.
   const [shotCount, setShotCount] = useState(0);
-  // Server corrections for games with no points yet (once a point is saved, its stored server is the reference).
+  // Server corrections for games with no points yet (once a point is saved, its stored `serving` is the reference).
   const [serverOverrides, setServerOverrides] = useState<ServerOverrides>({});
   const [shotSheetOpen, setShotSheetOpen] = useState(false);
   const [shotDraft, setShotDraft] = useState(0);
@@ -160,7 +160,7 @@ export function Tracker() {
         const point: Point = {
           id: crypto.randomUUID(), family_id: activeMatch.family_id, game_id: tennisGame.id,
           point_number: nextPointNumber(historicalGamePoints),
-          won: result.won, server,
+          won: result.won, serving: server === 'player',
           second_serve: result.secondServe, double_fault: result.doubleFault,
           shot_count: shotCount > 0 ? shotCount : result.shotCount,
           free_error: result.freeError, error_player: action === 'free_error' ? 'player' : undefined,
@@ -237,9 +237,9 @@ export function Tracker() {
     try {
       for (const [index, point] of gamePoints.entries()) {
         const server = currentTiebreak ? tiebreakServer(newServer, index) : newServer;
-        if (point.server === server) continue;
+        if (point.serving === (server === 'player')) continue;
         await updatePoint(activeMatch.family_id, point.id, {
-          won: point.won, server, second_serve: point.second_serve, double_fault: point.double_fault,
+          won: point.won, serving: server === 'player', second_serve: point.second_serve, double_fault: point.double_fault,
           shot_count: point.shot_count, free_error: point.free_error, error_player: point.error_player,
           error_category: point.error_category, attack_error: point.attack_error,
           pressure_situation: point.pressure_situation, pressure_error_player: point.pressure_error_player,
@@ -571,7 +571,7 @@ function PointEditor({ point, playerName, opponentName, onClose, onSave }: {
 }) {
   const [draft, setDraft] = useState<PointChanges>({
     won: point.won,
-    server: point.server,
+    serving: point.serving,
     second_serve: point.second_serve,
     double_fault: point.double_fault,
     shot_count: point.shot_count,
@@ -590,7 +590,7 @@ function PointEditor({ point, playerName, opponentName, onClose, onSave }: {
     <div className="modal-heading"><h2>Modifica punto {point.point_number}</h2><button className="icon-button" onClick={onClose}>×</button></div>
     <div className="form-grid">
       <label>Vincitore<select value={draft.won ? 'player' : 'opponent'} onChange={event => field('won', event.target.value === 'player')}><option value="player">{playerName}</option><option value="opponent">{opponentName}</option></select></label>
-      <label>Battitore<select value={draft.server} onChange={event => field('server', event.target.value as Point['server'])}><option value="player">{playerName}</option><option value="opponent">{opponentName}</option></select></label>
+      <label>Battitore<select value={draft.serving ? 'player' : 'opponent'} onChange={event => field('serving', event.target.value === 'player')}><option value="player">{playerName}</option><option value="opponent">{opponentName}</option></select></label>
     </div>
     <div className="form-grid">
       <label>Numero colpi<input type="number" min="1" value={draft.shot_count} onChange={event => field('shot_count', Number(event.target.value))} /></label>
