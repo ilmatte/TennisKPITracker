@@ -99,9 +99,18 @@ describe('scoring core', () => {
     expect(isActionAvailable('won', 'player', 2)).toBe(true);
     expect(isActionAvailable('free_error', 'opponent', 5)).toBe(true);
   });
-  it('uses one-point deuce when enabled', () => {
-    const points=[1,2,3].map(()=>point()).concat([1,2,3].map(()=>point({won:false}))).concat([point()]);
-    expect(deriveGameScore(points, true)).toEqual({ player: 'AD', opponent: '40' });
+  it('uses one-point deuce when enabled: the point after 40-40 wins the game, never advantage', () => {
+    const deuce=[1,2,3].map(()=>point()).concat([1,2,3].map(()=>point({won:false})));
+    expect(deriveGameScore(deuce, true)).toEqual({ player: '40', opponent: '40' });
+    expect(pointsToGame(deuce, 'player', true)).toBeNull();
+    expect(pointsToGame([...deuce, point()], 'player', true)).toEqual({ player: 1, opponent: 0 });
+    expect(pointsToGame([...deuce, point({ won: false })], 'player', true)).toEqual({ player: 0, opponent: 1 });
+  });
+  it('still goes to advantage at 40-40 when one-point deuce is disabled', () => {
+    const deuce=[1,2,3].map(()=>point()).concat([1,2,3].map(()=>point({won:false})));
+    expect(deriveGameScore([...deuce, point()], false)).toEqual({ player: 'AD', opponent: '40' });
+    expect(pointsToGame([...deuce, point()], 'player', false)).toBeNull();
+    expect(pointsToGame([...deuce, point(), point()], 'player', false)).toEqual({ player: 1, opponent: 0 });
   });
   it('excludes logically deleted points from game scores', () => {
     const points = [point(), point(), point(), point({ deleted: true })];

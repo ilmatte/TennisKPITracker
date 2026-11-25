@@ -78,9 +78,11 @@ export function pointsToGame(points: ScoredPoint[], _side: Side, deuceSinglePoin
     if (opponent >= tiebreakTarget && opponent - player >= 2) return { player: 0, opponent: 1 };
     return null;
   }
-  if (deuceSinglePoint && (player >= 5 || opponent >= 5) && (player === 5 || opponent === 5)) {
-    if (player > opponent) return { player: 1, opponent: 0 };
-    if (opponent > player) return { player: 0, opponent: 1 };
+  if (deuceSinglePoint) {
+    // "Punto secco al 40-40": no advantages. The first to 4 points wins; at 40-40 the next point decides the game.
+    if (player >= 4 && player > opponent) return { player: 1, opponent: 0 };
+    if (opponent >= 4 && opponent > player) return { player: 0, opponent: 1 };
+    return null;
   }
   if (player >= 4 && player - opponent >= 2) return { player: 1, opponent: 0 };
   if (opponent >= 4 && opponent - player >= 2) return { player: 0, opponent: 1 };
@@ -99,9 +101,11 @@ export function deriveGameScore(points: ScoredPoint[], deuceSinglePoint = false,
   const player = livePoints.filter(p => p.won).length;
   const opponent = livePoints.filter(p => !p.won).length;
   if (tiebreakTarget) return { player, opponent };
-  if (deuceSinglePoint && player >= 4 && opponent >= 4) {
-    if (player === opponent) return { player: '40', opponent: '40' };
-    return player > opponent ? { player: 'AD', opponent: '40' } : { player: '40', opponent: 'AD' };
+  if (deuceSinglePoint) {
+    // No advantages: the score never goes beyond 40-40.
+    const label = (value: number) => [0, 15, 30, 40][Math.min(value, 3)];
+    if (player >= 3 && opponent >= 3) return { player: '40', opponent: '40' };
+    return { player: label(player), opponent: label(opponent) };
   }
   if (player >= 3 && opponent >= 3) {
     if (player === opponent) return { player: '40', opponent: '40' };
