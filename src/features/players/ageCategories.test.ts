@@ -1,5 +1,4 @@
 import initialSchemaSql from '../../../supabase/initial_schema.sql?raw';
-import ageCategoriesMigrationSql from '../../../supabase/002_player_age_categories.sql?raw';
 import { describe, expect, it } from 'vitest';
 import {
   ageCategoryFor, ageOnJanuaryFirst, ageReachedInYear, parseBirthDate, playerAgeCategory, PLAYER_AGE_CATEGORIES,
@@ -43,8 +42,8 @@ describe('player age categories registry', () => {
     }
   });
 
-  it('matches the rows seeded in Supabase by initial_schema.sql and 002_player_age_categories.sql', () => {
-    for (const sql of [initialSchemaSql, ageCategoriesMigrationSql]) {
+  it('matches the rows seeded in Supabase by initial_schema.sql', () => {
+    for (const sql of [initialSchemaSql]) {
       const rows = [...sql.matchAll(/\((\d+), '(\w+)', '([^']+)', '(\w+)', (\d+), (true|false), (\d+), (\d+|null), '(\w+)'\)/g)]
         .map(([, id, code, name, sector, sortOrder, active, minAge, maxAge, basis]) => ({
           id: Number(id), code, name, sector, sort_order: Number(sortOrder), is_active: active === 'true',

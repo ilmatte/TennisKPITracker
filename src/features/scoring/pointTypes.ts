@@ -1,7 +1,7 @@
 import type { Point, PointType } from '../../types';
 
-/** Point type ids. They mirror the rows of the `point_types` table (Supabase migration 005_point_types.sql and the
- *  Dexie `point_types` store): never renumber them. */
+/** Point type ids. They mirror the rows of the `point_types` table (supabase/initial_schema.sql and the Dexie
+ *  `point_types` store): never renumber them. */
 export const POINT_TYPE = {
   double_fault: 1,
   free_error: 2,
@@ -33,7 +33,7 @@ export const isFreeError = (point: Pick<Point, 'point_type_id'>) => point.point_
 
 /** Point type of a point stored with the legacy flags (before points.point_type_id existed). Aces and great shots
  *  were not recorded separately, so they become ordinary won points; a free error on a won point was the opponent's
- *  error, so it becomes an ordinary won point too. Same result as 005_point_types.sql followed by 006. */
+ *  error, so it becomes an ordinary won point too. Used when restoring version 2 JSON backups. */
 export function legacyPointTypeId(point: { double_fault?: unknown; free_error?: unknown; won?: unknown }): PointTypeId {
   if (point.double_fault === true) return POINT_TYPE.double_fault;
   if (point.won === true) return POINT_TYPE.win;
