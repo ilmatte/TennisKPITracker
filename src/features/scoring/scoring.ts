@@ -216,6 +216,8 @@ export function sortedPoints(points: ScoredPoint[], setNumber: number, gameNumbe
   return points.filter(p => !p.deleted && p.set_number === setNumber && p.game_number === gameNumber).sort((a, b) => a.point_number - b.point_number);
 }
 
+/** The game being played in a set: the first game not yet won. Once the set is over there is no next game,
+ *  so the last game of the set is returned (use `isSetComplete` to tell the two cases apart). */
 export function nextGameNumber(points: ScoredPoint[], setNumber: number, match: Match): number {
   const gameNumbers = points
     .filter(point => !point.deleted && point.set_number === setNumber)
@@ -223,6 +225,7 @@ export function nextGameNumber(points: ScoredPoint[], setNumber: number, match: 
   let gameNumber = 1;
   const lastRecordedGame = Math.max(0, ...gameNumbers);
   while (gameNumber <= lastRecordedGame && pointsToGame(sortedPoints(points, setNumber, gameNumber), 'player', match.deuce_single_point, tiebreakTarget(points, match, setNumber, gameNumber))) {
+    if (isSetComplete(countGames(points, setNumber, match, gameNumber + 1), match, setNumber)) return gameNumber;
     gameNumber += 1;
   }
   return gameNumber;

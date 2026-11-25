@@ -175,6 +175,16 @@ describe('tie-break', () => {
     expect(getServer(sixGameSets, points, 1, 3, overrides)).toBe('opponent');
   });
 
+  it('does not open a new game once the set is over', () => {
+    const shortSets = match({ tiebreak_starts_at_363: true, deuce_single_point: false });
+    // Set won 4-1: games 1-5 played, there is no game 6.
+    const set1 = [...wonGame(1, 1, 'player'), ...wonGame(1, 2, 'opponent'), ...wonGame(1, 3, 'player'), ...wonGame(1, 4, 'player'), ...wonGame(1, 5, 'player')];
+    expect(deriveSetScore(set1, 1, shortSets)).toEqual({ player: 4, opponent: 1 });
+    expect(nextGameNumber(set1, 1, shortSets)).toBe(5);
+    expect(nextGameNumber(set1.filter(p => p.game_number < 5), 1, shortSets)).toBe(5);
+    expect(nextGameNumber(set1.filter(p => p.game_number < 4), 1, shortSets)).toBe(4);
+  });
+
   it('plays short sets to 4 games with a tie-break at 3-3', () => {
     const shortSets = match({ tiebreak_starts_at_363: true, deuce_single_point: false });
     expect(tiebreakTarget(levelSet(1, 3), shortSets, 1, 7)).toBe(7);

@@ -60,6 +60,8 @@ export function Tracker() {
   const setTabs = match ? configuredSetNavigation(match.number_of_sets, hierarchy.sets) : [];
   const selectedSetNumber = match && setNumber > match.number_of_sets ? 1 : setNumber;
   const currentGameNumber = match ? nextGameNumber(points, selectedSetNumber, match) : 1;
+  // A finished set has no game in progress: nextGameNumber then points at its last game.
+  const selectedSetFinished = match ? isSetComplete(deriveSetScore(points, selectedSetNumber, match), match, selectedSetNumber) : false;
   const gameNumber = selectedGame ?? currentGameNumber;
   const currentSet = hierarchy.sets.find(set => set.set_number === selectedSetNumber);
   const currentGame = hierarchy.games.find(game => game.set_id === currentSet?.id && game.game_number === gameNumber);
@@ -444,7 +446,7 @@ export function Tracker() {
               const target = tiebreakTarget(points, match, selectedSetNumber, number);
               const result = pointsToGame(selectedPoints, 'player', match.deuce_single_point, target);
               const label = result ? `${result.player}-${result.opponent}` : 'in corso';
-              const isCurrent = number === currentGameNumber;
+              const isCurrent = number === currentGameNumber && !selectedSetFinished;
               return <button key={number} className={`cg-chip${number === gameNumber ? ' active' : ''}${isCurrent ? ' current' : ''}`} onClick={() => selectGame(number)}>
                 {target ? tiebreakLabel : `Game ${number}`}<span>{isCurrent ? 'Corrente' : label}</span>
               </button>;
