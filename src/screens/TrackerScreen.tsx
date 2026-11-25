@@ -160,7 +160,7 @@ export function Tracker() {
         const point: Point = {
           id: crypto.randomUUID(), family_id: activeMatch.family_id, game_id: tennisGame.id,
           point_number: nextPointNumber(historicalGamePoints),
-          winner: result.winner, server,
+          won: result.won, server,
           second_serve: result.secondServe, double_fault: result.doubleFault,
           shot_count: shotCount > 0 ? shotCount : result.shotCount,
           free_error: result.freeError, error_player: action === 'free_error' ? 'player' : undefined,
@@ -173,8 +173,8 @@ export function Tracker() {
         const updatedSetScore = deriveSetScore(updatedPoints, selectedSetNumber, currentMatch);
         const updatedGame: Game = {
           ...tennisGame,
-          player_points: updatedGamePoints.filter(existing => existing.winner === 'player').length,
-          opponent_points: updatedGamePoints.filter(existing => existing.winner === 'opponent').length,
+          player_points: updatedGamePoints.filter(existing => existing.won).length,
+          opponent_points: updatedGamePoints.filter(existing => !existing.won).length,
           updated_at: created_at,
           version: existingGame ? existingGame.version + 1 : 1,
         };
@@ -239,7 +239,7 @@ export function Tracker() {
         const server = currentTiebreak ? tiebreakServer(newServer, index) : newServer;
         if (point.server === server) continue;
         await updatePoint(activeMatch.family_id, point.id, {
-          winner: point.winner, server, second_serve: point.second_serve, double_fault: point.double_fault,
+          won: point.won, server, second_serve: point.second_serve, double_fault: point.double_fault,
           shot_count: point.shot_count, free_error: point.free_error, error_player: point.error_player,
           error_category: point.error_category, attack_error: point.attack_error,
           pressure_situation: point.pressure_situation, pressure_error_player: point.pressure_error_player,
@@ -453,7 +453,7 @@ export function Tracker() {
           {gamePoints.length > 0 && <div className="cg-history">
             <h3>Punti del game {gameNumber}</h3>
             {gamePoints.map(point => <div className="cg-history-row" key={point.id}>
-              <span>{point.point_number}</span><strong>{point.winner === 'player' ? playerName : opponentName}</strong>
+              <span>{point.point_number}</span><strong>{point.won ? playerName : opponentName}</strong>
               <span>{point.shot_count} colpi</span>
               <span className="cg-history-actions">
                 <button onClick={() => setEditingPoint(point)}>Modifica</button>
@@ -570,7 +570,7 @@ function PointEditor({ point, playerName, opponentName, onClose, onSave }: {
   onSave: (changes: PointChanges) => Promise<void>;
 }) {
   const [draft, setDraft] = useState<PointChanges>({
-    winner: point.winner,
+    won: point.won,
     server: point.server,
     second_serve: point.second_serve,
     double_fault: point.double_fault,
@@ -589,7 +589,7 @@ function PointEditor({ point, playerName, opponentName, onClose, onSave }: {
   return <div className="modal-backdrop"><div className="modal-sheet">
     <div className="modal-heading"><h2>Modifica punto {point.point_number}</h2><button className="icon-button" onClick={onClose}>×</button></div>
     <div className="form-grid">
-      <label>Vincitore<select value={draft.winner} onChange={event => field('winner', event.target.value as Point['winner'])}><option value="player">{playerName}</option><option value="opponent">{opponentName}</option></select></label>
+      <label>Vincitore<select value={draft.won ? 'player' : 'opponent'} onChange={event => field('won', event.target.value === 'player')}><option value="player">{playerName}</option><option value="opponent">{opponentName}</option></select></label>
       <label>Battitore<select value={draft.server} onChange={event => field('server', event.target.value as Point['server'])}><option value="player">{playerName}</option><option value="opponent">{opponentName}</option></select></label>
     </div>
     <div className="form-grid">

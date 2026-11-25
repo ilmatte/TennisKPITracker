@@ -89,8 +89,8 @@ async function recalculate(match: Match, updated_at: string): Promise<void> {
     const gamePoints = points.filter(point => point.game_id === game.id && !point.deleted);
     const next: Game = {
       ...game,
-      player_points: gamePoints.filter(point => point.winner === 'player').length,
-      opponent_points: gamePoints.filter(point => point.winner === 'opponent').length,
+      player_points: gamePoints.filter(point => point.won).length,
+      opponent_points: gamePoints.filter(point => !point.won).length,
     };
     if (next.player_points !== game.player_points || next.opponent_points !== game.opponent_points) {
       await write(db.games, 'games', updated(next, updated_at), updated_at);
@@ -227,7 +227,7 @@ export async function updateGame(
 }
 
 export type PointChanges = Pick<Point,
-  'winner' | 'server' | 'second_serve' | 'double_fault' | 'shot_count' | 'free_error' |
+  'won' | 'server' | 'second_serve' | 'double_fault' | 'shot_count' | 'free_error' |
   'error_player' | 'error_category' | 'attack_error' | 'pressure_situation' | 'pressure_error_player'
 >;
 

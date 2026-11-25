@@ -1,4 +1,5 @@
 import { db } from '../db/database';
+import { migrateLegacyPointPayload } from '../db/pointWinner';
 import type { Table } from 'dexie';
 import type {
   Game,
@@ -196,7 +197,8 @@ async function applyRemoteRecord(
   type: SyncEntityType,
   remotePayload: Record<string, unknown>,
 ): Promise<'applied' | 'ignored' | 'conflict'> {
-  const localPayload = toLocalPayload(remotePayload, mapping);
+  // Remote changes written before the points.won migration may still carry `winner`.
+  const localPayload = toLocalPayload(type === 'points' ? migrateLegacyPointPayload(remotePayload) : remotePayload, mapping);
   const id = String(localPayload.id);
   const version = Number(localPayload.version);
   const store = storeFor(type);

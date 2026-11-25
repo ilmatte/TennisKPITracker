@@ -108,7 +108,8 @@ export interface Point {
   family_id: UUID;
   game_id: UUID;
   point_number: number;
-  winner: 'player' | 'opponent';
+  /** true when my player won the point, false when the opponent won it. */
+  won: boolean;
   server: 'player' | 'opponent';
   second_serve: boolean;
   double_fault: boolean;

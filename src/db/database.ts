@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable, type Table } from 'dexie';
+import { migrateLegacyPointPayload } from './pointWinner';
 import type {
   Family,
   FamilyInvitation,
@@ -48,6 +49,23 @@ export class TennisDatabase extends Dexie {
     });
     this.version(3).stores({
       syncQueue: 'id, operation_id, family_id, entity_type, entity_id, created_at, attempts',
+    });
+    // v4: points.winner ('player' | 'opponent') becomes points.won (boolean). Booleans are not valid IndexedDB keys,
+    // so the field is no longer indexed. Queued sync operations and stored conflicts are converted too.
+    this.version(4).stores({
+      points: 'id, family_id, game_id, &[game_id+point_number], point_number, server, updated_at, deleted',
+    }).upgrade(async transaction => {
+      await transaction.table('points').toCollection().modify((point: Record<string, unknown>) => {
+        Object.assign(point, migrateLegacyPointPayload(point));
+        delete point.winner;
+      });
+      await transaction.table('syncQueue').where('entity_type').equals('points').modify((operation: { payload: unknown }) => {
+        operation.payload = migrateLegacyPointPayload(operation.payload);
+      });
+      await transaction.table('syncConflicts').where('entity_type').equals('points').modify((conflict: { local_payload: unknown; remote_payload: unknown }) => {
+        conflict.local_payload = migrateLegacyPointPayload(conflict.local_payload);
+        conflict.remote_payload = migrateLegacyPointPayload(conflict.remote_payload);
+      });
     });
   }
 }

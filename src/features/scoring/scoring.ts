@@ -3,7 +3,8 @@ import type { Match, ScoredPoint, TennisSet } from '../../types';
 export type Side = 'player' | 'opponent';
 export type PointAction = 'free_error' | 'double_fault' | 'lost' | 'great_shot' | 'won' | 'ace';
 export interface PointActionResult {
-  winner: Side;
+  /** true when my player wins the point. */
+  won: boolean;
   secondServe: boolean;
   doubleFault: boolean;
   shotCount: number;
@@ -36,7 +37,7 @@ export const DEFAULT_SHOT_COUNT: Record<Side, Partial<Record<PointAction, number
 export function resolvePointAction(action: PointAction, server: Side = 'player'): PointActionResult {
   const playerWon = action === 'great_shot' || action === 'won' || action === 'ace';
   return {
-    winner: playerWon ? 'player' : 'opponent',
+    won: playerWon,
     secondServe: action === 'double_fault',
     doubleFault: action === 'double_fault',
     shotCount: DEFAULT_SHOT_COUNT[server][action] ?? 1,
@@ -70,8 +71,8 @@ export function labelPoint(value: number, _deuceSinglePoint = false): string {
  *  With `tiebreakTarget` the game is a tie-break: first to the target with a two-point margin. */
 export function pointsToGame(points: ScoredPoint[], _side: Side, deuceSinglePoint = false, tiebreakTarget: number | null = null): GameResult | null {
   const livePoints = activePoints(points);
-  const player = livePoints.filter(p => p.winner === 'player').length;
-  const opponent = livePoints.filter(p => p.winner === 'opponent').length;
+  const player = livePoints.filter(p => p.won).length;
+  const opponent = livePoints.filter(p => !p.won).length;
   if (tiebreakTarget) {
     if (player >= tiebreakTarget && player - opponent >= 2) return { player: 1, opponent: 0 };
     if (opponent >= tiebreakTarget && opponent - player >= 2) return { player: 0, opponent: 1 };
@@ -88,15 +89,15 @@ export function pointsToGame(points: ScoredPoint[], _side: Side, deuceSinglePoin
 
 export function isPointDeuce(points: ScoredPoint[]): boolean {
   const livePoints = activePoints(points);
-  const player = livePoints.filter(p => p.winner === 'player').length;
-  const opponent = livePoints.filter(p => p.winner === 'opponent').length;
+  const player = livePoints.filter(p => p.won).length;
+  const opponent = livePoints.filter(p => !p.won).length;
   return player >= 3 && opponent >= 3 && player === opponent;
 }
 
 export function deriveGameScore(points: ScoredPoint[], deuceSinglePoint = false, tiebreakTarget: number | null = null): { player: number | string; opponent: number | string } {
   const livePoints = activePoints(points);
-  const player = livePoints.filter(p => p.winner === 'player').length;
-  const opponent = livePoints.filter(p => p.winner === 'opponent').length;
+  const player = livePoints.filter(p => p.won).length;
+  const opponent = livePoints.filter(p => !p.won).length;
   if (tiebreakTarget) return { player, opponent };
   if (deuceSinglePoint && player >= 4 && opponent >= 4) {
     if (player === opponent) return { player: '40', opponent: '40' };

@@ -15,7 +15,7 @@ const match = (overrides: Partial<Match> = {}): Match => ({
 
 const point = (overrides: Partial<ScoredPoint> = {}): ScoredPoint => ({
   id: crypto.randomUUID(), family_id: 'f1', game_id: 'g1', set_number: 1, game_number: 1, point_number: 1,
-  winner: 'player', server: 'player', second_serve: false, double_fault: false, shot_count: 1,
+  won: true, server: 'player', second_serve: false, double_fault: false, shot_count: 1,
   free_error: false, attack_error: false, pressure_situation: false,
   created_at: '2026-11-17', updated_at: '2026-11-17', version: 1, deleted: false, ...overrides,
 });
@@ -54,17 +54,17 @@ describe('scoring core', () => {
     expect(nextGameNumber(firstGame.slice(0, 3), 1, match())).toBe(1);
   });
   it('handles advantages and closes on the next point', () => {
-    const points = [1,2,3,4].map(()=>point({winner:'player'})).concat([1,2,3,4].map(()=>point({winner:'opponent'})));
+    const points = [1,2,3,4].map(()=>point({won:true})).concat([1,2,3,4].map(()=>point({won:false})));
     expect(deriveGameScore(points)).toEqual({ player: '40', opponent: '40' });
-    expect(pointsToGame([...points, point({winner:'player'}), point({winner:'player'})], 'player')).toEqual({ player: 1, opponent: 0 });
+    expect(pointsToGame([...points, point({won:true}), point({won:true})], 'player')).toEqual({ player: 1, opponent: 0 });
   });
   it('maps all direct player actions to an automatic point result', () => {
-    expect(resolvePointAction('free_error')).toMatchObject({ winner: 'opponent', freeError: true });
-    expect(resolvePointAction('double_fault')).toMatchObject({ winner: 'opponent', doubleFault: true, secondServe: true });
-    expect(resolvePointAction('lost')).toMatchObject({ winner: 'opponent' });
-    expect(resolvePointAction('great_shot')).toMatchObject({ winner: 'player' });
-    expect(resolvePointAction('won')).toMatchObject({ winner: 'player' });
-    expect(resolvePointAction('ace')).toMatchObject({ winner: 'player', shotCount: 1 });
+    expect(resolvePointAction('free_error')).toMatchObject({ won: false, freeError: true });
+    expect(resolvePointAction('double_fault')).toMatchObject({ won: false, doubleFault: true, secondServe: true });
+    expect(resolvePointAction('lost')).toMatchObject({ won: false });
+    expect(resolvePointAction('great_shot')).toMatchObject({ won: true });
+    expect(resolvePointAction('won')).toMatchObject({ won: true });
+    expect(resolvePointAction('ace')).toMatchObject({ won: true, shotCount: 1 });
   });
 
   it('assigns the default shot count when my player serves and the rally was not counted', () => {
@@ -100,7 +100,7 @@ describe('scoring core', () => {
     expect(isActionAvailable('free_error', 'opponent', 5)).toBe(true);
   });
   it('uses one-point deuce when enabled', () => {
-    const points=[1,2,3].map(()=>point()).concat([1,2,3].map(()=>point({winner:'opponent'}))).concat([point()]);
+    const points=[1,2,3].map(()=>point()).concat([1,2,3].map(()=>point({won:false}))).concat([point()]);
     expect(deriveGameScore(points, true)).toEqual({ player: 'AD', opponent: '40' });
   });
   it('excludes logically deleted points from game scores', () => {
@@ -116,7 +116,7 @@ describe('scoring core', () => {
 
 /** Builds the points of a whole game won by `winner` (4 points to love), served by `server`. */
 const wonGame = (setNumber: number, gameNumber: number, winner: 'player' | 'opponent', server: 'player' | 'opponent' = winner) =>
-  [1, 2, 3, 4].map(n => point({ set_number: setNumber, game_number: gameNumber, point_number: n, winner, server }));
+  [1, 2, 3, 4].map(n => point({ set_number: setNumber, game_number: gameNumber, point_number: n, won: winner === 'player', server }));
 /** Games alternating player/opponent (each holding serve, player serving first) until the score is n-n. */
 const levelSet = (setNumber: number, n: number) =>
   Array.from({ length: n * 2 }, (_, index) => wonGame(setNumber, index + 1, index % 2 === 0 ? 'player' : 'opponent')).flat();
@@ -132,11 +132,11 @@ describe('tie-break', () => {
   });
 
   it('scores the tie-break with numbers and a two-point margin, and closes the set 7-6', () => {
-    const tiebreak = (winners: ('player' | 'opponent')[]) => winners.map((winner, index) => point({ set_number: 1, game_number: 13, point_number: index + 1, winner }));
+    const tiebreak = (winners: ('player' | 'opponent')[]) => winners.map((winner, index) => point({ set_number: 1, game_number: 13, point_number: index + 1, won: winner === 'player' }));
     const points = [...levelSet(1, 6), ...tiebreak(['player', 'player', 'player', 'player', 'player', 'player', 'opponent'])];
     expect(deriveGameScore(points.filter(p => p.game_number === 13), false, 7)).toEqual({ player: 6, opponent: 1 });
     expect(pointsToGame(points.filter(p => p.game_number === 13), 'player', false, 7)).toBeNull();
-    const finished = [...points, point({ set_number: 1, game_number: 13, point_number: 8, winner: 'player' })];
+    const finished = [...points, point({ set_number: 1, game_number: 13, point_number: 8, won: true })];
     expect(deriveSetScore(finished, 1, sixGameSets)).toEqual({ player: 7, opponent: 6 });
     expect(isSetComplete({ player: 7, opponent: 6 }, sixGameSets, 1)).toBe(true);
     expect(isSetComplete({ player: 6, opponent: 6 }, sixGameSets, 1)).toBe(false);
@@ -146,7 +146,7 @@ describe('tie-break', () => {
     const base = levelSet(1, 6); // 12 games played: game 13 is served by the first server
     const servers = [0, 1, 2, 3, 4].map(played => getServer(sixGameSets, [
       ...base,
-      ...Array.from({ length: played }, (_, index) => point({ set_number: 1, game_number: 13, point_number: index + 1, winner: index % 2 ? 'opponent' : 'player', server: tiebreakServer('player', index) })),
+      ...Array.from({ length: played }, (_, index) => point({ set_number: 1, game_number: 13, point_number: index + 1, won: index % 2 === 0, server: tiebreakServer('player', index) })),
     ], 1, 13));
     expect(servers).toEqual(['player', 'opponent', 'opponent', 'player', 'player']);
   });
@@ -202,11 +202,11 @@ describe('KPI core', () => {
     expect(freeErrorStats(points,'player')).toMatchObject({under4:1,rally:1,total:2});
   });
   it('calculates service +1 for wins by points <= 4', () => {
-    const points=[point({winner:'player',free_error:true,shot_count:4}),point({winner:'player',free_error:false,shot_count:3})];
+    const points=[point({won:true,free_error:true,shot_count:4}),point({won:true,free_error:false,shot_count:3})];
     expect(servicePlusOne(points,'player')).toMatchObject({won:1,total:2,percentage:50});
   });
   it('excludes logically deleted points from pressure and point-result KPIs', () => {
-    const points = [point({ winner: 'player' }), point({ winner: 'opponent', deleted: true })];
+    const points = [point({ won: true }), point({ won: false, deleted: true })];
     expect(pressureStats(points, 'player').player30).toBe(1);
     expect(scorePressure(points, 'player')).toEqual({ won: 1, lost: 0, rate: 100 });
   });

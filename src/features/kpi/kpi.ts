@@ -1,4 +1,5 @@
 import type { Point } from '../../types';
+import { pointWinnerSide } from '../../db/pointWinner';
 
 export type Side = 'player' | 'opponent';
 
@@ -18,7 +19,7 @@ export function serveKpi(points: Point[], side: Side): ServeKpi {
   const validFirst = served.filter(p => !p.second_serve && !p.double_fault).length;
   const firstAttempts = served.filter(p => !p.second_serve).length;
   const secondServes = served.filter(p => p.second_serve).length;
-  const pointsWon = served.filter(p => p.winner === side).length;
+  const pointsWon = served.filter(p => pointWinnerSide(p) === side).length;
   return {
     doubleFaults,
     firstServesIn: validFirst,
@@ -43,7 +44,7 @@ export function freeErrorStats(points: Point[], side: Side) {
 
 export function servicePlusOne(points: Point[], side: Side) {
   const served = points.filter(p => !p.deleted && p.server === side);
-  const pattern = served.filter(p => p.winner === side && p.shot_count <= 4 && p.free_error);
+  const pattern = served.filter(p => pointWinnerSide(p) === side && p.shot_count <= 4 && p.free_error);
   return {
     won: pattern.length,
     total: served.length,
@@ -54,13 +55,13 @@ export function servicePlusOne(points: Point[], side: Side) {
 export function pressureStats(points: Point[], side: Side) {
   // Pressure outcomes are computed from replayed score context by caller where needed.
   return {
-    player30: points.filter(p => !p.deleted && p.winner === side && p.point_number >= 0).length,
+    player30: points.filter(p => !p.deleted && pointWinnerSide(p) === side && p.point_number >= 0).length,
   };
 }
 
 export function scorePressure(points: Point[], side: Side) {
   const active = points.filter(point => !point.deleted);
-  const won = active.filter(p => p.winner === side).length;
-  const lost = active.filter(p => p.winner !== side).length;
+  const won = active.filter(p => pointWinnerSide(p) === side).length;
+  const lost = active.filter(p => pointWinnerSide(p) !== side).length;
   return { won, lost, rate: active.length ? (won / active.length) * 100 : 0 };
 }

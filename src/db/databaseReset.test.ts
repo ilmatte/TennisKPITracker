@@ -27,7 +27,7 @@ describe('local database initialization', () => {
     await resetLocalDatabaseOnce();
     await db.open();
 
-    expect(db.verno).toBe(3);
+    expect(db.verno).toBe(4);
     expect(db.tables.map(table => table.name)).toEqual([
       'families',
       'family_members',

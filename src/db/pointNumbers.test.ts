@@ -7,7 +7,7 @@ const point = (id: string, point_number: number, deleted = false, game_id = 'gam
   family_id: 'family-1',
   game_id,
   point_number,
-  winner: 'player',
+  won: true,
   server: 'player',
   second_serve: false,
   double_fault: false,

@@ -230,7 +230,7 @@ describe('sync engine', () => {
     };
     const point: Point = {
       id: 'point-id', family_id: remoteFamilyId, game_id: game.id, point_number: 1,
-      winner: 'player', server: 'player', second_serve: false, double_fault: false, shot_count: 3,
+      won: true, server: 'player', second_serve: false, double_fault: false, shot_count: 3,
       free_error: false, attack_error: false, pressure_situation: false,
       created_at: now, updated_at: now, version: 1, deleted: true,
     };
@@ -274,7 +274,7 @@ describe('sync engine', () => {
     };
     const point: Point = {
       id: 'point-id', family_id: localFamilyId, game_id: game.id, point_number: 1,
-      winner: 'player', server: 'player', second_serve: false, double_fault: false, shot_count: 1,
+      won: true, server: 'player', second_serve: false, double_fault: false, shot_count: 1,
       free_error: false, attack_error: false, pressure_situation: false,
       created_at: now, updated_at: now, version: 1, deleted: true,
     };
