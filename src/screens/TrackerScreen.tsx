@@ -7,6 +7,7 @@ import { nextPointNumber } from '../db/pointNumbers';
 import { configuredSetNavigation, deriveGameScore, deriveSetScore, getGameServer, getServer, isActionAvailable, serverOverrideKey, tiebreakServer, type ServerOverrides, type Side, isSetComplete, unavailableReason, isSuperTiebreakSet, nextGameNumber, pointsToGame, tiebreakTarget, resolvePointAction, sortedPoints, type PointAction } from '../features/scoring/scoring';
 import { countGameDescendants, countMatchDescendants, countSetDescendants, softDeleteGame, softDeleteMatch, softDeletePoint, softDeleteSet, updateGame, updateMatch, updatePoint, updateSet, type PointChanges } from '../db/sportsMutations';
 import { useFamily } from '../features/families/FamilyContextDefinition';
+import { isWinningPointType, POINT_TYPES } from '../features/scoring/pointTypes';
 import currentGameBackground from '../assets/background-currentgame/background-currentgame-3x.png';
 import currentGameFooter from '../assets/footer-currentgame/footer-currentgame-3x.png';
 import freeErrorIcon from '../assets/icone/currentgame/errore-gratuito-chiaro.svg';
@@ -18,7 +19,7 @@ import aceIcon from '../assets/icone/currentgame/ace-chiaro.svg';
 import servingIcon from '../assets/icone/trasparente/512/tennista-servizio-trasparente-512.png';
 import { MatchEditor } from './MatchesScreen';
 import { stamp, mutationError, queueOperation } from './shared';
-import type { ErrorCategory, Game, Point, ScoredPoint, TennisSet } from '../types';
+import type { Game, Point, ScoredPoint, TennisSet } from '../types';
 export function Tracker() {
   const { id } = useParams();
   const { activeFamily } = useFamily();
@@ -167,11 +168,8 @@ export function Tracker() {
           id: crypto.randomUUID(), family_id: activeMatch.family_id, game_id: tennisGame.id,
           point_number: nextPointNumber(historicalGamePoints),
           won: result.won, serving: server === 'player',
-          second_serve: result.secondServe || secondServe, double_fault: result.doubleFault,
+          second_serve: result.secondServe || secondServe, point_type_id: result.pointTypeId,
           shot_count: shotCount > 0 ? shotCount : result.shotCount,
-          free_error: result.freeError, error_player: action === 'free_error' ? 'player' : undefined,
-          error_category: action === 'free_error' ? 'other' : undefined,
-          attack_error: false, pressure_situation: false, pressure_error_player: undefined,
           created_at, updated_at: created_at, version: 1, deleted: false,
         };
         const updatedPoints: ScoredPoint[] = [...scoredPoints, { ...point, set_number: selectedSetNumber, game_number: gameNumber }];
@@ -246,10 +244,8 @@ export function Tracker() {
         const server = currentTiebreak ? tiebreakServer(newServer, index) : newServer;
         if (point.serving === (server === 'player')) continue;
         await updatePoint(activeMatch.family_id, point.id, {
-          won: point.won, serving: server === 'player', second_serve: point.second_serve, double_fault: point.double_fault,
-          shot_count: point.shot_count, free_error: point.free_error, error_player: point.error_player,
-          error_category: point.error_category, attack_error: point.attack_error,
-          pressure_situation: point.pressure_situation, pressure_error_player: point.pressure_error_player,
+          won: point.won, serving: server === 'player', second_serve: point.second_serve, point_type_id: point.point_type_id,
+          shot_count: point.shot_count,
         });
       }
       setTrackerError(null);
@@ -642,14 +638,8 @@ function PointEditor({ point, playerName, opponentName, onClose, onSave }: {
     won: point.won,
     serving: point.serving,
     second_serve: point.second_serve,
-    double_fault: point.double_fault,
+    point_type_id: point.point_type_id,
     shot_count: point.shot_count,
-    free_error: point.free_error,
-    error_player: point.error_player,
-    error_category: point.error_category,
-    attack_error: point.attack_error,
-    pressure_situation: point.pressure_situation,
-    pressure_error_player: point.pressure_error_player,
   });
   const field = <K extends keyof PointChanges>(key: K, value: PointChanges[K]) =>
     setDraft(current => ({ ...current, [key]: value }));
@@ -661,22 +651,15 @@ function PointEditor({ point, playerName, opponentName, onClose, onSave }: {
       <label>Vincitore<select value={draft.won ? 'player' : 'opponent'} onChange={event => field('won', event.target.value === 'player')}><option value="player">{playerName}</option><option value="opponent">{opponentName}</option></select></label>
       <label>Battitore<select value={draft.serving ? 'player' : 'opponent'} onChange={event => field('serving', event.target.value === 'player')}><option value="player">{playerName}</option><option value="opponent">{opponentName}</option></select></label>
     </div>
-    <div className="form-grid">
-      <label>Numero colpi<input type="number" min="1" value={draft.shot_count} onChange={event => field('shot_count', Number(event.target.value))} /></label>
-      <label>Autore errore<select value={draft.error_player ?? ''} onChange={event => field('error_player', event.target.value ? event.target.value as Point['error_player'] : undefined)}><option value="">Nessuno</option><option value="player">{playerName}</option><option value="opponent">{opponentName}</option></select></label>
-    </div>
-    <label>Categoria errore<select value={draft.error_category ?? ''} onChange={event => field('error_category', event.target.value ? event.target.value as ErrorCategory : undefined)}>
-      <option value="">Nessuna</option><option value="forehand">Dritto</option><option value="backhand">Rovescio</option>
-      <option value="serve">Servizio</option><option value="volley">Volée</option><option value="net">Rete</option><option value="other">Altro</option>
+    <label>Numero colpi<input type="number" min="1" value={draft.shot_count} onChange={event => field('shot_count', Number(event.target.value))} /></label>
+    <label>Tipo di punto<select value={draft.point_type_id} onChange={event => {
+      // The type refers to my player, so it also decides who won the point.
+      const pointTypeId = Number(event.target.value);
+      setDraft(current => ({ ...current, point_type_id: pointTypeId, won: isWinningPointType(pointTypeId) }));
+    }}>
+      {POINT_TYPES.map(type => <option key={type.id} value={type.id}>{type.label}</option>)}
     </select></label>
     <label className="toggle-row"><span>Seconda di servizio</span><input type="checkbox" checked={draft.second_serve} onChange={event => field('second_serve', event.target.checked)} /></label>
-    <label className="toggle-row"><span>Doppio fallo</span><input type="checkbox" checked={draft.double_fault} onChange={event => field('double_fault', event.target.checked)} /></label>
-    <label className="toggle-row"><span>Errore gratuito</span><input type="checkbox" checked={draft.free_error} onChange={event => field('free_error', event.target.checked)} /></label>
-    <label className="toggle-row"><span>Errore in attacco</span><input type="checkbox" checked={draft.attack_error} onChange={event => field('attack_error', event.target.checked)} /></label>
-    <label className="toggle-row"><span>Situazione di pressione</span><input type="checkbox" checked={draft.pressure_situation} onChange={event => field('pressure_situation', event.target.checked)} /></label>
-    <label>Autore errore sotto pressione<select value={draft.pressure_error_player ?? ''} onChange={event => field('pressure_error_player', event.target.value ? event.target.value as Point['pressure_error_player'] : undefined)}>
-      <option value="">Nessuno</option><option value="player">{playerName}</option><option value="opponent">{opponentName}</option>
-    </select></label>
     <p className="family-feedback">Il punteggio del game, quello del set e i KPI saranno ricalcolati al salvataggio.</p>
     {error && <p className="family-feedback error" role="alert">{error}</p>}
     <button className="primary wide" disabled={!Number.isInteger(draft.shot_count) || draft.shot_count < 1}

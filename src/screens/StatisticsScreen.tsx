@@ -22,13 +22,12 @@ export function Dashboard() {
   }, [activeFamily?.id, matchId, matches.map(match => match.id).join(',')]) ?? [];
   const player = serveKpi(points, 'player');
   const opponent = serveKpi(points, 'opponent');
-  const playerErrors = freeErrorStats(points, 'player');
-  const opponentErrors = freeErrorStats(points, 'opponent');
+  const playerErrors = freeErrorStats(points);
   const playerPlusOne = servicePlusOne(points, 'player');
   const opponentPlusOne = servicePlusOne(points, 'opponent');
   const data = [
     { name: 'Tu', Punti: player.pointsWon, Errori: playerErrors.total },
-    { name: 'Avversario', Punti: opponent.pointsWon, Errori: opponentErrors.total },
+    { name: 'Avversario', Punti: opponent.pointsWon },
   ];
 
   return <div className="page">
@@ -45,7 +44,7 @@ export function Dashboard() {
     </div></section>
     <section className="dashboard-section"><h2>Errori gratuiti</h2><div className="kpi-grid">
       <Kpi label="Totali tu" value={playerErrors.total} /><Kpi label="Entro 4" value={playerErrors.under4} />
-      <Kpi label="Rally" value={playerErrors.rally} /><Kpi label="Pressione" value={playerErrors.pressure} />
+      <Kpi label="Rally" value={playerErrors.rally} />
     </div></section>
     <section className="dashboard-section"><h2>Servizio +1</h2><div className="kpi-grid">
       <Kpi label="Tu" value={`${playerPlusOne.percentage.toFixed(0)}%`} detail={`${playerPlusOne.won}/${playerPlusOne.total}`} />

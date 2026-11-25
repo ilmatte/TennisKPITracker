@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { afterEach, describe, expect, it } from 'vitest';
 import { db, TennisDatabase } from './database';
+import { POINT_TYPE, POINT_TYPES } from '../features/scoring/pointTypes';
 
 const databaseName = 'TennisKPITrackerMigrationTest';
 
@@ -45,7 +46,7 @@ describe('sync metadata schema migration', () => {
 
     const migrated = new TennisDatabase(databaseName);
     await migrated.open();
-    expect(migrated.verno).toBe(5);
+    expect(migrated.verno).toBe(7);
     expect(await migrated.table('families').get(family.id)).toEqual(family);
     expect(await migrated.table('players').get(player.id)).toEqual(player);
     expect(await migrated.table('syncQueue').get(operation.id)).toEqual(operation);
@@ -57,7 +58,7 @@ describe('sync metadata schema migration', () => {
     migrated.close();
   });
 
-  it('converts points.winner/server into the booleans points.won/serving, including queued operations and conflicts', async () => {
+  it('converts legacy point fields (winner, server, double_fault, free_error, ...) including queued operations and conflicts', async () => {
     const legacy = new Dexie(databaseName);
     legacy.version(3).stores({
       families: 'id, created_by, local_only, updated_at',
@@ -74,12 +75,14 @@ describe('sync metadata schema migration', () => {
     });
     await legacy.open();
     // The lost point was served by the opponent, so `server` and `winner` are both converted to false.
-    const point = (id: string, winner: 'player' | 'opponent', point_number: number) => ({
-      id, family_id: 'f1', game_id: 'g1', point_number, winner, server: winner, second_serve: false,
-      double_fault: false, shot_count: 1, free_error: false, attack_error: false, pressure_situation: false,
+    const point = (id: string, winner: 'player' | 'opponent', point_number: number, double_fault = false, free_error = false) => ({
+      id, family_id: 'f1', game_id: 'g1', point_number, winner, server: winner, second_serve: double_fault,
+      double_fault, shot_count: 1, free_error, attack_error: true, pressure_situation: true,
+      error_player: free_error ? (winner === 'player' ? 'opponent' : 'player') : null, error_category: 'other', pressure_error_player: null,
       created_at: '2026-01-01T00:00:00.000Z', updated_at: '2026-01-01T00:00:00.000Z', version: 1, deleted: false,
     });
-    await legacy.table('points').bulkAdd([point('won-point', 'player', 1), point('lost-point', 'opponent', 2)]);
+    await legacy.table('points').bulkAdd([point('won-point', 'player', 1), point('lost-point', 'opponent', 2), point('double-fault', 'opponent', 3, true),
+      point('my-free-error', 'opponent', 4, false, true), point('opponent-free-error', 'player', 5, false, true)]);
     await legacy.table('syncQueue').add({
       id: 'queue-point', operation_id: 'op-1', family_id: 'f1', entity_type: 'points', entity_id: 'lost-point',
       operation: 'upsert', payload: point('lost-point', 'opponent', 2), created_at: '2026-01-01T00:00:00.000Z', attempts: 0,
@@ -95,19 +98,37 @@ describe('sync metadata schema migration', () => {
     await migrated.open();
     const wonPoint = await migrated.table('points').get('won-point');
     const lostPoint = await migrated.table('points').get('lost-point');
-    expect(wonPoint).toMatchObject({ won: true, serving: true });
-    expect(lostPoint).toMatchObject({ won: false, serving: false });
+    expect(wonPoint).toMatchObject({ won: true, serving: true, point_type_id: POINT_TYPE.win });
+    expect(lostPoint).toMatchObject({ won: false, serving: false, point_type_id: POINT_TYPE.lose });
+    expect(await migrated.table('points').get('double-fault')).toMatchObject({ point_type_id: POINT_TYPE.double_fault });
+    expect(await migrated.table('points').get('my-free-error')).toMatchObject({ won: false, point_type_id: POINT_TYPE.free_error });
+    // The opponent's free error (a won point) becomes an ordinary won point: the point type refers to my player.
+    expect(await migrated.table('points').get('opponent-free-error')).toMatchObject({ won: true, point_type_id: POINT_TYPE.win });
+    for (const field of ['double_fault', 'free_error', 'attack_error', 'pressure_situation', 'error_player', 'error_category', 'pressure_error_player']) {
+      expect(wonPoint).not.toHaveProperty(field);
+    }
+    expect(await migrated.table('point_types').toArray()).toEqual([...POINT_TYPES]);
+    expect(migrated.points.schema.indexes.map(index => index.name)).toContain('point_type_id');
     expect(wonPoint).not.toHaveProperty('winner');
     expect(wonPoint).not.toHaveProperty('server');
     expect(migrated.points.schema.indexes.map(index => index.name)).not.toContain('winner');
     expect(migrated.points.schema.indexes.map(index => index.name)).not.toContain('server');
     const queued = await migrated.table('syncQueue').get('queue-point');
-    expect(queued.payload).toMatchObject({ won: false, serving: false });
+    expect(queued.payload).toMatchObject({ won: false, serving: false, point_type_id: POINT_TYPE.lose });
+    expect(queued.payload).not.toHaveProperty('double_fault');
+    expect(queued.payload).not.toHaveProperty('error_category');
     expect(queued.payload).not.toHaveProperty('winner');
     expect(queued.payload).not.toHaveProperty('server');
     const conflict = await migrated.table('syncConflicts').get('conflict-point');
     expect(conflict.local_payload).toMatchObject({ won: true });
     expect(conflict.remote_payload).toMatchObject({ won: false });
     migrated.close();
+  });
+
+  it('seeds the point_types lookup table in a brand-new database', async () => {
+    const fresh = new TennisDatabase(databaseName);
+    await fresh.open();
+    expect(await fresh.table('point_types').toArray()).toEqual([...POINT_TYPES]);
+    fresh.close();
   });
 });

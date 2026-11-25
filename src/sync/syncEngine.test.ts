@@ -230,8 +230,7 @@ describe('sync engine', () => {
     };
     const point: Point = {
       id: 'point-id', family_id: remoteFamilyId, game_id: game.id, point_number: 1,
-      won: true, serving: true, second_serve: false, double_fault: false, shot_count: 3,
-      free_error: false, attack_error: false, pressure_situation: false,
+      won: true, serving: true, second_serve: false, point_type_id: 4, shot_count: 3,
       created_at: now, updated_at: now, version: 1, deleted: true,
     };
     remote.seed('matches', match);
@@ -274,8 +273,7 @@ describe('sync engine', () => {
     };
     const point: Point = {
       id: 'point-id', family_id: localFamilyId, game_id: game.id, point_number: 1,
-      won: true, serving: true, second_serve: false, double_fault: false, shot_count: 1,
-      free_error: false, attack_error: false, pressure_situation: false,
+      won: true, serving: true, second_serve: false, point_type_id: 4, shot_count: 1,
       created_at: now, updated_at: now, version: 1, deleted: true,
     };
     await db.players.add(player);

@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable, type Table, type Transaction } from 'dexie';
-import { migrateLegacyPointPayload } from './pointWinner';
+import { LEGACY_POINT_FIELDS, migrateLegacyPointPayload } from './pointWinner';
+import { POINT_TYPE, POINT_TYPES } from '../features/scoring/pointTypes';
 import type {
   Family,
   FamilyInvitation,
@@ -8,6 +9,7 @@ import type {
   Match,
   Player,
   Point,
+  PointType,
   ScoredPoint,
   SyncOperation,
   SyncConflict,
@@ -24,6 +26,7 @@ export class TennisDatabase extends Dexie {
   sets!: EntityTable<TennisSet, 'id'>;
   games!: EntityTable<Game, 'id'>;
   points!: EntityTable<Point, 'id'>;
+  point_types!: Table<PointType, number>;
   syncQueue!: EntityTable<SyncOperation, 'id'>;
   syncMetadata!: EntityTable<SyncMetadata, 'key'>;
   syncConflicts!: EntityTable<SyncConflict, 'id'>;
@@ -59,6 +62,26 @@ export class TennisDatabase extends Dexie {
     this.version(5).stores({
       points: 'id, family_id, game_id, &[game_id+point_number], point_number, updated_at, deleted',
     }).upgrade(transaction => convertLegacyPoints(transaction, ['winner', 'server']));
+    // v6: point_types lookup table; points.double_fault / free_error become points.point_type_id (FK),
+    // points.attack_error / pressure_situation are removed. Mirrors supabase/005_point_types.sql.
+    this.version(6).stores({
+      points: 'id, family_id, game_id, &[game_id+point_number], point_number, point_type_id, updated_at, deleted',
+      point_types: 'id, &code',
+    }).upgrade(async transaction => {
+      await transaction.table('point_types').bulkPut([...POINT_TYPES]);
+      await convertLegacyPoints(transaction, [...LEGACY_POINT_FIELDS]);
+    });
+    // v7: points.error_player / error_category / pressure_error_player are removed; the point type refers to my
+    // player, so a free error on a won point becomes a won point. Mirrors supabase/006_points_remove_error_details.sql.
+    // No index changes: the upgrade converts every point (not only those carrying a legacy field).
+    this.version(7).stores({}).upgrade(async transaction => {
+      await convertLegacyPoints(transaction, [...LEGACY_POINT_FIELDS]);
+      await transaction.table('points').toCollection().modify((point: Record<string, unknown>) => {
+        if (point.point_type_id === POINT_TYPE.free_error && point.won === true) point.point_type_id = POINT_TYPE.win;
+      });
+    });
+    // A brand-new database is created directly at the latest version (no upgrade runs): seed the lookup table.
+    this.on('populate', transaction => transaction.table('point_types').bulkAdd([...POINT_TYPES]));
   }
 }
 

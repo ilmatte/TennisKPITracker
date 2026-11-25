@@ -101,7 +101,13 @@ export interface Game {
   deleted: boolean;
 }
 
-export type ErrorCategory = 'forehand' | 'backhand' | 'serve' | 'volley' | 'net' | 'other';
+
+/** Row of the point_types lookup table (double_fault, free_error, lose, win, ace, great_shot). */
+export interface PointType {
+  id: number;
+  code: string;
+  label: string;
+}
 
 export interface Point {
   id: UUID;
@@ -113,14 +119,10 @@ export interface Point {
   /** true when my player served the point, false when the opponent served it. */
   serving: boolean;
   second_serve: boolean;
-  double_fault: boolean;
+  /** FK to point_types.id (see POINT_TYPE in features/scoring/pointTypes.ts). Like `won`, it refers to my player:
+   *  free_error is my player's free error, ace my player's ace, and so on. */
+  point_type_id: number;
   shot_count: number;
-  free_error: boolean;
-  error_player?: 'player' | 'opponent';
-  error_category?: ErrorCategory;
-  attack_error: boolean;
-  pressure_situation: boolean;
-  pressure_error_player?: 'player' | 'opponent';
   created_at: string;
   updated_at: string;
   version: number;

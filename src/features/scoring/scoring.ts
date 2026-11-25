@@ -1,4 +1,5 @@
 import type { Match, ScoredPoint, TennisSet } from '../../types';
+import { POINT_TYPE, type PointTypeId } from './pointTypes';
 
 export type Side = 'player' | 'opponent';
 export type PointAction = 'free_error' | 'double_fault' | 'lost' | 'great_shot' | 'won' | 'ace';
@@ -6,10 +7,20 @@ export interface PointActionResult {
   /** true when my player wins the point. */
   won: boolean;
   secondServe: boolean;
-  doubleFault: boolean;
+  /** points.point_type_id for the action. */
+  pointTypeId: PointTypeId;
   shotCount: number;
-  freeError: boolean;
 }
+
+/** Point type recorded for each outcome button. */
+export const ACTION_POINT_TYPE: Record<PointAction, PointTypeId> = {
+  double_fault: POINT_TYPE.double_fault,
+  free_error: POINT_TYPE.free_error,
+  lost: POINT_TYPE.lose,
+  won: POINT_TYPE.win,
+  ace: POINT_TYPE.ace,
+  great_shot: POINT_TYPE.great_shot,
+};
 
 /** Actions that are not possible when the opponent is serving (only the server can hit an ace or a double fault). */
 export const OPPONENT_SERVE_DISABLED: readonly PointAction[] = ['ace', 'double_fault'];
@@ -39,9 +50,8 @@ export function resolvePointAction(action: PointAction, server: Side = 'player')
   return {
     won: playerWon,
     secondServe: action === 'double_fault',
-    doubleFault: action === 'double_fault',
+    pointTypeId: ACTION_POINT_TYPE[action],
     shotCount: DEFAULT_SHOT_COUNT[server][action] ?? 1,
-    freeError: action === 'free_error',
   };
 }
 

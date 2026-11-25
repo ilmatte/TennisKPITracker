@@ -3,6 +3,7 @@ import { useState, type CSSProperties } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
+import { migrateLegacyPointPayload } from '../db/pointWinner';
 import { useAuth } from '../features/auth/AuthContext';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import FamilyManager from '../features/families/FamilyManager';
@@ -36,7 +37,7 @@ export function Settings() {
     ]);
     const gameIds = new Set(games.map(game => game.id));
     const points = gameIds.size ? await db.points.where('game_id').anyOf([...gameIds]).toArray() : [];
-    const backup = { version: 2, exported_at: stamp(), family_id: activeFamily.id, players, matches, sets, games, points };
+    const backup = { version: 3, exported_at: stamp(), family_id: activeFamily.id, players, matches, sets, games, points };
     download(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }), `tennis-kpi-backup-${new Date().toISOString().slice(0, 10)}.json`);
     setMessage('Backup JSON esportato');
   }
@@ -47,9 +48,9 @@ export function Settings() {
     if (!file) return;
     try {
       const backup: unknown = JSON.parse(await file.text());
-      if (!backup || typeof backup !== 'object' || !('version' in backup) || backup.version !== 2 ||
+      if (!backup || typeof backup !== 'object' || !('version' in backup) || (backup.version !== 2 && backup.version !== 3) ||
         !('family_id' in backup) || backup.family_id !== activeFamily.id) {
-        throw new Error('Il backup deve essere versione 2 e appartenere allo spazio attivo.');
+        throw new Error('Il backup deve essere versione 2 o 3 e appartenere allo spazio attivo.');
       }
       const data = backup as {
         players?: Player[]; matches?: Match[]; sets?: TennisSet[]; games?: Game[]; points?: Point[];
@@ -58,7 +59,8 @@ export function Settings() {
       const matches = data.matches ?? [];
       const sets = data.sets ?? [];
       const games = data.games ?? [];
-      const points = data.points ?? [];
+      // Version 2 backups use the legacy point fields (winner, server, double_fault, ...): convert them.
+      const points = (data.points ?? []).map(point => migrateLegacyPointPayload(point));
       const sameFamily = [...players, ...matches, ...sets, ...games, ...points].every(record => record.family_id === activeFamily.id);
       const playerIds = new Set(players.map(player => player.id));
       const matchIds = new Set(matches.map(match => match.id));

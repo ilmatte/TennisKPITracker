@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Match, ScoredPoint } from '../../types';
 import { configuredSetNavigation, deriveGameScore, deriveSetScore, getServer, isSetComplete, nextGameNumber, pointsToGame, resolvePointAction, isActionAvailable, serverOverrideKey, tiebreakServer, tiebreakTarget } from './scoring';
-import { freeErrorStats, pressureStats, scorePressure, serveKpi, servicePlusOne } from '../kpi/kpi';
+import { freeErrorStats, serveKpi, servicePlusOne } from '../kpi/kpi';
+import { POINT_TYPE } from './pointTypes';
 
 const match = (overrides: Partial<Match> = {}): Match => ({
   id: 'm1', family_id: 'f1', match_date: '2026-11-17', player_id: 'alessandro',
@@ -15,8 +16,7 @@ const match = (overrides: Partial<Match> = {}): Match => ({
 
 const point = (overrides: Partial<ScoredPoint> = {}): ScoredPoint => ({
   id: crypto.randomUUID(), family_id: 'f1', game_id: 'g1', set_number: 1, game_number: 1, point_number: 1,
-  won: true, serving: true, second_serve: false, double_fault: false, shot_count: 1,
-  free_error: false, attack_error: false, pressure_situation: false,
+  won: true, serving: true, second_serve: false, point_type_id: 4, shot_count: 1,
   created_at: '2026-11-17', updated_at: '2026-11-17', version: 1, deleted: false, ...overrides,
 });
 
@@ -59,8 +59,8 @@ describe('scoring core', () => {
     expect(pointsToGame([...points, point({won:true}), point({won:true})], 'player')).toEqual({ player: 1, opponent: 0 });
   });
   it('maps all direct player actions to an automatic point result', () => {
-    expect(resolvePointAction('free_error')).toMatchObject({ won: false, freeError: true });
-    expect(resolvePointAction('double_fault')).toMatchObject({ won: false, doubleFault: true, secondServe: true });
+    expect(resolvePointAction('free_error')).toMatchObject({ won: false, pointTypeId: POINT_TYPE.free_error });
+    expect(resolvePointAction('double_fault')).toMatchObject({ won: false, pointTypeId: POINT_TYPE.double_fault, secondServe: true });
     expect(resolvePointAction('lost')).toMatchObject({ won: false });
     expect(resolvePointAction('great_shot')).toMatchObject({ won: true });
     expect(resolvePointAction('won')).toMatchObject({ won: true });
@@ -212,22 +212,17 @@ describe('tie-break', () => {
 
 describe('KPI core', () => {
   it('counts double faults and valid first serves', () => {
-    const points=[point({double_fault:true}),point({second_serve:false}),point({second_serve:true})];
+    const points=[point({point_type_id:POINT_TYPE.double_fault}),point({second_serve:false}),point({second_serve:true})];
     const kpi=serveKpi(points,'player');
     expect(kpi.doubleFaults).toBe(1); expect(kpi.firstServeAttempts).toBe(2); expect(kpi.firstServesIn).toBe(1);
   });
   it('classifies free errors by shot count', () => {
-    const points=[point({free_error:true,error_player:'player',shot_count:4}),point({free_error:true,error_player:'player',shot_count:5})];
-    expect(freeErrorStats(points,'player')).toMatchObject({under4:1,rally:1,total:2});
+    const points=[point({won:false,point_type_id:POINT_TYPE.free_error,shot_count:4}),point({won:false,point_type_id:POINT_TYPE.free_error,shot_count:5}),point({won:false,point_type_id:POINT_TYPE.lose,shot_count:2})];
+    expect(freeErrorStats(points)).toEqual({under4:1,rally:1,total:2});
   });
   it('calculates service +1 for wins by points <= 4', () => {
-    const points=[point({won:true,free_error:true,shot_count:4}),point({won:true,free_error:false,shot_count:3})];
-    expect(servicePlusOne(points,'player')).toMatchObject({won:1,total:2,percentage:50});
-  });
-  it('excludes logically deleted points from pressure and point-result KPIs', () => {
-    const points = [point({ won: true }), point({ won: false, deleted: true })];
-    expect(pressureStats(points, 'player').player30).toBe(1);
-    expect(scorePressure(points, 'player')).toEqual({ won: 1, lost: 0, rate: 100 });
+    const points=[point({won:true,point_type_id:POINT_TYPE.win,shot_count:4}),point({won:true,point_type_id:POINT_TYPE.win,shot_count:5}),point({won:false,point_type_id:POINT_TYPE.lose,shot_count:2}),point({won:true,point_type_id:POINT_TYPE.ace,shot_count:1})];
+    expect(servicePlusOne(points,'player')).toMatchObject({won:2,total:4,percentage:50});
   });
   it('keeps historical match snapshot independent of profile updates', () => {
     const historical=match({match_date:'2026-11-17',player_ranking_snapshot:'4.1',player_category_snapshot:'U16'});
