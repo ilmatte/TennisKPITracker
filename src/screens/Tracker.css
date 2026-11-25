@@ -94,7 +94,7 @@
 .tracker-action-menu button:focus-visible{outline:3px solid #c8f03a;outline-offset:2px}
 
 /* Shot counter (above the outcome buttons) */
-.cg-shots{height:88px;box-sizing:border-box;margin-bottom:2px;padding:12px;border-radius:22px;background:#FFFFFF;box-shadow:0 8px 22px rgba(11,42,91,.14);display:flex;align-items:center;gap:12px}
+.cg-shots{height:88px;box-sizing:border-box;padding:12px;border-radius:22px;background:#FFFFFF;box-shadow:0 8px 22px rgba(11,42,91,.14);display:flex;align-items:center;gap:12px}
 .cg-shots-count{position:relative;width:92px;height:64px;flex:none;box-sizing:border-box;padding:0;border:0;border-radius:18px;background:#0B2A5B;color:#C8F03A;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .cg-shots-count span{font-size:11.5px;font-weight:700;line-height:1;color:#fff;opacity:.85}
 .cg-shots-count strong{font-size:32px;line-height:36px;font-weight:800}
@@ -127,3 +127,9 @@
 .cg-sheet-stepper button{width:48px;height:48px;padding:0;border:0;border-radius:24px;background:#fff;box-shadow:0 2px 6px rgba(11,42,91,.15);display:flex;align-items:center;justify-content:center}
 .cg-sheet-stepper output{flex:1;text-align:center;font-size:30px;font-weight:800}
 .cg-sheet-confirm{width:100%;height:54px;margin-top:18px;border:0;border-radius:27px;background:#C8F03A;color:#0B2A5B;font-size:17px;font-weight:800;box-shadow:0 8px 20px rgba(139,190,20,.35)}
+
+/* "Servizio" selector: first ball only / also second ball */
+.cg-serve-balls{height:40px;display:flex;align-items:center;gap:8px}
+.cg-serve-balls span{margin-right:2px;font-size:12.5px;font-weight:800;color:#5C6B85}
+.cg-serve-balls button{flex:1;min-width:0;height:40px;box-sizing:border-box;padding:0 6px;border:1.5px solid #CFDCF2;border-radius:20px;background:#fff;color:#0B2A5B;font-size:13.5px;font-weight:800;display:flex;align-items:center;justify-content:center;white-space:nowrap}
+.cg-serve-balls button.selected{border-color:#0B2A5B;background:#0B2A5B;color:#C8F03A}

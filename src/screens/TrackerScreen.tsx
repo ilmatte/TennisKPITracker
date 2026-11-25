@@ -54,6 +54,8 @@ export function Tracker() {
   const [serverOverrides, setServerOverrides] = useState<ServerOverrides>({});
   const [shotSheetOpen, setShotSheetOpen] = useState(false);
   const [shotDraft, setShotDraft] = useState(0);
+  // "Servizio" selector: whether the server also played the second ball. Saved in second_serve, then reset.
+  const [secondServe, setSecondServe] = useState(false);
   const swipeStartX = useRef<number | null>(null);
   const swipeHandled = useRef(false);
 
@@ -163,7 +165,7 @@ export function Tracker() {
           id: crypto.randomUUID(), family_id: activeMatch.family_id, game_id: tennisGame.id,
           point_number: nextPointNumber(historicalGamePoints),
           won: result.won, serving: server === 'player',
-          second_serve: result.secondServe, double_fault: result.doubleFault,
+          second_serve: result.secondServe || secondServe, double_fault: result.doubleFault,
           shot_count: shotCount > 0 ? shotCount : result.shotCount,
           free_error: result.freeError, error_player: action === 'free_error' ? 'player' : undefined,
           error_category: action === 'free_error' ? 'other' : undefined,
@@ -202,6 +204,7 @@ export function Tracker() {
       return;
     }
     setShotCount(0);
+    setSecondServe(false);
     setTrackerError(null);
   }
 
@@ -413,8 +416,13 @@ export function Tracker() {
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l6 6-6 6M12 6l6 6-6 6" /></svg>
           </button>
         </div>
+        <div className="cg-serve-balls" role="group" aria-label="Servizio">
+          <span>Servizio</span>
+          <button className={secondServe ? '' : 'selected'} aria-pressed={!secondServe} onClick={() => setSecondServe(false)}>Solo 1ª palla</button>
+          <button className={secondServe ? 'selected' : ''} aria-pressed={secondServe} onClick={() => setSecondServe(true)}>Anche 2ª palla</button>
+        </div>
         <div className="cg-actions" role="group" aria-label="Punto perso">
-          {lostActions.map(item => <button key={item.action} className="cg-action lost" onClick={() => void savePoint(item.action)} disabled={matchHasWinner || activeMatch.status === 'completed' || gameComplete || !isActionAvailable(item.action, currentServer, shotCount)}
+          {lostActions.map(item => <button key={item.action} className="cg-action lost" onClick={() => { if (item.action === 'double_fault') setSecondServe(true); void savePoint(item.action); }} disabled={matchHasWinner || activeMatch.status === 'completed' || gameComplete || !isActionAvailable(item.action, currentServer, shotCount)}
             title={unavailableReason(item.action, currentServer, shotCount) ?? undefined}>
             <img src={item.icon} alt="" /><span>{item.label}</span>
           </button>)}
