@@ -168,7 +168,8 @@ export function Tracker() {
           id: crypto.randomUUID(), family_id: activeMatch.family_id, game_id: tennisGame.id,
           point_number: nextPointNumber(historicalGamePoints),
           won: result.won, serving: server === 'player',
-          second_serve: result.secondServe || secondServe, point_type_id: result.pointTypeId,
+          // The first/second ball selector is shown only while my player serves.
+          second_serve: result.secondServe || (server === 'player' && secondServe), point_type_id: result.pointTypeId,
           shot_count: shotCount > 0 ? shotCount : result.shotCount,
           created_at, updated_at: created_at, version: 1, deleted: false,
         };
@@ -421,11 +422,11 @@ export function Tracker() {
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l6 6-6 6M12 6l6 6-6 6" /></svg>
           </button>
         </div>
-        <div className="cg-serve-balls" role="group" aria-label="Servizio">
+        {currentServer === 'player' && <div className="cg-serve-balls" role="group" aria-label="Servizio">
           <span>Servizio</span>
           <button className={secondServe ? '' : 'selected'} aria-pressed={!secondServe} onClick={() => setSecondServe(false)}>Solo 1ª palla</button>
           <button className={secondServe ? 'selected' : ''} aria-pressed={secondServe} onClick={() => setSecondServe(true)}>Anche 2ª palla</button>
-        </div>
+        </div>}
         <div className="cg-actions" role="group" aria-label="Punto perso">
           {lostActions.map(item => <button key={item.action} className="cg-action lost" onClick={() => { if (item.action === 'double_fault') setSecondServe(true); void savePoint(item.action); }} disabled={matchHasWinner || activeMatch.status === 'completed' || gameComplete || !isActionAvailable(item.action, currentServer, shotCount)}
             title={unavailableReason(item.action, currentServer, shotCount) ?? undefined}>
