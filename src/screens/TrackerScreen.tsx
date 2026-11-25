@@ -460,10 +460,11 @@ export function Tracker() {
         <div className="cg-details">
           {match.number_of_sets > 1 && <div className="cg-chip-row" aria-label="Seleziona set">{setTabs.map(({ set_number, exists }) =>
             <button key={set_number} className={`cg-chip${set_number === selectedSetNumber ? ' active' : ''}`} onClick={() => { setSetNumber(set_number); setSelectedGame(null); }}>
-              Set {set_number}<span>{exists ? 'Registrato' : 'Da registrare'}</span>
+              {isSuperTiebreakSet(match, set_number) ? 'Super tie-break' : `Set ${set_number}`}<span>{completedSetNumbers.includes(set_number) ? 'Concluso' : exists ? 'Registrato' : 'Da registrare'}</span>
             </button>
           )}</div>}
-          <div className="cg-chip-row" aria-label="Seleziona game">
+          {/* A deciding super tie-break is the only game of its set: its set button already represents it. */}
+          {!isSuperTiebreakSet(match, selectedSetNumber) && <div className="cg-chip-row" aria-label="Seleziona game">
             {Array.from({ length: lastGameNumber }, (_, index) => index + 1).map(number => {
               const selectedPoints = sortedPoints(points, selectedSetNumber, number);
               const target = tiebreakTarget(points, match, selectedSetNumber, number);
@@ -474,9 +475,9 @@ export function Tracker() {
                 {target ? tiebreakLabel : `Game ${number}`}<span>{isCurrent ? 'Corrente' : label}</span>
               </button>;
             })}
-          </div>
+          </div>}
           {gamePoints.length > 0 && <div className="cg-history">
-            <h3>Punti del game {gameNumber}</h3>
+            <h3>{isSuperTiebreakSet(match, selectedSetNumber) ? 'Punti del super tie-break' : `Punti del game ${gameNumber}`}</h3>
             {gamePoints.map(point => <div className="cg-history-row" key={point.id}>
               <span>{point.point_number}</span><strong>{point.won ? playerName : opponentName}</strong>
               <span>{point.shot_count} colpi</span>
