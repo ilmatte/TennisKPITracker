@@ -9,6 +9,8 @@ import { useFamily } from '../features/families/FamilyContextDefinition';
 import tennisBallIcon from '../assets/icone/trasparente/512/pallina3d.png';
 import { stamp, queueOperation } from './shared';
 import { BrandBar } from './BrandBar';
+import { playerAgeCategory } from '../features/players/ageCategories';
+import { playerFullName, playerShortName } from '../features/players/playerNames';
 import type { Match, ScoredPoint } from '../types';
 
 type MatchSummary = { match: Match; scoreText: string; outcome: 'won' | 'lost' | 'in-progress'; duration: string | null };
@@ -56,12 +58,13 @@ export function Matches() {
   const [newOpen, setNewOpen] = useState(false);
   const [filter, setFilter] = useState<'all' | 'won' | 'lost'>('all');
   const navigate = useNavigate();
-  const players = useLiveQuery(
-    async () => activeFamily
-      ? (await db.players.where('family_id').equals(activeFamily.id).toArray()).filter(player => !player.deleted)
-      : [],
+  // Every player of the family, deleted ones included, so that older matches still show their player's name.
+  const allPlayers = useLiveQuery(
+    async () => activeFamily ? db.players.where('family_id').equals(activeFamily.id).toArray() : [],
     [activeFamily?.id],
   ) ?? [];
+  const players = allPlayers.filter(player => !player.deleted);
+  const playersById = new Map(allPlayers.map(player => [player.id, player]));
 
   function openNewMatch() {
     if (!players.length) {
@@ -90,7 +93,7 @@ export function Matches() {
       {visible.map(({ match, scoreText, outcome, duration }) => <button key={match.id} className="mg-row" onClick={() => navigate(`/match/${match.id}`)}>
         <img src={tennisBallIcon} alt="" />
         <span className="mg-info">
-          <strong>{match.player_last_name_snapshot || match.player_first_name_snapshot} vs {match.opponent}</strong>
+          <strong>{playerShortName(playersById.get(match.player_id))} vs {match.opponent}</strong>
           <small>{new Date(match.match_date).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}{duration && ` • ${duration}`}</small>
         </span>
         <span className="mg-score">{scoreText || '—'}</span>
@@ -120,16 +123,16 @@ export function MatchEditor({ match, error, onClose, onSave }: {
     super_tiebreak_target: match.super_tiebreak_target === 7 ? 7 : 10,
   }));
   const field = <K extends keyof Match>(key: K, value: Match[K]) => setDraft(current => ({ ...current, [key]: value }));
-  const editorPlayer = players.find(player => player.id === draft.player_id);
-  const editorPlayerName = editorPlayer
-    ? `${editorPlayer.first_name} ${editorPlayer.last_name}`
-    : `${match.player_first_name_snapshot} ${match.player_last_name_snapshot}`;
+  // The match's own player, even if it has since been deleted.
+  const matchPlayer = useLiveQuery(() => db.players.get(match.player_id), [match.player_id]);
+  const editorPlayer = players.find(player => player.id === draft.player_id) ?? (draft.player_id === match.player_id ? matchPlayer : undefined);
+  const editorPlayerName = playerFullName(editorPlayer);
 
   return <div className="modal-backdrop"><div className="modal-sheet">
     <div className="modal-heading"><h2>Modifica partita</h2><button className="icon-button" onClick={onClose}>×</button></div>
     <label>Data partita<input type="date" value={draft.match_date} onChange={event => field('match_date', event.target.value)} /></label>
     <label>Giocatore<select value={draft.player_id} onChange={event => field('player_id', event.target.value)}>
-      {!players.some(player => player.id === match.player_id) && <option value={match.player_id}>{match.player_first_name_snapshot} {match.player_last_name_snapshot} (storico)</option>}
+      {!players.some(player => player.id === match.player_id) && <option value={match.player_id}>{playerFullName(matchPlayer)} (eliminato)</option>}
       {players.map(player => <option key={player.id} value={player.id}>{player.first_name} {player.last_name}</option>)}
     </select></label>
     <p className="snapshot-preview"><small>Lo snapshot viene aggiornato solo per la partita selezionata.</small></p>
@@ -137,10 +140,7 @@ export function MatchEditor({ match, error, onClose, onSave }: {
       <label>Avversario<input value={draft.opponent} onChange={event => field('opponent', event.target.value)} /></label>
       <label>Classifica avversario<input value={draft.opponent_ranking ?? ''} onChange={event => field('opponent_ranking', event.target.value || null)} /></label>
     </div>
-    <div className="form-grid">
-      <label>Categoria avversario<input value={draft.opponent_category ?? ''} onChange={event => field('opponent_category', event.target.value || null)} /></label>
-      <label>Torneo<input value={draft.tournament ?? ''} onChange={event => field('tournament', event.target.value || null)} /></label>
-    </div>
+    <label>Torneo<input value={draft.tournament ?? ''} onChange={event => field('tournament', event.target.value || null)} /></label>
     <div className="form-grid">
       <label>Numero partita<input type="number" min="1" value={draft.tournament_match_number ?? ''} onChange={event => field('tournament_match_number', event.target.value ? Number(event.target.value) : null)} /></label>
       <label>Numero set<select value={draft.number_of_sets} onChange={event => field('number_of_sets', Number(event.target.value) as 3 | 5)}><option value={3}>Al meglio dei 3</option><option value={5}>Al meglio dei 5</option></select></label>
@@ -170,7 +170,6 @@ export function MatchEditor({ match, error, onClose, onSave }: {
         player_id: draft.player_id,
         opponent: draft.opponent.trim(),
         opponent_ranking: draft.opponent_ranking,
-        opponent_category: draft.opponent_category,
         tournament: draft.tournament,
         tournament_match_number: draft.tournament_match_number,
         number_of_sets: draft.number_of_sets,
@@ -220,10 +219,7 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
       family_id: activeFamily.id,
       match_date: matchDate,
       player_id: selected.id,
-      player_first_name_snapshot: selected.first_name,
-      player_last_name_snapshot: selected.last_name,
       player_ranking_snapshot: selected.ranking,
-      player_category_snapshot: selected.category,
       opponent: opponent.trim(),
       tournament: tournament.trim(),
       number_of_sets: sets,
@@ -271,7 +267,7 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
       <option value="">Seleziona un giocatore</option>
       {players.map(player => <option key={player.id} value={player.id}>{player.first_name} {player.last_name}</option>)}
     </select></label>
-    {selected && <div className="snapshot-preview"><span>{selected.ranking}</span><span>{selected.category}</span><small>Dati congelati alla creazione</small></div>}
+    {selected && <div className="snapshot-preview"><span>{selected.ranking}</span><span>{playerAgeCategory(selected, Number(matchDate.slice(0, 4)))?.name ?? ''}</span><small>Classifica congelata alla creazione</small></div>}
     {!players.length && <p className="family-feedback">Aggiungi prima un giocatore in questo spazio.</p>}
     {error && <p className="family-feedback error" role="alert">{error}</p>}
     <label>Avversario<input value={opponent} onChange={event => setOpponent(event.target.value)} placeholder="Nome avversario" /></label>

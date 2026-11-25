@@ -127,7 +127,7 @@ export async function createPlayer(player: Player, userId: string | null): Promi
 export async function updatePlayer(
   familyId: string,
   id: string,
-  changes: Pick<Player, 'first_name' | 'last_name' | 'birth_date' | 'category' | 'ranking'>,
+  changes: Pick<Player, 'first_name' | 'last_name' | 'birth_date' | 'ranking'>,
 ): Promise<Player> {
   return db.transaction('rw', [db.players, db.syncQueue], async () => {
     const current = await requireActive(id => db.players.get(id), id, familyId, 'Giocatore');
@@ -138,7 +138,7 @@ export async function updatePlayer(
 }
 
 export type MatchChanges = Pick<Match,
-  'match_date' | 'player_id' | 'opponent' | 'opponent_ranking' | 'opponent_category' |
+  'match_date' | 'player_id' | 'opponent' | 'opponent_ranking' |
   'tournament' | 'tournament_match_number' | 'number_of_sets' | 'third_set_type' |
   'super_tiebreak_target' | 'tiebreak_target' | 'games_to_win_set' | 'short_set_tiebreak_at' | 'tiebreak_starts_at_363' |
   'deuce_single_point' | 'first_server' | 'status' | 'result'
@@ -176,12 +176,7 @@ export async function updateMatch(
       games_to_win_set: gamesToWinSet,
       short_set_tiebreak_at: shortSetTiebreakAt,
       tiebreak_starts_at_363: gamesToWinSet === 4,
-      ...(player ? {
-        player_first_name_snapshot: player.first_name,
-        player_last_name_snapshot: player.last_name,
-        player_ranking_snapshot: player.ranking,
-        player_category_snapshot: player.category,
-      } : {}),
+      ...(player ? { player_ranking_snapshot: player.ranking } : {}),
     };
     await write(db.matches, 'matches', next, next.updated_at);
     await recalculate(next, next.updated_at);

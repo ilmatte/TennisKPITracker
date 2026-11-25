@@ -30,16 +30,15 @@ function family(id: string, local_only = true, created_by: string | null = null)
 function player(id: string, family_id = 'family-1'): Player {
   return {
     id, family_id, first_name: 'Ada', last_name: 'Lovelace', birth_date: null,
-    category: 'U16', ranking: '4.1', created_at: now, updated_at: now, version: 1, deleted: false,
+    ranking: '4.1', created_at: now, updated_at: now, version: 1, deleted: false,
   };
 }
 
 function match(id = 'match-1', family_id = 'family-1', player_id = 'player-1'): Match {
   return {
     id, family_id, match_date: '2026-01-01', player_id,
-    player_first_name_snapshot: 'Ada', player_last_name_snapshot: 'Lovelace',
-    player_ranking_snapshot: '4.1', player_category_snapshot: 'U16',
-    opponent: 'Bea', opponent_ranking: '3.5', opponent_category: 'U18', tournament: 'Open',
+    player_ranking_snapshot: '4.1',
+    opponent: 'Bea', opponent_ranking: '3.5', tournament: 'Open',
     tournament_match_number: 4, number_of_sets: 3, third_set_type: 'normal',
     super_tiebreak_target: 10, tiebreak_target: 7, tiebreak_starts_at_363: true,
     deuce_single_point: false, first_server: 'player', status: 'in-progress', result: null,
@@ -161,13 +160,12 @@ describe('sport entity mutations', () => {
   it('updates player profile without changing historical match snapshots', async () => {
     await seedMatch();
     const saved = await updatePlayer('family-1', 'player-1', {
-      first_name: 'Ada Marie', last_name: 'Byron', birth_date: '1815-12-10', category: 'Open', ranking: '3.1',
+      first_name: 'Ada Marie', last_name: 'Byron', birth_date: '1815-12-10', ranking: '3.1',
     });
 
     expect(saved).toMatchObject({ version: 2, updated_at: expect.not.stringMatching(now) });
     expect(await db.matches.get('match-1')).toMatchObject({
-      player_first_name_snapshot: 'Ada', player_last_name_snapshot: 'Lovelace',
-      player_ranking_snapshot: '4.1', player_category_snapshot: 'U16',
+      player_ranking_snapshot: '4.1',
     });
     expect(await operations('player-1')).toMatchObject([
       { operation: 'upsert', payload: { version: 2, ranking: '3.1' } },
@@ -176,18 +174,19 @@ describe('sport entity mutations', () => {
 
   it('updates a match, snapshots a newly associated player and rejects foreign-family players', async () => {
     await seedMatch();
-    await db.players.put({ ...player('player-2'), first_name: 'Bea', last_name: 'Player', ranking: '2.8', category: 'U18' });
+    // Born in 2010: 15 on 1 January 2026, so Under 16 in the sporting year of the match.
+    await db.players.put({ ...player('player-2'), first_name: 'Bea', last_name: 'Player', ranking: '2.8', birth_date: '2010-06-01' });
     const changes: MatchChanges = {
       match_date: '2026-02-02', player_id: 'player-2', opponent: 'Cam', opponent_ranking: '2.1',
-      opponent_category: 'U14', tournament: 'Cup', tournament_match_number: 8, number_of_sets: 5,
+      tournament: 'Cup', tournament_match_number: 8, number_of_sets: 5,
       third_set_type: 'super-tiebreak', super_tiebreak_target: 12, tiebreak_target: 10,
       tiebreak_starts_at_363: false, deuce_single_point: true, first_server: 'opponent',
       status: 'completed', result: '6-2 6-4',
     };
     const saved = await updateMatch('family-1', 'match-1', changes);
     expect(saved).toMatchObject({
-      ...changes, version: 2, player_first_name_snapshot: 'Bea', player_last_name_snapshot: 'Player',
-      player_ranking_snapshot: '2.8', player_category_snapshot: 'U18',
+      ...changes, version: 2,
+      player_ranking_snapshot: '2.8',
     });
     expect(saved.updated_at).not.toBe(now);
     const reopenedMatch = await db.matches.get('match-1');
@@ -231,7 +230,6 @@ describe('sport entity mutations', () => {
     const pointChanges: PointChanges = {
       won: false, serving: true, second_serve: false, point_type_id: 4, shot_count: 3,
      
-     
     };
     await updatePoint('family-1', 'point-4', pointChanges);
     await updatePoint('family-1', 'point-5', pointChanges);
@@ -253,7 +251,6 @@ describe('sport entity mutations', () => {
     const changes: PointChanges = {
       won: false, serving: false, second_serve: true, point_type_id: 1,
       shot_count: 5,
-     
     };
     const saved = await updatePoint('family-1', 'point-1', changes);
     expect(saved).toMatchObject({ ...changes, version: 2 });
@@ -268,7 +265,7 @@ describe('sport entity mutations', () => {
     await seedMatch();
     await softDeletePlayer('family-1', 'player-1');
     expect(await db.players.get('player-1')).toMatchObject({ deleted: true, version: 2 });
-    expect(await db.matches.get('match-1')).toMatchObject({ deleted: false, player_id: 'player-1', player_first_name_snapshot: 'Ada' });
+    expect(await db.matches.get('match-1')).toMatchObject({ deleted: false, player_id: 'player-1' });
     expect(await operations('player-1')).toMatchObject([{ operation: 'upsert', payload: { deleted: true, version: 2 } }]);
   });
 
@@ -340,7 +337,7 @@ describe('sport entity mutations', () => {
       new Dexie.Promise<string>((_resolve, reject) => reject(new Error('simulated queue failure'))));
     try {
       await expect(updatePlayer('family-1', 'player-1', {
-        first_name: 'Changed', last_name: 'Name', birth_date: null, category: 'U18', ranking: '2.0',
+        first_name: 'Changed', last_name: 'Name', birth_date: null, ranking: '2.0',
       })).rejects.toThrow('simulated queue failure');
     } finally {
       queueWrite.mockRestore();
@@ -353,7 +350,7 @@ describe('sport entity mutations', () => {
   it('rejects cross-family mutation without changing the foreign record', async () => {
     await seedMatch();
     await expect(updatePlayer('family-2', 'player-1', {
-      first_name: 'Changed', last_name: 'Name', birth_date: null, category: 'U18', ranking: '2.0',
+      first_name: 'Changed', last_name: 'Name', birth_date: null, ranking: '2.0',
     })).rejects.toThrow('Giocatore non trovato nello spazio attivo.');
     expect((await db.players.get('player-1'))?.first_name).toBe('Ada');
     expect(await db.syncQueue.count()).toBe(0);

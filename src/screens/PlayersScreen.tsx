@@ -11,6 +11,7 @@ import tennisBallIcon from '../assets/icone/trasparente/512/pallina3d.png';
 import settingsBackground from '../assets/background-settings.png';
 import { stamp } from './shared';
 import { BrandBar } from './BrandBar';
+import { currentSportingYear, playerAgeCategory } from '../features/players/ageCategories';
 import type { Player } from '../types';
 
 /** Where the player editor was opened from: decides where "Salva" goes next. */
@@ -59,7 +60,7 @@ export function Players() {
     const now = stamp();
     return {
       id: crypto.randomUUID(), family_id: familyId, first_name: '', last_name: '',
-      birth_date: null, category: '', ranking: '', created_at: now, updated_at: now, version: 0, deleted: false,
+      birth_date: null, ranking: '', created_at: now, updated_at: now, version: 0, deleted: false,
     };
   }
 
@@ -86,7 +87,6 @@ export function Players() {
           first_name: player.first_name,
           last_name: player.last_name,
           birth_date: player.birth_date,
-          category: player.category,
           ranking: player.ranking,
         });
       } else {
@@ -140,7 +140,7 @@ export function Players() {
     {players.length > 0 && players.length <= 2
       ? <div className="pl-big-list">{players.map(player => {
         const stats = playerStats.get(player.id) ?? { played: 0, completed: 0, won: 0 };
-        const details = [player.category, player.ranking && `FITP ${player.ranking}`].filter(Boolean).join(' • ');
+        const details = [playerAgeCategory(player)?.name, player.ranking && `FITP ${player.ranking}`].filter(Boolean).join(' • ');
         return <button className="pl-big-card" key={player.id} onClick={() => edit(player)}>
           <span className="pl-big-head">
             <span className="pl-avatar big">{player.first_name[0]}{player.last_name[0]}</span>
@@ -184,6 +184,8 @@ function PlayerModal({ player, error, onClose, onSave, onDelete }: {
   onDelete?: () => void;
 }) {
   const [draft, setDraft] = useState(player);
+  const sportingYear = currentSportingYear();
+  const ageCategory = playerAgeCategory(draft, sportingYear);
   const editingExisting = Boolean(draft.first_name || draft.last_name || draft.version > 0);
   return <div className="player-editor-backdrop"><section className="player-editor" role="dialog" aria-modal="true" aria-label={editingExisting ? 'Modifica giocatore' : 'Nuovo giocatore'}>
     <header className="player-editor-header">
@@ -200,10 +202,11 @@ function PlayerModal({ player, error, onClose, onSave, onDelete }: {
           <label>Cognome<input autoComplete="family-name" value={draft.last_name} onChange={event => setDraft({ ...draft, last_name: event.target.value })} /></label>
         </div>
         <label>Data di nascita<input type="date" value={draft.birth_date ?? ''} onChange={event => setDraft({ ...draft, birth_date: event.target.value || null })} /></label>
-        <div className="player-editor-row">
-          <label>Categoria<input value={draft.category} onChange={event => setDraft({ ...draft, category: event.target.value })} /></label>
-          <label>Classifica FITP<input value={draft.ranking} onChange={event => setDraft({ ...draft, ranking: event.target.value })} /></label>
-        </div>
+        {/* The age category is not entered: it is computed from the birth date for the current sporting year. */}
+        {draft.birth_date && <p className="player-editor-category" role="status">
+          Categoria {sportingYear}: <strong>{ageCategory ? ageCategory.name : 'nessuna (meno di 10 anni)'}</strong>
+        </p>}
+        <label>Classifica FITP<input value={draft.ranking} onChange={event => setDraft({ ...draft, ranking: event.target.value })} /></label>
       </div>
       {error && <p className="family-feedback error" role="alert">{error}</p>}
       <div className="player-editor-actions">

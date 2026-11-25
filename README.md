@@ -52,6 +52,14 @@ The app remains usable without signing in or connecting to the internet. To enab
 
 For a **new, empty** Supabase project, run `initial_schema.sql` once in the Supabase SQL Editor.
 
+For a project created **before** the following changes, run the incremental scripts in order (both are idempotent and safe to re-run), before deploying the app version that needs them:
+
+1. `002_player_age_categories.sql` — adds the `player_age_categories` reference table (FITP age categories).
+2. `003_remove_player_category_and_name_snapshots.sql` — removes `players.category` (the age category is computed from `players.birth_date`), `matches.opponent_category` and the player name snapshots `matches.player_first_name_snapshot` / `player_last_name_snapshot` (the name is read from `players` through `matches.player_id`).
+3. `004_remove_match_category_snapshot.sql` — removes `matches.player_category_snapshot` (the age category is computed from the player's birth date).
+
+A project with these scripts applied has the same schema as one created from the current `initial_schema.sql`.
+
 The script replaces the earlier incremental migrations (`002`–`006`: set-format options, `points.won`, `points.serving`, `point_types`, removal of the point error-detail fields). A project that already applied all of them has exactly the same schema as one created from the current script — verified by comparing the PostgreSQL catalog (columns and their order, constraints, indexes, policies, functions, privileges, RLS) of both databases — so it needs no action. A project at an older schema version has no upgrade script in the repository any more: the removed migrations are available in the git history.
 
 Point rows reference `point_types` by id (`1` double_fault, `2` free_error, `3` lose, `4` win, `5` ace, `6` great_shot). The ids are mirrored by the app (`src/features/scoring/pointTypes.ts`) and must never be renumbered. Like `points.won` (my player won the point) and `points.serving` (my player served it), every point type refers to my player.

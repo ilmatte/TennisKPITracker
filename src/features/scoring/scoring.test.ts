@@ -6,8 +6,7 @@ import { POINT_TYPE } from './pointTypes';
 
 const match = (overrides: Partial<Match> = {}): Match => ({
   id: 'm1', family_id: 'f1', match_date: '2026-11-17', player_id: 'alessandro',
-  player_first_name_snapshot: 'Alessandro', player_last_name_snapshot: '',
-  player_ranking_snapshot: '4.1', player_category_snapshot: 'U16', opponent: 'Andrea',
+  player_ranking_snapshot: '4.1', opponent: 'Andrea',
   number_of_sets: 3, third_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
   tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player',
   status: 'in-progress', created_at: '2026-11-17', updated_at: '2026-11-17', version: 1, deleted: false,
@@ -251,10 +250,9 @@ describe('KPI core', () => {
     expect(servicePlusOne(points,'player')).toMatchObject({won:2,total:4,percentage:50});
   });
   it('keeps historical match snapshot independent of profile updates', () => {
-    const historical=match({match_date:'2026-11-17',player_ranking_snapshot:'4.1',player_category_snapshot:'U16'});
-    const profile={ranking:'3.5',category:'U18'};
+    const historical=match({match_date:'2026-11-17',player_ranking_snapshot:'4.1'});
+    const profile={ranking:'3.5'};
     expect(historical.player_ranking_snapshot).toBe('4.1');
-    expect(historical.player_category_snapshot).toBe('U16');
-    expect(profile).not.toEqual({ranking:historical.player_ranking_snapshot,category:historical.player_category_snapshot});
+    expect(profile.ranking).not.toBe(historical.player_ranking_snapshot);
   });
 });

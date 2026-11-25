@@ -136,7 +136,6 @@ describe('sync provisioning', () => {
       family_id: 'local-workspace',
       first_name: 'Local',
       last_name: 'Player',
-      category: '',
       ranking: '',
       created_at: now,
       updated_at: now,

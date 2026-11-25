@@ -36,3 +36,7 @@
 .pl-stats small{margin-top:2px;font-size:11.5px;font-weight:600;color:#5C6B85}
 .pl-stats i{width:1px;height:34px;flex:none;background:#D9E3F3}
 .pl-add.compact{height:52px;margin-top:12px}
+
+/* Age category computed from the birth date (read only) */
+.player-editor-category{margin:-4px 0 0;padding:10px 14px;border-radius:14px;background:#EEF3FB;color:#5C6B85;font-size:14px;font-weight:600}
+.player-editor-category strong{color:#0B2A5B;font-weight:800}

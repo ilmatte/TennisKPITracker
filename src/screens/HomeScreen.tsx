@@ -14,7 +14,8 @@ import calendarIcon from '../assets/icone/trasparente/512/calendario.png';
 import historyIcon from '../assets/icone/trasparente/256/storico.png';
 import tennisBallIcon from '../assets/icone/trasparente/512/pallina3d.png';
 import { NewMatch } from './MatchesScreen';
-import type { Match, ScoredPoint } from '../types';
+import { playerShortName } from '../features/players/playerNames';
+import type { Match, Player, ScoredPoint } from '../types';
 export function HomeRoute() {
   const location = useLocation();
   let pendingInvite = false;
@@ -79,13 +80,14 @@ export function DashboardHome() {
   }
 
   const recentDetails = useLiveQuery(async () => {
-    if (!activeFamily) return [] as { match: Match; points: ScoredPoint[] }[];
+    if (!activeFamily) return [] as { match: Match; points: ScoredPoint[]; player: Player | undefined }[];
     const inProgressMatches = matches.filter(match => match.status === 'in-progress');
     const completedMatches = matches.filter(match => match.status === 'completed');
     const recentMatches = [...inProgressMatches, ...completedMatches].slice(0, 2);
     return Promise.all(recentMatches.map(async match => ({
       match,
       points: await getMatchPoints(activeFamily.id, match.id),
+      player: await db.players.get(match.player_id), // also a deleted player, so that the name is still shown
     })));
   }, [activeFamily?.id, matches.map(match => `${match.id}:${match.status}`).join(',')]) ?? [];
 
@@ -120,7 +122,7 @@ export function DashboardHome() {
         <svg className="chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
       </button>
       <div className="recent-list">
-        {recentDetails.map(({ match, points }) => {
+        {recentDetails.map(({ match, points, player }) => {
           let playerSets = 0;
           let opponentSets = 0;
           for (let setNumber = 1; setNumber <= match.number_of_sets; setNumber += 1) {
@@ -134,7 +136,7 @@ export function DashboardHome() {
           const scoreText = setLabels.map(score => `${score.player}-${score.opponent}`).join(' ');
           return <button className="recent-match" key={match.id} onClick={() => navigate(`/match/${match.id}`)}>
             <img className="recent-match-ball" src={tennisBallIcon} alt="" />
-            <span className="recent-info"><strong>{match.player_last_name_snapshot || match.player_first_name_snapshot} vs {match.opponent}</strong><small>{new Date(match.match_date).toLocaleDateString('it-IT')}</small></span>
+            <span className="recent-info"><strong>{playerShortName(player)} vs {match.opponent}</strong><small>{new Date(match.match_date).toLocaleDateString('it-IT')}</small></span>
             <strong className="recent-score">{scoreText || '—'}</strong>
             <span className={`match-result ${inProgress ? 'in-progress' : won ? 'win' : 'loss'}`}>{inProgress ? 'In corso' : won ? 'Vinta' : 'Persa'}</span>
             <svg className="recent-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>

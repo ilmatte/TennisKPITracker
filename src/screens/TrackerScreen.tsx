@@ -8,6 +8,7 @@ import { configuredSetNavigation, deriveGameScore, deriveSetScore, getGameServer
 import { countGameDescendants, countMatchDescendants, countSetDescendants, softDeleteGame, softDeleteMatch, softDeletePoint, softDeleteSet, updateGame, updateMatch, updatePoint, updateSet, type PointChanges } from '../db/sportsMutations';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import { isWinningPointType, POINT_TYPES } from '../features/scoring/pointTypes';
+import { playerFullName } from '../features/players/playerNames';
 import currentGameBackground from '../assets/background-currentgame/background-currentgame-3x.png';
 import currentGameFooter from '../assets/footer-currentgame/footer-currentgame-3x.png';
 import freeErrorIcon from '../assets/icone/currentgame/errore-gratuito-chiaro.svg';
@@ -29,6 +30,8 @@ export function Tracker() {
     const record = await db.matches.get(id);
     return record?.family_id === activeFamily.id && !record.deleted ? record : undefined;
   }, [id, activeFamily?.id]);
+  // The match's player (also when deleted), for its name.
+  const matchPlayer = useLiveQuery(async () => match ? db.players.get(match.player_id) : undefined, [match?.player_id]);
   const points = useLiveQuery(
     () => activeFamily && id ? getMatchPoints(activeFamily.id, id) : Promise.resolve([] as ScoredPoint[]),
     [id, activeFamily?.id],
@@ -360,7 +363,7 @@ export function Tracker() {
   const courtChangeDue = selectedGame === null && !gameComplete && (startOfSetChange || tiebreakChange || oddGameChange);
   const changeoverKey = courtChangeDue ? `${match.id}:${selectedSetNumber}:${gameNumber}:${gamePoints.length}` : null;
   const changeoverReason = startOfSetChange ? 'inizio set' : tiebreakChange ? `tie-break · ${gamePoints.length} punti` : 'game dispari';
-  const playerName = `${match.player_first_name_snapshot} ${match.player_last_name_snapshot}`.trim() || 'Giocatore';
+  const playerName = playerFullName(matchPlayer);
   const opponentName = match.opponent || 'Avversario';
   const tiebreakLabel = isSuperTiebreakSet(match, selectedSetNumber) ||
     (match.number_of_sets === 5 && match.third_set_type === 'super-tiebreak' && selectedSetNumber === 5 && currentTiebreak === match.super_tiebreak_target)

@@ -28,13 +28,30 @@ export interface FamilyInvitation {
   created_at: string;
 }
 
+/** Row of the player_age_categories reference table (FITP age sectors, see features/players/ageCategories.ts).
+ *  Independent from the FITP technical ranking stored in Player.ranking. */
+export interface PlayerAgeCategory {
+  id: number;
+  code: string;
+  name: string;
+  sector: 'youth' | 'open' | 'veterans';
+  sort_order: number;
+  is_active: boolean;
+  /** Inclusive lower age threshold. */
+  min_age: number;
+  /** Exclusive upper age threshold; null means no upper limit. */
+  max_age: number | null;
+  /** january_1: years completed on 1 January; calendar_year: age reached during the sporting year. */
+  age_basis: 'january_1' | 'calendar_year';
+}
+
 export interface Player {
   id: PlayerId;
   family_id: UUID;
   first_name: string;
   last_name: string;
   birth_date?: string | null;
-  category: string;
+  /** FITP technical ranking. The age category is not stored: it is computed from birth_date (see ageCategories.ts). */
   ranking: string;
   created_at: string;
   updated_at: string;
@@ -46,14 +63,11 @@ export interface Match {
   id: UUID;
   family_id: UUID;
   match_date: string;
+  /** The player's name is read from the players table through player_id. */
   player_id: PlayerId;
-  player_first_name_snapshot: string;
-  player_last_name_snapshot: string;
   player_ranking_snapshot: string;
-  player_category_snapshot: string;
   opponent: string;
   opponent_ranking?: string | null;
-  opponent_category?: string | null;
   tournament?: string | null;
   tournament_match_number?: number | null;
   number_of_sets: 3 | 5;

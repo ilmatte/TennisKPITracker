@@ -178,7 +178,7 @@ function mapping(overrides: Partial<SyncMapping> = {}): SyncMapping {
 function localPlayer(id = 'player-id', version = 1): Player {
   return {
     id, family_id: localFamilyId, first_name: 'Ada', last_name: 'Lovelace', birth_date: null,
-    category: 'U16', ranking: '4.1', created_at: now, updated_at: now, version, deleted: false,
+    ranking: '4.1', created_at: now, updated_at: now, version, deleted: false,
   };
 }
 
@@ -214,8 +214,7 @@ describe('sync engine', () => {
     remote.seed('players', { ...localPlayer(), family_id: remoteFamilyId, version: 3 });
     const match: Match = {
       id: 'match-id', family_id: remoteFamilyId, match_date: '2026-03-01', player_id: 'player-id',
-      player_first_name_snapshot: 'Ada', player_last_name_snapshot: 'Lovelace',
-      player_ranking_snapshot: '4.1', player_category_snapshot: 'U16', opponent: 'Bea',
+      player_ranking_snapshot: '4.1', opponent: 'Bea',
       number_of_sets: 3, third_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
       tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player',
       status: 'in-progress', created_at: now, updated_at: now, version: 2, deleted: false,
@@ -257,8 +256,7 @@ describe('sync engine', () => {
     const player = { ...localPlayer('player-id', 2), deleted: true };
     const match: Match = {
       id: 'match-id', family_id: localFamilyId, match_date: '2026-03-01', player_id: player.id,
-      player_first_name_snapshot: 'Ada', player_last_name_snapshot: 'Lovelace',
-      player_ranking_snapshot: '4.1', player_category_snapshot: 'U16', opponent: 'Bea',
+      player_ranking_snapshot: '4.1', opponent: 'Bea',
       number_of_sets: 3, third_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
       tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player',
       status: 'in-progress', created_at: now, updated_at: now, version: 1, deleted: false,
