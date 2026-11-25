@@ -56,6 +56,8 @@ export function Tracker() {
   const [shotDraft, setShotDraft] = useState(0);
   // "Servizio" selector: whether the server also played the second ball. Saved in second_serve, then reset.
   const [secondServe, setSecondServe] = useState(false);
+  // Change-of-ends popup: the key of the last changeover the user dismissed (so each changeover shows once).
+  const [dismissedChangeover, setDismissedChangeover] = useState<string | null>(null);
   const swipeStartX = useRef<number | null>(null);
   const swipeHandled = useRef(false);
 
@@ -339,9 +341,16 @@ export function Tracker() {
     .map(set => ({ id: set.id, number: set.set_number, score: deriveSetScore(points, set.set_number, match) }));
   const hasConcludedSets = concludedSets.length > 0;
   const gameScore = deriveGameScore(gamePoints, match.deuce_single_point, currentTiebreak);
-  const courtChangeDue = selectedGame === null && (currentTiebreak !== null
-    ? gamePoints.length > 0 && gamePoints.length % 6 === 0
-    : gameNumber > 1 && gameNumber % 2 === 0);
+  // Change of ends: before every even game of a set (after the odd ones), every 6 points of a tie-break, and at the
+  // start of a set when the previous set ended with an odd number of games (a tie-break counts as one game).
+  const previousSetScore = selectedSetNumber > 1 ? deriveSetScore(points, selectedSetNumber - 1, match) : null;
+  const startOfSetChange = gameNumber === 1 && gamePoints.length === 0 && previousSetScore !== null
+    && (previousSetScore.player + previousSetScore.opponent) % 2 === 1;
+  const tiebreakChange = currentTiebreak !== null && gamePoints.length > 0 && gamePoints.length % 6 === 0;
+  const oddGameChange = currentTiebreak === null && gameNumber > 1 && gameNumber % 2 === 0 && gamePoints.length === 0;
+  const courtChangeDue = selectedGame === null && !gameComplete && (startOfSetChange || tiebreakChange || oddGameChange);
+  const changeoverKey = courtChangeDue ? `${match.id}:${selectedSetNumber}:${gameNumber}:${gamePoints.length}` : null;
+  const changeoverReason = startOfSetChange ? 'inizio set' : tiebreakChange ? `tie-break · ${gamePoints.length} punti` : 'game dispari';
   const playerName = `${match.player_first_name_snapshot} ${match.player_last_name_snapshot}`.trim() || 'Giocatore';
   const opponentName = match.opponent || 'Avversario';
   const tiebreakLabel = isSuperTiebreakSet(match, selectedSetNumber) ||
@@ -439,7 +448,6 @@ export function Tracker() {
           Annulla ultimo punto
         </button>
         {gameComplete && <p className="cg-note">Game concluso.</p>}
-        {courtChangeDue && <p className="cg-court-change" role="status">Cambio campo</p>}
         {trackerError && <p className="family-feedback error" role="alert">{trackerError}</p>}
 
         <div className="cg-details">
@@ -475,6 +483,9 @@ export function Tracker() {
       </section>
     </div>
     <img className="cg-footer" src={currentGameFooter} alt="" aria-hidden="true" />
+    {changeoverKey && changeoverKey !== dismissedChangeover && <CourtChangeOverlay key={changeoverKey}
+      subtitle={`Set ${selectedSetNumber}  •  ${setScore.player}-${setScore.opponent}  ·  ${changeoverReason}`}
+      playerName={playerName} opponentName={opponentName} onClose={() => setDismissedChangeover(changeoverKey)} />}
     {shotSheetOpen && <div className="cg-sheet-backdrop" onClick={() => setShotSheetOpen(false)}>
       <section className="cg-sheet" role="dialog" aria-modal="true" aria-labelledby="cg-sheet-title" onClick={event => event.stopPropagation()}>
         <div className="cg-sheet-handle" aria-hidden="true" />
@@ -535,6 +546,54 @@ export function Tracker() {
         {match.status === 'in-progress' && <button onClick={() => { setMatchMenuOpen(false); void completeMatch(); }}>✓ <span>Termina partita</span></button>}
       </div>
     </div>}
+  </div>;
+}
+
+const CHANGEOVER_SECONDS = 90;
+
+/** "Cambio campo" popup: animated in, closed by the button or automatically after 90 seconds. */
+function CourtChangeOverlay({ subtitle, playerName, opponentName, onClose }: {
+  subtitle: string;
+  playerName: string;
+  opponentName: string;
+  onClose: () => void;
+}) {
+  const [secondsLeft, setSecondsLeft] = useState(CHANGEOVER_SECONDS);
+  const [closing, setClosing] = useState(false);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => { confirmRef.current?.focus(); }, []);
+  useEffect(() => {
+    if (closing) return;
+    if (secondsLeft <= 0) { setClosing(true); return; }
+    const timer = window.setTimeout(() => setSecondsLeft(seconds => seconds - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [secondsLeft, closing]);
+  useEffect(() => {
+    if (!closing) return;
+    const timer = window.setTimeout(() => onCloseRef.current(), 200); // matches the fade-out duration in Tracker.css
+    return () => window.clearTimeout(timer);
+  }, [closing]);
+
+  const swapArrows = (size: number, color: string, top: number) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d={`M4 ${top}h14M14 ${top - 4}l4 4-4 4`} /><path d={`M20 ${top + 8}H6M10 ${top + 4}l-4 4 4 4`} />
+  </svg>;
+
+  return <div className={`cg-changeover${closing ? ' closing' : ''}`} onKeyDown={event => { if (event.key === 'Escape') setClosing(true); }}>
+    <section className="cg-changeover-card" role="alertdialog" aria-modal="true" aria-labelledby="cg-changeover-title" aria-describedby="cg-changeover-subtitle">
+      <div className="cg-changeover-badge">{swapArrows(36, '#0B2A5B', 8)}</div>
+      <h2 id="cg-changeover-title">Cambio campo</h2>
+      <p id="cg-changeover-subtitle" className="cg-changeover-subtitle">{subtitle}</p>
+      <div className="cg-changeover-sides">
+        <span>{playerName}</span>
+        <span className="cg-changeover-swap">{swapArrows(34, '#C8F03A', 9)}</span>
+        <span>{opponentName}</span>
+      </div>
+      <button ref={confirmRef} className="cg-changeover-ok" onClick={() => setClosing(true)}>Ok, ho cambiato campo</button>
+      <p className="cg-changeover-timer">Si chiude da solo tra {secondsLeft} {secondsLeft === 1 ? 'secondo' : 'secondi'}</p>
+    </section>
   </div>;
 }
 

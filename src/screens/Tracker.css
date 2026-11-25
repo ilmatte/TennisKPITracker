@@ -60,7 +60,6 @@
 .cg-undo{margin-top:8px;width:100%;height:54px;box-sizing:border-box;border-radius:27px;border:1.5px solid #17488F;background:#fff;color:#17488F;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px}
 .cg-undo:disabled{opacity:.5}
 .cg-note{margin:4px 0 0;color:#5C6B85;font-size:13px;font-weight:600;text-align:center}
-.cg-court-change{margin:6px 0 0;padding:7px;border-radius:7px;background:#FFF3CC;color:#745400;font-size:13px;font-weight:800;text-align:center}
 .cg-page button:focus-visible{outline:3px solid #C8F03A;outline-offset:2px}
 
 /* Set / game navigation and point history (below the main controls) */
@@ -133,3 +132,25 @@
 .cg-serve-balls span{margin-right:2px;font-size:12.5px;font-weight:800;color:#5C6B85}
 .cg-serve-balls button{flex:1;min-width:0;height:40px;box-sizing:border-box;padding:0 6px;border:1.5px solid #CFDCF2;border-radius:20px;background:#fff;color:#0B2A5B;font-size:13.5px;font-weight:800;display:flex;align-items:center;justify-content:center;white-space:nowrap}
 .cg-serve-balls button.selected{border-color:#0B2A5B;background:#0B2A5B;color:#C8F03A}
+
+/* "Cambio campo" popup */
+.cg-changeover{position:fixed;z-index:95;inset:0;display:flex;align-items:center;justify-content:center;padding:34px 16px 0;background:rgba(2,32,61,.62);font-family:'Plus Jakarta Sans',system-ui,sans-serif;animation:cg-fade-in .2s ease-out both}
+.cg-changeover-card{position:relative;width:328px;max-width:100%;box-sizing:border-box;padding:52px 22px 22px;border:1px solid rgba(255,255,255,.18);border-radius:30px;background:linear-gradient(180deg,#0B2A5B 0%,#02203d 100%);box-shadow:0 24px 60px rgba(0,0,0,.45);color:#fff;text-align:center;animation:cg-card-in .42s cubic-bezier(.34,1.56,.64,1) both}
+.cg-changeover-badge{position:absolute;left:50%;top:-34px;width:68px;height:68px;margin-left:-34px;border-radius:34px;background:#C8F03A;box-shadow:0 8px 22px rgba(139,190,20,.5),0 0 0 6px #0B2A5B;display:flex;align-items:center;justify-content:center;animation:cg-badge-spin .7s cubic-bezier(.34,1.56,.64,1) .18s both}
+.cg-changeover-card h2{margin:0;font-size:26px;line-height:1.1;font-weight:800;letter-spacing:-.01em;color:#fff}
+.cg-changeover-subtitle{margin:6px 0 0;font-size:14px;font-weight:600;color:rgba(255,255,255,.72);white-space:pre-wrap}
+.cg-changeover-sides{margin:18px 0 20px;display:flex;align-items:center;justify-content:center;gap:12px}
+.cg-changeover-sides>span:not(.cg-changeover-swap){flex:1;min-width:0;height:44px;padding:0 10px;box-sizing:border-box;border:1px solid rgba(255,255,255,.18);border-radius:22px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:14.5px;font-weight:800;white-space:nowrap;text-overflow:ellipsis}
+.cg-changeover-swap{flex:none;line-height:0;animation:cg-swap 1.6s ease-in-out .6s infinite}
+.cg-changeover-ok{width:100%;height:54px;border:0;border-radius:27px;background:#C8F03A;color:#0B2A5B;font-family:inherit;font-size:17px;font-weight:800;box-shadow:0 8px 20px rgba(139,190,20,.35);cursor:pointer}
+.cg-changeover-ok:focus-visible{outline:3px solid #fff;outline-offset:3px}
+.cg-changeover-timer{margin:12px 0 0;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.6)}
+.cg-changeover.closing{animation:cg-fade-out .2s ease-in both}
+.cg-changeover.closing .cg-changeover-card{animation:cg-card-out .2s ease-in both}
+@keyframes cg-fade-in{from{opacity:0}to{opacity:1}}
+@keyframes cg-fade-out{from{opacity:1}to{opacity:0}}
+@keyframes cg-card-in{from{opacity:0;transform:translateY(40px) scale(.9)}to{opacity:1;transform:none}}
+@keyframes cg-card-out{from{opacity:1;transform:none}to{opacity:0;transform:translateY(16px) scale(.96)}}
+@keyframes cg-badge-spin{from{transform:rotate(-180deg) scale(.4)}to{transform:none}}
+@keyframes cg-swap{0%,100%{transform:translateX(0)}50%{transform:translateX(4px)}}
+@media (prefers-reduced-motion:reduce){.cg-changeover,.cg-changeover-card,.cg-changeover-badge,.cg-changeover-swap,.cg-changeover.closing,.cg-changeover.closing .cg-changeover-card{animation:none}}
