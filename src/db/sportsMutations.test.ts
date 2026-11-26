@@ -3,7 +3,10 @@ import Dexie from 'dexie';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, getMatchPoints } from './database';
 import {
+  createClub,
   createPlayer,
+  softDeleteClub,
+  updateClub,
   softDeleteGame,
   softDeleteMatch,
   softDeletePlayer,
@@ -82,10 +85,10 @@ async function operations(entity_id: string) {
 
 beforeEach(async () => {
   await db.transaction('rw', [
-    db.families, db.family_members, db.players, db.matches, db.sets, db.games, db.points, db.syncQueue,
+    db.families, db.family_members, db.players, db.clubs, db.matches, db.sets, db.games, db.points, db.syncQueue,
   ], async () => {
     await Promise.all([
-      db.families.clear(), db.family_members.clear(), db.players.clear(), db.matches.clear(),
+      db.families.clear(), db.family_members.clear(), db.players.clear(), db.clubs.clear(), db.matches.clear(),
       db.sets.clear(), db.games.clear(), db.points.clear(), db.syncQueue.clear(),
     ]);
   });
@@ -354,5 +357,47 @@ describe('sport entity mutations', () => {
     })).rejects.toThrow('Giocatore non trovato nello spazio attivo.');
     expect((await db.players.get('player-1'))?.first_name).toBe('Ada');
     expect(await db.syncQueue.count()).toBe(0);
+  });
+});
+
+describe('club mutations', () => {
+  it('creates a club at version 1 with trimmed fields and queues an upsert', async () => {
+    await db.families.add(family('family-1'));
+    const club = await createClub('family-1', { name: '  TC Lambrate ', city: ' Milano ', surface: 'clay' });
+    expect(club).toMatchObject({ family_id: 'family-1', name: 'TC Lambrate', city: 'Milano', surface: 'clay', version: 1, deleted: false });
+    expect(await db.clubs.get(club.id)).toEqual(club);
+    expect(await operations(club.id)).toMatchObject([{ entity_type: 'clubs', operation: 'upsert', payload: { version: 1, name: 'TC Lambrate' } }]);
+  });
+
+  it('rejects a club without a name', async () => {
+    await db.families.add(family('family-1'));
+    await expect(createClub('family-1', { name: '   ', city: 'Milano', surface: null })).rejects.toThrow('nome del club');
+    expect(await db.clubs.count()).toBe(0);
+  });
+
+  it('updates a club, clearing the optional surface, and bumps its version', async () => {
+    await db.families.add(family('family-1'));
+    const club = await createClub('family-1', { name: 'TC Lambrate', city: 'Milano', surface: 'clay' });
+    const saved = await updateClub('family-1', club.id, { name: 'TC Lambrate Milano', city: 'Milano', surface: null });
+    expect(saved).toMatchObject({ name: 'TC Lambrate Milano', surface: null, version: 2 });
+    expect((await operations(club.id)).map(operation => (operation.payload as { version: number }).version).sort()).toEqual([1, 2]);
+  });
+
+  it('deletes a club logically (tombstone synchronized like the other records)', async () => {
+    await db.families.add(family('family-1'));
+    const club = await createClub('family-1', { name: 'TC Lambrate', city: 'Milano', surface: null });
+    await softDeleteClub('family-1', club.id);
+    expect(await db.clubs.get(club.id)).toMatchObject({ deleted: true, version: 2 });
+    // The queue is keyed by random ids, so look for the tombstone instead of relying on the insertion order.
+    expect((await operations(club.id)).find(operation => (operation.payload as { version: number }).version === 2))
+      .toMatchObject({ entity_type: 'clubs', payload: { deleted: true, version: 2 } });
+    await expect(softDeleteClub('family-1', club.id)).rejects.toThrow('Club non trovato');
+  });
+
+  it('does not change a club of another family', async () => {
+    await db.families.bulkAdd([family('family-1'), family('family-2')]);
+    const club = await createClub('family-2', { name: 'Altro club', city: '', surface: null });
+    await expect(updateClub('family-1', club.id, { name: 'X', city: '', surface: null })).rejects.toThrow('Club non trovato');
+    await expect(softDeleteClub('family-1', club.id)).rejects.toThrow('Club non trovato');
   });
 });

@@ -1,6 +1,7 @@
 import { db } from '../db/database';
 import type { Table } from 'dexie';
 import type {
+  Club,
   Game,
   Match,
   Player,
@@ -23,7 +24,7 @@ const INITIAL_COMPLETE = '__complete__';
 const LEASE_DURATION_MS = 60_000;
 const LEASE_RENEWAL_MS = 15_000;
 const runLocks = new Map<string, Promise<SyncResult>>();
-type SportsRecord = Player | Match | TennisSet | Game | Point;
+type SportsRecord = Player | Club | Match | TennisSet | Game | Point;
 
 export interface SyncResult {
   status: SyncMapping['status'];
@@ -36,6 +37,7 @@ export interface SyncResult {
 function storeFor(type: SyncEntityType): Table {
   switch (type) {
     case 'players': return db.players;
+    case 'clubs': return db.clubs;
     case 'matches': return db.matches;
     case 'sets': return db.sets;
     case 'games': return db.games;
@@ -120,7 +122,7 @@ async function withSyncLock<T>(localFamilyId: string, operation: () => Promise<T
 }
 
 function allSportsStores() {
-  return [db.players, db.matches, db.sets, db.games, db.points];
+  return [db.players, db.clubs, db.matches, db.sets, db.games, db.points];
 }
 
 function getVersion(payload: unknown): number {

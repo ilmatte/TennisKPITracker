@@ -34,7 +34,7 @@ class FakeSyncRepository implements SyncRepository {
   memberships: FamilyMember[] = [];
 
   constructor() {
-    for (const type of ['players', 'matches', 'sets', 'games', 'points'] as const) {
+    for (const type of ['players', 'clubs', 'matches', 'sets', 'games', 'points'] as const) {
       this.records.set(type, new Map());
     }
   }

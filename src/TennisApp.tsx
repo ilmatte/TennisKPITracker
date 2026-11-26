@@ -6,16 +6,21 @@ import AuthStatus from './features/auth/AuthStatus';
 import { useFamily } from './features/families/FamilyContextDefinition';
 import matchesNavIcon from './assets/icone/trasparente/512/partite.png';
 import matchesActiveIcon from './assets/icone/chiaro/256/partite.png';
+// Same trophy with a light blue pedestal (the gradient of the statistics icon's third bar): the standard one has a
+// dark blue pedestal that disappears on the dark nav bar.
+import matchesDarkNavIcon from './assets/icone/trasparente/512/partite-sfondo-scuro.png';
 import statisticsIcon from './assets/icone/trasparente/512/statistiche.png';
 import homeActiveIcon from './assets/icone/scuro/512/home.png';
 import homeIcon from './assets/icone/trasparente/512/home.png';
 import settingsIcon from './assets/icone/trasparente/512/impostazioni.png';
 import settingsActiveIcon from './assets/icone/chiaro/256/impostazioni.png';
 import playersActiveIcon from './assets/icone/scuro/256/players.png';
+import clubsActiveIcon from './assets/icone/scuro/256/campo.png';
 import './design.css';
 import { HomeRoute } from './screens/HomeScreen';
 import { Matches } from './screens/MatchesScreen';
 import { Players } from './screens/PlayersScreen';
+import { Clubs } from './screens/ClubsScreen';
 import { Tracker } from './screens/TrackerScreen';
 import { Dashboard } from './screens/StatisticsScreen';
 import { Settings } from './screens/SettingsScreen';
@@ -42,10 +47,12 @@ export default function TennisApp() {
   const onMatches = location.pathname === '/matches';
   const onSettings = location.pathname === '/settings';
   const onPlayers = location.pathname === '/players';
+  const onClubs = location.pathname === '/clubs';
+  const darkNav = onMatches || onSettings;
 
   // Screens that paint their own background down to the bottom edge, and the colour of the side bands.
-  const fullBleed = tracking || onMatches || onSettings || onPlayers;
-  const shellTheme = tracking || onMatches || onSettings ? ' shell-dark' : onHome ? ' shell-light' : onPlayers ? ' shell-soft' : '';
+  const fullBleed = tracking || onMatches || onSettings || onPlayers || onClubs;
+  const shellTheme = tracking || onMatches || onSettings ? ' shell-dark' : onHome ? ' shell-light' : onPlayers || onClubs ? ' shell-soft' : '';
 
   return <div className={`app-shell${fullBleed ? ' full-bleed' : ''}${shellTheme}`}>
     <header className="topbar">
@@ -71,18 +78,22 @@ export default function TennisApp() {
       <Route path="/" element={<HomeRoute />} />
       <Route path="/matches" element={<Matches />} />
       <Route path="/players" element={<Players />} />
+      <Route path="/clubs" element={<Clubs />} />
       <Route path="/match/:id" element={<Tracker />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes></main>
-    <nav className={`bottom-nav${tracking ? ' tracker-hidden' : ''}${onMatches || onSettings ? ' nav-dark' : ''}`}>
+    <nav className={`bottom-nav${tracking ? ' tracker-hidden' : ''}${darkNav ? ' nav-dark' : ''}`}>
       <NavLink to="/" end><img src={onHome ? homeActiveIcon : homeIcon} alt="" />Home</NavLink>
       <NavLink to="/dashboard"><img src={statisticsIcon} alt="" />Statistiche</NavLink>
-      <NavLink to="/matches"><img src={onMatches ? matchesActiveIcon : matchesNavIcon} alt="" />Partite</NavLink>
+      <NavLink to="/matches"><img src={onMatches ? matchesActiveIcon : darkNav ? matchesDarkNavIcon : matchesNavIcon} alt="" />Partite</NavLink>
+      {/* Sections of Impostazioni (Giocatori, Club) replace its item with their own, in the same icon style. */}
       {onPlayers
         ? <NavLink to="/players"><img src={playersActiveIcon} alt="" />Giocatori</NavLink>
-        : <NavLink to="/settings"><img src={onSettings ? settingsActiveIcon : settingsIcon} alt="" />Impostazioni</NavLink>}
+        : onClubs
+          ? <NavLink to="/clubs"><img src={clubsActiveIcon} alt="" />Club</NavLink>
+          : <NavLink to="/settings"><img src={onSettings ? settingsActiveIcon : settingsIcon} alt="" />Impostazioni</NavLink>}
     </nav>
   </div>;
 }

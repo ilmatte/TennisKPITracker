@@ -2,6 +2,7 @@ import Dexie, { type EntityTable, type Table } from 'dexie';
 import { POINT_TYPES } from '../features/scoring/pointTypes';
 import { PLAYER_AGE_CATEGORIES } from '../features/players/ageCategories';
 import type {
+  Club,
   Family,
   FamilyInvitation,
   FamilyMember,
@@ -23,6 +24,7 @@ export class TennisDatabase extends Dexie {
   family_members!: Table<FamilyMember, [string, string]>;
   family_invitations!: EntityTable<FamilyInvitation, 'id'>;
   players!: EntityTable<Player, 'id'>;
+  clubs!: EntityTable<Club, 'id'>;
   matches!: EntityTable<Match, 'id'>;
   sets!: EntityTable<TennisSet, 'id'>;
   games!: EntityTable<Game, 'id'>;
@@ -37,7 +39,7 @@ export class TennisDatabase extends Dexie {
     super(name);
     // Single schema version, aligned with supabase/initial_schema.sql. The number stays at 10 (the last version that
     // shipped with step-by-step migrations) because browsers refuse to open a database with a lower version than the
-    // one already stored on the device. A future schema change adds version(11) with its own upgrade.
+    // one already stored on the device. Each later schema change adds a new version with its own upgrade.
     // Booleans (points.won, points.serving, ...) are not valid IndexedDB keys, so they are stored but not indexed.
     this.version(10).stores({
       families: 'id, created_by, local_only, updated_at',
@@ -53,6 +55,10 @@ export class TennisDatabase extends Dexie {
       syncQueue: 'id, operation_id, family_id, entity_type, entity_id, created_at, attempts',
       syncMetadata: 'key, updated_at',
       syncConflicts: 'id, family_id, entity_type, entity_id, status, created_at',
+    });
+    // v11: clubs (family data, synchronized like players). Mirrors the clubs table in supabase/initial_schema.sql.
+    this.version(11).stores({
+      clubs: 'id, family_id, name, city, updated_at, deleted',
     });
     // Reference tables are written every time the database opens, whatever version the device came from.
     this.on('ready', database => seedReferenceTables(database as TennisDatabase));

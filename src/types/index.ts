@@ -59,6 +59,20 @@ export interface Player {
   deleted: boolean;
 }
 
+/** Club where the family plays (family data, synchronized like players). */
+export interface Club {
+  id: UUID;
+  family_id: UUID;
+  name: string;
+  city: string;
+  /** Court surface code (see CLUB_SURFACES in features/clubs/surfaces.ts); null when not specified. */
+  surface: 'clay' | 'hard' | 'grass' | 'synthetic' | 'indoor' | null;
+  created_at: string;
+  updated_at: string;
+  version: number;
+  deleted: boolean;
+}
+
 export interface Match {
   id: UUID;
   family_id: UUID;
@@ -152,7 +166,7 @@ export interface SyncOperation {
   id: UUID;
   operation_id?: UUID;
   family_id: UUID;
-  entity_type: 'players' | 'matches' | 'sets' | 'games' | 'points';
+  entity_type: 'players' | 'clubs' | 'matches' | 'sets' | 'games' | 'points';
   entity_id: UUID;
   operation: 'upsert' | 'delete';
   payload: unknown;

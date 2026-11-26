@@ -16,9 +16,9 @@ describe('local database schema', () => {
   it('creates every store aligned with the Supabase tables and seeds the reference tables', async () => {
     const fresh = new TennisDatabase(databaseName);
     await fresh.open();
-    expect(fresh.verno).toBe(10);
+    expect(fresh.verno).toBe(11);
     expect(fresh.tables.map(table => table.name).sort()).toEqual([
-      'families', 'family_invitations', 'family_members', 'games', 'matches', 'player_age_categories', 'players',
+      'clubs', 'families', 'family_invitations', 'family_members', 'games', 'matches', 'player_age_categories', 'players',
       'point_types', 'points', 'sets', 'syncConflicts', 'syncMetadata', 'syncQueue',
     ]);
     expect(await fresh.table('point_types').toArray()).toEqual([...POINT_TYPES]);
@@ -47,7 +47,7 @@ describe('local database schema', () => {
 
     const reopened = new TennisDatabase(databaseName);
     await reopened.open();
-    expect(reopened.verno).toBe(10);
+    expect(reopened.verno).toBe(11);
     expect(await reopened.table('point_types').toArray()).toEqual([...POINT_TYPES]);
     expect(await reopened.table('player_age_categories').toArray()).toEqual([...PLAYER_AGE_CATEGORIES]);
     expect(await reopened.table('players').get('p1')).toEqual(player);

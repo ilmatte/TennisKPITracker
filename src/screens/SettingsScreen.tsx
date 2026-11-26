@@ -11,7 +11,7 @@ import { useSync } from '../sync/SyncContextDefinition';
 import { stamp, queueOperation } from './shared';
 import { BrandBar } from './BrandBar';
 import settingsBackground from '../assets/background-settings.png';
-import type { Game, Match, Player, Point, TennisSet } from '../types';
+import type { Club, Game, Match, Player, Point, TennisSet } from '../types';
 export function Settings() {
   const { activeFamily } = useFamily();
   const { user } = useAuth();
@@ -29,15 +29,16 @@ export function Settings() {
 
   async function jsonExport() {
     if (!activeFamily) return;
-    const [players, matches, sets, games] = await Promise.all([
+    const [players, clubs, matches, sets, games] = await Promise.all([
       db.players.where('family_id').equals(activeFamily.id).toArray(),
+      db.clubs.where('family_id').equals(activeFamily.id).toArray(),
       db.matches.where('family_id').equals(activeFamily.id).toArray(),
       db.sets.where('family_id').equals(activeFamily.id).toArray(),
       db.games.where('family_id').equals(activeFamily.id).toArray(),
     ]);
     const gameIds = new Set(games.map(game => game.id));
     const points = gameIds.size ? await db.points.where('game_id').anyOf([...gameIds]).toArray() : [];
-    const backup = { version: 3, exported_at: stamp(), family_id: activeFamily.id, players, matches, sets, games, points };
+    const backup = { version: 3, exported_at: stamp(), family_id: activeFamily.id, players, clubs, matches, sets, games, points };
     download(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }), `tennis-kpi-backup-${new Date().toISOString().slice(0, 10)}.json`);
     setMessage('Backup JSON esportato');
   }
@@ -53,15 +54,16 @@ export function Settings() {
         throw new Error('Il backup deve essere versione 2 o 3 e appartenere allo spazio attivo.');
       }
       const data = backup as {
-        players?: Player[]; matches?: Match[]; sets?: TennisSet[]; games?: Game[]; points?: Point[];
+        players?: Player[]; clubs?: Club[]; matches?: Match[]; sets?: TennisSet[]; games?: Game[]; points?: Point[];
       };
       const players = data.players ?? [];
+      const clubs = data.clubs ?? []; // absent in backups written before clubs existed
       const matches = data.matches ?? [];
       const sets = data.sets ?? [];
       const games = data.games ?? [];
       // Version 2 backups use the legacy point fields (winner, server, double_fault, ...): convert them.
       const points = (data.points ?? []).map(point => migrateLegacyPointPayload(point));
-      const sameFamily = [...players, ...matches, ...sets, ...games, ...points].every(record => record.family_id === activeFamily.id);
+      const sameFamily = [...players, ...clubs, ...matches, ...sets, ...games, ...points].every(record => record.family_id === activeFamily.id);
       const playerIds = new Set(players.map(player => player.id));
       const matchIds = new Set(matches.map(match => match.id));
       const setIds = new Set(sets.map(set => set.id));
@@ -73,10 +75,11 @@ export function Settings() {
       }
       const updated_at = stamp();
       await db.transaction('rw', [
-        db.players, db.matches, db.sets, db.games, db.points, db.syncQueue,
+        db.players, db.clubs, db.matches, db.sets, db.games, db.points, db.syncQueue,
       ], async () => {
-        const [storedPlayers, storedMatches, storedSets, storedGames, storedPoints] = await Promise.all([
+        const [storedPlayers, storedClubs, storedMatches, storedSets, storedGames, storedPoints] = await Promise.all([
           db.players.bulkGet(players.map(player => player.id)),
+          db.clubs.bulkGet(clubs.map(club => club.id)),
           db.matches.bulkGet(matches.map(match => match.id)),
           db.sets.bulkGet(sets.map(set => set.id)),
           db.games.bulkGet(games.map(game => game.id)),
@@ -96,17 +99,20 @@ export function Settings() {
           };
         });
         const updatedPlayers = refreshVersions(players, storedPlayers);
+        const updatedClubs = refreshVersions(clubs, storedClubs);
         const updatedMatches = refreshVersions(matches, storedMatches);
         const updatedSets = refreshVersions(sets, storedSets);
         const updatedGames = refreshVersions(games, storedGames);
         const updatedPoints = refreshVersions(points, storedPoints);
         await db.players.bulkPut(updatedPlayers);
+        await db.clubs.bulkPut(updatedClubs);
         await db.matches.bulkPut(updatedMatches);
         await db.sets.bulkPut(updatedSets);
         await db.games.bulkPut(updatedGames);
         await db.points.bulkPut(updatedPoints);
         await db.syncQueue.bulkPut([
           ...updatedPlayers.map(record => queueOperation(activeFamily.id, 'players', record, updated_at)),
+          ...updatedClubs.map(record => queueOperation(activeFamily.id, 'clubs', record, updated_at)),
           ...updatedMatches.map(record => queueOperation(activeFamily.id, 'matches', record, updated_at)),
           ...updatedSets.map(record => queueOperation(activeFamily.id, 'sets', record, updated_at)),
           ...updatedGames.map(record => queueOperation(activeFamily.id, 'games', record, updated_at)),
@@ -155,6 +161,11 @@ export function Settings() {
       <button className="stg-row" onClick={() => navigate('/players')}>
         <span className="stg-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4" /><path d="M5.5 20c.6-3.8 3.2-5.8 6.5-5.8s5.9 2 6.5 5.8" /><path d="M3.5 11.5c-.6.9-.8 1.9-.5 3" /><path d="M20.5 11.5c.6.9.8 1.9.5 3" /></svg></span>
         <span className="stg-text"><strong>Giocatori</strong><small>Gestisci i tuoi giocatori</small></span>
+        {chevron}
+      </button>
+      <button className="stg-row" onClick={() => navigate('/clubs')}>
+        <span className="stg-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="1.5" /><path d="M12 5v14M3 12h18M7.5 8.5v7M16.5 8.5v7" /></svg></span>
+        <span className="stg-text"><strong>Club</strong><small>Circoli e campi dove giochi</small></span>
         {chevron}
       </button>
       <div className="stg-row">

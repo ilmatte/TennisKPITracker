@@ -52,7 +52,7 @@ describe('workspace ownership SQL guarantees', () => {
     expect(schema).toMatch(/order by change\.revision/i);
     expect(schema).toMatch(/set search_path = ''/i);
     expect(schema).toMatch(/private\.is_family_member\(_family_id\)/i);
-    expect(schema).toMatch(/revoke insert, update, delete on table\s+public\.players, public\.matches, public\.sets, public\.games, public\.points\s+from public, anon, authenticated/i);
+    expect(schema).toMatch(/revoke insert, update, delete on table\s+public\.players, public\.clubs, public\.matches, public\.sets, public\.games, public\.points\s+from public, anon, authenticated/i);
     expect(schema).not.toMatch(/\b(drop|truncate)\s+table\b/i);
   });
 });

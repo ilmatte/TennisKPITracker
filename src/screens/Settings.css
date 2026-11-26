@@ -9,7 +9,7 @@
 .stg-page button:focus-visible,.stg-page label:focus-within{outline:3px solid #C8F03A;outline-offset:2px}
 .stg-title{position:absolute;left:20px;top:66px;margin:0;font-size:30px;line-height:1.1;font-weight:800;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.3)}
 .stg-card{border-radius:22px;background:linear-gradient(180deg,#ffffff 0%,#f1f5fb 100%);padding:6px 14px;box-sizing:border-box;color:#0B2A5B;box-shadow:0 10px 30px rgba(0,0,0,.28)}
-.stg-row{width:100%;height:60px;box-sizing:border-box;display:flex;align-items:center;gap:14px;padding:0 8px;border:0;border-bottom:1px solid #E3E8F2;background:transparent;color:#0B2A5B;text-align:left;cursor:pointer}
+.stg-row{width:100%;height:54px;box-sizing:border-box;display:flex;align-items:center;gap:14px;padding:0 8px;border:0;border-bottom:1px solid #E3E8F2;background:transparent;color:#0B2A5B;text-align:left;cursor:pointer}
 .stg-card>.stg-row:last-child{border-bottom:0}
 div.stg-row{cursor:default}
 .stg-row input[type=file]{display:none}

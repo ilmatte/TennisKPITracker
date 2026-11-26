@@ -7,14 +7,15 @@ import { logTechnicalDiagnostic, normalizeUiError } from '../services/uiMessages
 const now = () => new Date().toISOString();
 
 export async function countLocalSportsRecords(localFamilyId: string): Promise<number> {
-  const [players, matches, sets, games, points] = await Promise.all([
+  const [players, clubs, matches, sets, games, points] = await Promise.all([
     db.players.where('family_id').equals(localFamilyId).count(),
+    db.clubs.where('family_id').equals(localFamilyId).count(),
     db.matches.where('family_id').equals(localFamilyId).count(),
     db.sets.where('family_id').equals(localFamilyId).count(),
     db.games.where('family_id').equals(localFamilyId).count(),
     db.points.where('family_id').equals(localFamilyId).count(),
   ]);
-  return players + matches + sets + games + points;
+  return players + clubs + matches + sets + games + points;
 }
 
 function mapping(

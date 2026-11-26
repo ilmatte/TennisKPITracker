@@ -66,6 +66,20 @@ create table public.players (
   unique (family_id, id)
 );
 
+-- Clubs where the family plays. surface (optional): clay, hard, grass, synthetic, indoor.
+create table public.clubs (
+  id uuid primary key,
+  family_id uuid not null references public.families(id) on delete cascade,
+  name text not null check (length(btrim(name)) > 0),
+  city text not null default '',
+  surface text check (surface in ('clay', 'hard', 'grass', 'synthetic', 'indoor')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  version integer not null default 1 check (version > 0),
+  deleted boolean not null default false,
+  unique (family_id, id)
+);
+
 create table public.matches (
   id uuid primary key,
   family_id uuid not null references public.families(id) on delete cascade,
@@ -170,6 +184,7 @@ create table public.points (
 create index family_members_user_id_idx on public.family_members(user_id, family_id);
 create index family_invitations_family_id_idx on public.family_invitations(family_id, created_at desc);
 create index players_family_id_idx on public.players(family_id, updated_at desc);
+create index clubs_family_id_idx on public.clubs(family_id, updated_at desc);
 create index matches_family_date_idx on public.matches(family_id, match_date desc);
 create index matches_family_player_idx on public.matches(family_id, player_id);
 create index sets_family_match_idx on public.sets(family_id, match_id, set_number);
@@ -474,6 +489,7 @@ revoke all on table
   public.family_members,
   public.family_invitations,
   public.players,
+  public.clubs,
   public.matches,
   public.sets,
   public.games,
@@ -484,6 +500,7 @@ grant select on table public.families to authenticated;
 grant select on table public.family_members to authenticated;
 grant select, insert, update on table
   public.players,
+  public.clubs,
   public.matches,
   public.sets,
   public.games,
@@ -494,6 +511,7 @@ alter table public.families enable row level security;
 alter table public.family_members enable row level security;
 alter table public.family_invitations enable row level security;
 alter table public.players enable row level security;
+alter table public.clubs enable row level security;
 alter table public.matches enable row level security;
 alter table public.sets enable row level security;
 alter table public.games enable row level security;
@@ -514,6 +532,17 @@ create policy "family members can insert players"
   with check (private.is_family_member(family_id));
 create policy "family members can update players"
   on public.players for update to authenticated
+  using (private.is_family_member(family_id))
+  with check (private.is_family_member(family_id));
+
+create policy "family members can read clubs"
+  on public.clubs for select to authenticated
+  using (private.is_family_member(family_id));
+create policy "family members can insert clubs"
+  on public.clubs for insert to authenticated
+  with check (private.is_family_member(family_id));
+create policy "family members can update clubs"
+  on public.clubs for update to authenticated
   using (private.is_family_member(family_id))
   with check (private.is_family_member(family_id));
 
@@ -573,7 +602,7 @@ alter table public.families
 create table if not exists public.sync_changes (
   family_id uuid not null references public.families(id) on delete cascade,
   revision bigint not null check (revision > 0),
-  entity_type text not null check (entity_type in ('players', 'matches', 'sets', 'games', 'points')),
+  entity_type text not null check (entity_type in ('players', 'clubs', 'matches', 'sets', 'games', 'points')),
   entity_id uuid not null,
   payload jsonb not null,
   created_at timestamptz not null default clock_timestamp(),
@@ -586,7 +615,7 @@ create index if not exists sync_changes_entity_idx
 create table if not exists public.sync_operations (
   family_id uuid not null references public.families(id) on delete cascade,
   operation_id uuid not null,
-  entity_type text not null check (entity_type in ('players', 'matches', 'sets', 'games', 'points')),
+  entity_type text not null check (entity_type in ('players', 'clubs', 'matches', 'sets', 'games', 'points')),
   entity_id uuid not null,
   base_version integer not null check (base_version >= 0),
   payload_hash text not null,
@@ -598,7 +627,7 @@ create table if not exists public.sync_operations (
 create table if not exists public.sync_entity_snapshots (
   family_id uuid not null references public.families(id) on delete cascade,
   snapshot_revision bigint not null check (snapshot_revision >= 0),
-  entity_type text not null check (entity_type in ('players', 'matches', 'sets', 'games', 'points')),
+  entity_type text not null check (entity_type in ('players', 'clubs', 'matches', 'sets', 'games', 'points')),
   entity_id uuid not null,
   payload jsonb not null,
   primary key (family_id, snapshot_revision, entity_type, entity_id)
@@ -617,7 +646,7 @@ revoke all on table
 from public, anon, authenticated;
 
 revoke insert, update, delete on table
-  public.players, public.matches, public.sets, public.games, public.points
+  public.players, public.clubs, public.matches, public.sets, public.games, public.points
 from public, anon, authenticated;
 
 create or replace function public.pull_sync_changes(
@@ -721,6 +750,7 @@ begin
 
   target_table := case _entity_type
     when 'players' then 'players'
+    when 'clubs' then 'clubs'
     when 'matches' then 'matches'
     when 'sets' then 'sets'
     when 'games' then 'games'
@@ -904,7 +934,7 @@ begin
   if not private.is_family_member(_family_id) then
     raise exception 'Family membership required';
   end if;
-  if _entity_type not in ('players', 'matches', 'sets', 'games', 'points') then
+  if _entity_type not in ('players', 'clubs', 'matches', 'sets', 'games', 'points') then
     raise exception 'Unsupported sync entity';
   end if;
 

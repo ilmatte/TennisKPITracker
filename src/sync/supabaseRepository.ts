@@ -50,7 +50,7 @@ function validateChanges(value: unknown): { changes: RemoteChange[]; nextRevisio
     if (!item || typeof item !== 'object') throw new Error('Elemento non valido nel log di sincronizzazione.');
     const change = item as Record<string, unknown>;
     if (typeof change.revision !== 'number' ||
-      !['players', 'matches', 'sets', 'games', 'points'].includes(String(change.entity_type)) ||
+      !['players', 'clubs', 'matches', 'sets', 'games', 'points'].includes(String(change.entity_type)) ||
       typeof change.entity_id !== 'string' || !change.payload || typeof change.payload !== 'object') {
       throw new Error('Elemento incompleto nel log di sincronizzazione.');
     }
@@ -143,4 +143,4 @@ export function createSupabaseSyncRepository(client: SupabaseClient | null = sup
   };
 }
 
-export const syncEntityOrder: SyncEntityType[] = ['players', 'matches', 'sets', 'games', 'points'];
+export const syncEntityOrder: SyncEntityType[] = ['players', 'clubs', 'matches', 'sets', 'games', 'points'];

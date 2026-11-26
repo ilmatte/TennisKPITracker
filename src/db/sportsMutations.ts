@@ -1,5 +1,6 @@
 import { db } from './database';
 import type {
+  Club,
   Game,
   Match,
   Player,
@@ -290,6 +291,44 @@ export async function softDeletePlayer(familyId: string, id: string): Promise<vo
   await db.transaction('rw', [db.players, db.syncQueue], async () => {
     const player = await requireActive(id => db.players.get(id), id, familyId, 'Giocatore');
     await tombstone(db.players, 'players', player, timestamp());
+  });
+}
+
+export type ClubChanges = Pick<Club, 'name' | 'city' | 'surface'>;
+
+function validClub(changes: ClubChanges): ClubChanges {
+  const name = changes.name.trim();
+  if (!name) throw new Error('Il nome del club è obbligatorio.');
+  return { name, city: changes.city.trim(), surface: changes.surface };
+}
+
+export async function createClub(familyId: string, changes: ClubChanges): Promise<Club> {
+  return db.transaction('rw', [db.families, db.clubs, db.syncQueue], async () => {
+    if (!await db.families.get(familyId)) throw new Error('La famiglia indicata non esiste.');
+    const created_at = timestamp();
+    const club: Club = {
+      id: crypto.randomUUID(), family_id: familyId, ...validClub(changes),
+      created_at, updated_at: created_at, version: 1, deleted: false,
+    };
+    await db.clubs.add(club);
+    await db.syncQueue.add(queueOperation(familyId, 'clubs', club, created_at));
+    return club;
+  });
+}
+
+export async function updateClub(familyId: string, id: string, changes: ClubChanges): Promise<Club> {
+  return db.transaction('rw', [db.clubs, db.syncQueue], async () => {
+    const current = await requireActive(id => db.clubs.get(id), id, familyId, 'Club');
+    const next = { ...updated(current, timestamp()), ...validClub(changes) };
+    await write(db.clubs, 'clubs', next, next.updated_at);
+    return next;
+  });
+}
+
+export async function softDeleteClub(familyId: string, id: string): Promise<void> {
+  await db.transaction('rw', [db.clubs, db.syncQueue], async () => {
+    const club = await requireActive(id => db.clubs.get(id), id, familyId, 'Club');
+    await tombstone(db.clubs, 'clubs', club, timestamp());
   });
 }
 

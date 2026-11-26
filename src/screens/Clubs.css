@@ -1,0 +1,27 @@
+/* "Nuovo club" / "Modifica club" full-screen form (the club list reuses Players.css) */
+/* The form scrolls on its own (also with touch on iOS) without dragging the page underneath. */
+.club-editor-backdrop{position:fixed;z-index:90;inset:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:#F4F7FC}
+.club-editor{position:relative;display:flex;flex-direction:column;width:100%;max-width:560px;min-height:100%;margin:0 auto;background:#F4F7FC;color:#0B2A5B;font-family:'Plus Jakarta Sans',system-ui,sans-serif}
+.club-editor button{font-family:inherit;cursor:pointer}
+.club-editor button:focus-visible{outline:3px solid #C8F03A;outline-offset:2px}
+.club-editor-header{position:relative;flex:none;height:196px;overflow:hidden;background:#02203d var(--club-bg) center -14px/100% auto no-repeat}
+.club-editor-back{position:absolute;left:14px;top:86px;width:36px;height:36px;box-sizing:border-box;padding:0;border:1px solid rgba(255,255,255,.3);border-radius:18px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center}
+.club-editor-header h1{position:absolute;left:60px;top:86px;margin:0;font-size:30px;line-height:36px;font-weight:800;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.3)}
+/* The bottom navigation bar (78px + iPhone safe area) stays visible over the form: the bottom padding keeps
+   "Salva club" above it. */
+.club-editor-panel{position:relative;flex:1;display:flex;flex-direction:column;margin-top:-26px;padding:28px 24px calc(36px + 78px + env(safe-area-inset-bottom));box-sizing:border-box;border-radius:28px 28px 0 0;background:#F4F7FC}
+.club-editor-fields{display:flex;flex-direction:column;gap:18px}
+.club-editor-field{display:flex;flex-direction:column;gap:8px;font-size:13px;font-weight:700;color:#5C6B85}
+.club-editor-field em{font-style:normal;font-weight:600;color:#8A96AB}
+.club-editor-field input{width:100%;height:52px;box-sizing:border-box;padding:0 16px;border:1.5px solid #D9E0EE;border-radius:14px;background:#FFFFFF;color:#0B2A5B;font-family:inherit;font-size:16px;font-weight:700}
+.club-editor-field input::placeholder{color:#8A96AB}
+.club-editor-field input:focus{outline:3px solid #C8F03A;border-color:#1FA64A}
+.club-editor-surfaces{display:flex;flex-wrap:wrap;gap:8px}
+.club-editor-surfaces button{height:40px;padding:0 16px;border:1.5px solid #D9E0EE;border-radius:20px;background:#fff;color:#0B2A5B;font-size:14.5px;font-weight:800}
+.club-editor-surfaces button.selected{border-color:#0B2A5B;background:#0B2A5B;color:#C8F03A}
+.club-editor-actions{display:flex;flex-direction:column;gap:12px;margin-top:auto;padding-top:20px}
+.club-editor-save{width:100%;height:58px;box-sizing:border-box;border:0;border-radius:29px;background:#C8F03A;color:#0B2A5B;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 8px 20px rgba(139,190,20,.35)}
+.club-editor-save:disabled{opacity:.5;cursor:not-allowed}
+.club-editor-delete{height:48px;border:0;background:transparent;color:#D3343A;font-size:15px;font-weight:700}
+/* Desktop: no bottom navigation bar, so no extra space is needed. */
+@media (min-width: 900px) { .club-editor-panel{padding-bottom:36px} }
