@@ -80,6 +80,26 @@ create table public.clubs (
   unique (family_id, id)
 );
 
+-- Tournaments the family takes part in. club_id: hosting club. age_category_id: FK to player_age_categories (the
+-- constraint is added after that table is created, at the end of this script); the app offers U12 to Open.
+create table public.tournaments (
+  id uuid primary key,
+  family_id uuid not null references public.families(id) on delete cascade,
+  club_id uuid not null,
+  name text not null check (length(btrim(name)) > 0),
+  age_category_id smallint not null,
+  start_date date not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  version integer not null default 1 check (version > 0),
+  deleted boolean not null default false,
+  unique (family_id, id),
+  constraint tournaments_family_id_club_id_fkey foreign key (family_id, club_id)
+    references public.clubs(family_id, id)
+    on delete no action
+    deferrable initially deferred
+);
+
 create table public.matches (
   id uuid primary key,
   family_id uuid not null references public.families(id) on delete cascade,
@@ -88,7 +108,6 @@ create table public.matches (
   player_ranking_snapshot text not null default '',
   opponent text not null,
   opponent_ranking text,
-  tournament text,
   tournament_match_number integer,
   number_of_sets integer not null check (number_of_sets in (3, 5)),
   third_set_type text not null check (third_set_type in ('normal', 'super-tiebreak')),
@@ -105,9 +124,16 @@ create table public.matches (
   updated_at timestamptz not null default now(),
   version integer not null default 1 check (version > 0),
   deleted boolean not null default false,
+  -- Tournament of the match; null only for matches created before tournaments existed. Last column, as in a project
+  -- upgraded with 003_tournaments.sql.
+  tournament_id uuid,
   unique (family_id, id),
   foreign key (family_id, player_id)
     references public.players(family_id, id)
+    on delete no action
+    deferrable initially deferred,
+  constraint matches_family_id_tournament_id_fkey foreign key (family_id, tournament_id)
+    references public.tournaments(family_id, id)
     on delete no action
     deferrable initially deferred
 );
@@ -185,8 +211,10 @@ create index family_members_user_id_idx on public.family_members(user_id, family
 create index family_invitations_family_id_idx on public.family_invitations(family_id, created_at desc);
 create index players_family_id_idx on public.players(family_id, updated_at desc);
 create index clubs_family_id_idx on public.clubs(family_id, updated_at desc);
+create index tournaments_family_id_idx on public.tournaments(family_id, updated_at desc);
 create index matches_family_date_idx on public.matches(family_id, match_date desc);
 create index matches_family_player_idx on public.matches(family_id, player_id);
+create index matches_family_tournament_idx on public.matches(family_id, tournament_id);
 create index sets_family_match_idx on public.sets(family_id, match_id, set_number);
 create index games_family_set_idx on public.games(family_id, set_id, game_number);
 create index points_family_game_idx on public.points(family_id, game_id, point_number);
@@ -490,6 +518,7 @@ revoke all on table
   public.family_invitations,
   public.players,
   public.clubs,
+  public.tournaments,
   public.matches,
   public.sets,
   public.games,
@@ -501,6 +530,7 @@ grant select on table public.family_members to authenticated;
 grant select, insert, update on table
   public.players,
   public.clubs,
+  public.tournaments,
   public.matches,
   public.sets,
   public.games,
@@ -512,6 +542,7 @@ alter table public.family_members enable row level security;
 alter table public.family_invitations enable row level security;
 alter table public.players enable row level security;
 alter table public.clubs enable row level security;
+alter table public.tournaments enable row level security;
 alter table public.matches enable row level security;
 alter table public.sets enable row level security;
 alter table public.games enable row level security;
@@ -543,6 +574,17 @@ create policy "family members can insert clubs"
   with check (private.is_family_member(family_id));
 create policy "family members can update clubs"
   on public.clubs for update to authenticated
+  using (private.is_family_member(family_id))
+  with check (private.is_family_member(family_id));
+
+create policy "family members can read tournaments"
+  on public.tournaments for select to authenticated
+  using (private.is_family_member(family_id));
+create policy "family members can insert tournaments"
+  on public.tournaments for insert to authenticated
+  with check (private.is_family_member(family_id));
+create policy "family members can update tournaments"
+  on public.tournaments for update to authenticated
   using (private.is_family_member(family_id))
   with check (private.is_family_member(family_id));
 
@@ -602,7 +644,7 @@ alter table public.families
 create table if not exists public.sync_changes (
   family_id uuid not null references public.families(id) on delete cascade,
   revision bigint not null check (revision > 0),
-  entity_type text not null check (entity_type in ('players', 'clubs', 'matches', 'sets', 'games', 'points')),
+  entity_type text not null check (entity_type in ('players', 'clubs', 'tournaments', 'matches', 'sets', 'games', 'points')),
   entity_id uuid not null,
   payload jsonb not null,
   created_at timestamptz not null default clock_timestamp(),
@@ -615,7 +657,7 @@ create index if not exists sync_changes_entity_idx
 create table if not exists public.sync_operations (
   family_id uuid not null references public.families(id) on delete cascade,
   operation_id uuid not null,
-  entity_type text not null check (entity_type in ('players', 'clubs', 'matches', 'sets', 'games', 'points')),
+  entity_type text not null check (entity_type in ('players', 'clubs', 'tournaments', 'matches', 'sets', 'games', 'points')),
   entity_id uuid not null,
   base_version integer not null check (base_version >= 0),
   payload_hash text not null,
@@ -627,7 +669,7 @@ create table if not exists public.sync_operations (
 create table if not exists public.sync_entity_snapshots (
   family_id uuid not null references public.families(id) on delete cascade,
   snapshot_revision bigint not null check (snapshot_revision >= 0),
-  entity_type text not null check (entity_type in ('players', 'clubs', 'matches', 'sets', 'games', 'points')),
+  entity_type text not null check (entity_type in ('players', 'clubs', 'tournaments', 'matches', 'sets', 'games', 'points')),
   entity_id uuid not null,
   payload jsonb not null,
   primary key (family_id, snapshot_revision, entity_type, entity_id)
@@ -646,7 +688,7 @@ revoke all on table
 from public, anon, authenticated;
 
 revoke insert, update, delete on table
-  public.players, public.clubs, public.matches, public.sets, public.games, public.points
+  public.players, public.clubs, public.tournaments, public.matches, public.sets, public.games, public.points
 from public, anon, authenticated;
 
 create or replace function public.pull_sync_changes(
@@ -751,6 +793,7 @@ begin
   target_table := case _entity_type
     when 'players' then 'players'
     when 'clubs' then 'clubs'
+    when 'tournaments' then 'tournaments'
     when 'matches' then 'matches'
     when 'sets' then 'sets'
     when 'games' then 'games'
@@ -934,7 +977,7 @@ begin
   if not private.is_family_member(_family_id) then
     raise exception 'Family membership required';
   end if;
-  if _entity_type not in ('players', 'clubs', 'matches', 'sets', 'games', 'points') then
+  if _entity_type not in ('players', 'clubs', 'tournaments', 'matches', 'sets', 'games', 'points') then
     raise exception 'Unsupported sync entity';
   end if;
 
@@ -1023,6 +1066,11 @@ insert into public.player_age_categories (id, code, name, sector, sort_order, is
 on conflict (id) do update set
   code = excluded.code, name = excluded.name, sector = excluded.sector, sort_order = excluded.sort_order,
   is_active = excluded.is_active, min_age = excluded.min_age, max_age = excluded.max_age, age_basis = excluded.age_basis;
+
+-- Tournament categories are age categories (the tournaments table is created before this one).
+alter table public.tournaments
+  add constraint tournaments_age_category_id_fkey
+  foreign key (age_category_id) references public.player_age_categories(id);
 
 revoke all on table public.player_age_categories from public, anon;
 grant select on table public.player_age_categories to authenticated;

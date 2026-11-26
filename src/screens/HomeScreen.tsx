@@ -13,7 +13,7 @@ import statisticsIcon from '../assets/icone/trasparente/512/statistiche.png';
 import calendarIcon from '../assets/icone/trasparente/512/calendario.png';
 import historyIcon from '../assets/icone/trasparente/256/storico.png';
 import tennisBallIcon from '../assets/icone/trasparente/512/pallina3d.png';
-import { NewMatch } from './MatchesScreen';
+import { NewMatch } from './NewMatchWizard';
 import { playerShortName } from '../features/players/playerNames';
 import type { Match, Player, ScoredPoint } from '../types';
 export function HomeRoute() {

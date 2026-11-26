@@ -16,10 +16,10 @@ describe('local database schema', () => {
   it('creates every store aligned with the Supabase tables and seeds the reference tables', async () => {
     const fresh = new TennisDatabase(databaseName);
     await fresh.open();
-    expect(fresh.verno).toBe(11);
+    expect(fresh.verno).toBe(12);
     expect(fresh.tables.map(table => table.name).sort()).toEqual([
       'clubs', 'families', 'family_invitations', 'family_members', 'games', 'matches', 'player_age_categories', 'players',
-      'point_types', 'points', 'sets', 'syncConflicts', 'syncMetadata', 'syncQueue',
+      'point_types', 'points', 'sets', 'syncConflicts', 'syncMetadata', 'syncQueue', 'tournaments',
     ]);
     expect(await fresh.table('point_types').toArray()).toEqual([...POINT_TYPES]);
     expect(await fresh.table('player_age_categories').toArray()).toEqual([...PLAYER_AGE_CATEGORIES]);
@@ -47,7 +47,7 @@ describe('local database schema', () => {
 
     const reopened = new TennisDatabase(databaseName);
     await reopened.open();
-    expect(reopened.verno).toBe(11);
+    expect(reopened.verno).toBe(12);
     expect(await reopened.table('point_types').toArray()).toEqual([...POINT_TYPES]);
     expect(await reopened.table('player_age_categories').toArray()).toEqual([...PLAYER_AGE_CATEGORIES]);
     expect(await reopened.table('players').get('p1')).toEqual(player);
@@ -64,5 +64,33 @@ describe('local database schema', () => {
     expect(await reopened.table('point_types').count()).toBe(POINT_TYPES.length);
     expect(await reopened.table('player_age_categories').count()).toBe(PLAYER_AGE_CATEGORIES.length);
     reopened.close();
+  });
+
+  it('upgrades a version 11 database to tournaments keeping its clubs and matches without the free-text tournament', async () => {
+    const older = new Dexie(databaseName);
+    older.version(11).stores({
+      clubs: 'id, family_id, name, city, updated_at, deleted',
+      matches: 'id, family_id, match_date, player_id, status, tournament, updated_at, deleted',
+    });
+    await older.open();
+    const club = { id: 'c1', family_id: 'f1', name: 'TC Lambrate', city: 'Milano', surface: null };
+    const match = { id: 'm1', family_id: 'f1', match_date: '2026-01-01', player_id: 'p1', status: 'completed', tournament: 'Open' };
+    await older.table('clubs').add(club);
+    await older.table('matches').add(match);
+    older.close();
+
+    const upgraded = new TennisDatabase(databaseName);
+    await upgraded.open();
+    expect(upgraded.verno).toBe(12);
+    expect(await upgraded.table('clubs').get('c1')).toEqual(club);
+    // The free-text tournament is removed; matches created before tournaments have no tournament_id.
+    const { tournament: _removed, ...withoutTournament } = match;
+    expect(await upgraded.table('matches').get('m1')).toEqual(withoutTournament);
+    expect(upgraded.matches.schema.indexes.map(index => index.name)).toContain('tournament_id');
+    expect(upgraded.matches.schema.indexes.map(index => index.name)).not.toContain('tournament');
+    expect(upgraded.tournaments.schema.indexes.map(index => index.name)).toEqual(
+      expect.arrayContaining(['family_id', 'club_id', 'start_date']),
+    );
+    upgraded.close();
   });
 });

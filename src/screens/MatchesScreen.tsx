@@ -7,10 +7,10 @@ import { deriveSetScore } from '../features/scoring/scoring';
 import type { MatchChanges } from '../db/sportsMutations';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import tennisBallIcon from '../assets/icone/trasparente/512/pallina3d.png';
-import { stamp, queueOperation } from './shared';
+import { NewMatch, ServerOptions } from './NewMatchWizard';
 import { BrandBar } from './BrandBar';
-import { playerAgeCategory } from '../features/players/ageCategories';
 import { playerFullName, playerShortName } from '../features/players/playerNames';
+import { tournamentCategoryLabel } from '../features/tournaments/tournaments';
 import type { Match, ScoredPoint } from '../types';
 
 type MatchSummary = { match: Match; scoreText: string; outcome: 'won' | 'lost' | 'in-progress'; duration: string | null };
@@ -30,14 +30,6 @@ function summarize(match: Match, points: ScoredPoint[]): MatchSummary {
   const minutes = times.length > 1 ? Math.round((Math.max(...times) - Math.min(...times)) / 60000) : 0;
   const duration = minutes > 0 ? (minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`) : null;
   return { match, scoreText: labels.join(' '), outcome, duration };
-}
-
-/** Labels for the "who serves first" choice: the player's name, and the opponent's name marked "(avversario)". */
-function ServerOptions({ playerName, opponent }: { playerName: string; opponent: string }) {
-  return <>
-    <option value="player">{playerName.trim() || 'Giocatore'}</option>
-    <option value="opponent">{opponent.trim() ? `${opponent.trim()} (avversario)` : 'Avversario'}</option>
-  </>;
 }
 
 const outcomeLabel = { won: 'Vinta', lost: 'Persa', 'in-progress': 'In corso' } as const;
@@ -127,6 +119,12 @@ export function MatchEditor({ match, error, onClose, onSave }: {
   const matchPlayer = useLiveQuery(() => db.players.get(match.player_id), [match.player_id]);
   const editorPlayer = players.find(player => player.id === draft.player_id) ?? (draft.player_id === match.player_id ? matchPlayer : undefined);
   const editorPlayerName = playerFullName(editorPlayer);
+  // Active tournaments, plus the match's own one even if it has since been deleted.
+  const tournaments = useLiveQuery(async () => activeFamily
+    ? (await db.tournaments.where('family_id').equals(activeFamily.id).toArray())
+        .filter(tournament => !tournament.deleted || tournament.id === match.tournament_id)
+        .sort((a, b) => b.start_date.localeCompare(a.start_date))
+    : [], [activeFamily?.id, match.tournament_id]) ?? [];
 
   return <div className="modal-backdrop"><div className="modal-sheet">
     <div className="modal-heading"><h2>Modifica partita</h2><button className="icon-button" onClick={onClose}>×</button></div>
@@ -140,7 +138,13 @@ export function MatchEditor({ match, error, onClose, onSave }: {
       <label>Avversario<input value={draft.opponent} onChange={event => field('opponent', event.target.value)} /></label>
       <label>Classifica avversario<input value={draft.opponent_ranking ?? ''} onChange={event => field('opponent_ranking', event.target.value || null)} /></label>
     </div>
-    <label>Torneo<input value={draft.tournament ?? ''} onChange={event => field('tournament', event.target.value || null)} /></label>
+    <label>Torneo<select value={draft.tournament_id ?? ''} onChange={event => field('tournament_id', event.target.value || null)}>
+      {/* Matches created before tournaments existed have none. */}
+      {!match.tournament_id && <option value="">Nessun torneo</option>}
+      {tournaments.map(tournament => <option key={tournament.id} value={tournament.id}>
+        {tournament.name} • {tournamentCategoryLabel(tournament.age_category_id)}{tournament.deleted ? ' (eliminato)' : ''}
+      </option>)}
+    </select></label>
     <div className="form-grid">
       <label>Numero partita<input type="number" min="1" value={draft.tournament_match_number ?? ''} onChange={event => field('tournament_match_number', event.target.value ? Number(event.target.value) : null)} /></label>
       <label>Numero set<select value={draft.number_of_sets} onChange={event => field('number_of_sets', Number(event.target.value) as 3 | 5)}><option value={3}>Al meglio dei 3</option><option value={5}>Al meglio dei 5</option></select></label>
@@ -170,7 +174,7 @@ export function MatchEditor({ match, error, onClose, onSave }: {
         player_id: draft.player_id,
         opponent: draft.opponent.trim(),
         opponent_ranking: draft.opponent_ranking,
-        tournament: draft.tournament,
+        tournament_id: draft.tournament_id ?? null,
         tournament_match_number: draft.tournament_match_number,
         number_of_sets: draft.number_of_sets,
         third_set_type: draft.third_set_type,
@@ -184,110 +188,5 @@ export function MatchEditor({ match, error, onClose, onSave }: {
         status: draft.status,
         result: draft.result,
       })}>Salva modifiche</button>
-  </div></div>;
-}
-
-export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: string; onClose: () => void }) {
-  const { activeFamily } = useFamily();
-  const players = useLiveQuery(
-    async () => activeFamily
-      ? (await db.players.where('family_id').equals(activeFamily.id).toArray()).filter(player => !player.deleted)
-      : [],
-    [activeFamily?.id],
-  ) ?? [];
-  const navigate = useNavigate();
-  const [playerId, setPlayerId] = useState(initialPlayerId ?? '');
-  const [opponent, setOpponent] = useState('');
-  const [matchDate, setMatchDate] = useState(new Date().toISOString().slice(0, 10));
-  const [tournament, setTournament] = useState('');
-  const [sets, setSets] = useState<3 | 5>(3);
-  const [third, setThird] = useState<'normal' | 'super-tiebreak'>('super-tiebreak');
-  const [firstServer, setFirstServer] = useState<'player' | 'opponent'>('player');
-  const [deuce, setDeuce] = useState(true);
-  const [gamesToWinSet, setGamesToWinSet] = useState<4 | 6>(4);
-  const [shortSetTiebreakAt, setShortSetTiebreakAt] = useState<3 | 4>(3);
-  const [superTiebreakTarget, setSuperTiebreakTarget] = useState<7 | 10>(10);
-  const [tiebreakTarget, setTiebreakTarget] = useState<7 | 10>(7);
-  const [error, setError] = useState<string | null>(null);
-  const selected = players.find(player => player.id === playerId);
-
-  async function create() {
-    if (!selected || !activeFamily || !opponent.trim()) return;
-    const created_at = stamp();
-    const match: Match = {
-      id: crypto.randomUUID(),
-      family_id: activeFamily.id,
-      match_date: matchDate,
-      player_id: selected.id,
-      player_ranking_snapshot: selected.ranking,
-      opponent: opponent.trim(),
-      tournament: tournament.trim(),
-      number_of_sets: sets,
-      third_set_type: third,
-      super_tiebreak_target: superTiebreakTarget,
-      tiebreak_target: tiebreakTarget,
-      tiebreak_starts_at_363: gamesToWinSet === 4,
-      games_to_win_set: gamesToWinSet,
-      short_set_tiebreak_at: shortSetTiebreakAt,
-      deuce_single_point: deuce,
-      first_server: firstServer,
-      status: 'in-progress',
-      created_at,
-      updated_at: created_at,
-      version: 1,
-      deleted: false,
-    };
-    try {
-      await db.transaction('rw', [db.players, db.matches, db.syncQueue], async () => {
-        const currentPlayer = await db.players.get(selected.id);
-        if (!currentPlayer || currentPlayer.family_id !== activeFamily.id || currentPlayer.deleted) {
-          throw new Error('Il giocatore selezionato non appartiene allo spazio attivo.');
-        }
-        await db.matches.add(match);
-        await db.syncQueue.add(queueOperation(activeFamily.id, 'matches', match, created_at));
-      });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Impossibile salvare la partita.');
-      return;
-    }
-    onClose();
-    navigate(`/match/${match.id}`);
-  }
-
-  return <div className="modal-backdrop new-match-backdrop"><div className="modal-sheet new-match-sheet">
-    <div className="new-match-hero">
-      <button className="new-match-back" aria-label="Indietro" onClick={onClose}><span>‹</span></button>
-      <img src={tennisBallIcon} alt="" />
-      <h2>Nuova partita</h2>
-    </div>
-    <div className="new-match-content">
-    <div className="new-match-fields">
-    <label>Data partita<input type="date" value={matchDate} onChange={event => setMatchDate(event.target.value)} /></label>
-    <label>Giocatore<select value={playerId} onChange={event => setPlayerId(event.target.value)}>
-      <option value="">Seleziona un giocatore</option>
-      {players.map(player => <option key={player.id} value={player.id}>{player.first_name} {player.last_name}</option>)}
-    </select></label>
-    {selected && <div className="snapshot-preview"><span>{selected.ranking}</span><span>{playerAgeCategory(selected, Number(matchDate.slice(0, 4)))?.name ?? ''}</span><small>Classifica congelata alla creazione</small></div>}
-    {!players.length && <p className="family-feedback">Aggiungi prima un giocatore in questo spazio.</p>}
-    {error && <p className="family-feedback error" role="alert">{error}</p>}
-    <label>Avversario<input value={opponent} onChange={event => setOpponent(event.target.value)} placeholder="Nome avversario" /></label>
-    <label>Torneo<input value={tournament} onChange={event => setTournament(event.target.value)} /></label>
-    <div className="form-grid">
-      <label>Set<select value={sets} onChange={event => setSets(Number(event.target.value) as 3 | 5)}><option value={3}>Al meglio dei 3</option><option value={5}>Al meglio dei 5</option></select></label>
-      <label>Set decisivo<select value={third} onChange={event => setThird(event.target.value as 'normal' | 'super-tiebreak')}><option value="normal">Normale</option><option value="super-tiebreak">Super tie-break</option></select></label>
-    </div>
-    <label className="toggle-row"><span>Chi serve per primo</span><select value={firstServer} onChange={event => setFirstServer(event.target.value as 'player' | 'opponent')}><ServerOptions playerName={selected ? `${selected.first_name} ${selected.last_name}` : ''} opponent={opponent} /></select></label>
-    <label className="toggle-row"><span>Punto secco al 40-40</span><input type="checkbox" checked={deuce} onChange={event => setDeuce(event.target.checked)} /></label>
-    <div className="form-grid">
-      <label>Game per vincere il set<select value={gamesToWinSet} onChange={event => setGamesToWinSet(Number(event.target.value) as 4 | 6)}><option value={4}>4 game</option><option value={6}>6 game</option></select></label>
-      {gamesToWinSet === 4 && <label>Tie-break sul<select value={shortSetTiebreakAt} onChange={event => setShortSetTiebreakAt(Number(event.target.value) as 3 | 4)}><option value={3}>3-3</option><option value={4}>4-4</option></select></label>}
-    </div>
-    <div className="form-grid">
-      <label>Punti tie-break<select value={tiebreakTarget} onChange={event => setTiebreakTarget(Number(event.target.value) as 7 | 10)}><option value={7}>7 punti</option><option value={10}>10 punti</option></select></label>
-      <label>Punti super tie-break<select value={superTiebreakTarget} onChange={event => setSuperTiebreakTarget(Number(event.target.value) as 7 | 10)}><option value={7}>7 punti</option><option value={10}>10 punti</option></select></label>
-    </div>
-    </div>
-    <button className="player-editor-save new-match-submit" disabled={!selected || !opponent.trim()} onClick={() => void create()}><span aria-hidden="true">▶</span>Avvia partita</button>
-    </div>
   </div></div>;
 }

@@ -73,6 +73,23 @@ export interface Club {
   deleted: boolean;
 }
 
+/** Tournament the family takes part in (family data, synchronized like clubs). Every new match belongs to one. */
+export interface Tournament {
+  id: UUID;
+  family_id: UUID;
+  /** Club hosting the tournament (FK to clubs). */
+  club_id: UUID;
+  name: string;
+  /** FK to player_age_categories.id; the UI offers only U12 to Open (see features/tournaments/tournaments.ts). */
+  age_category_id: number;
+  /** ISO calendar date (YYYY-MM-DD). */
+  start_date: string;
+  created_at: string;
+  updated_at: string;
+  version: number;
+  deleted: boolean;
+}
+
 export interface Match {
   id: UUID;
   family_id: UUID;
@@ -82,7 +99,8 @@ export interface Match {
   player_ranking_snapshot: string;
   opponent: string;
   opponent_ranking?: string | null;
-  tournament?: string | null;
+  /** FK to tournaments.id. Null only for matches created before tournaments existed. */
+  tournament_id?: UUID | null;
   tournament_match_number?: number | null;
   number_of_sets: 3 | 5;
   third_set_type: 'normal' | 'super-tiebreak';
@@ -166,7 +184,7 @@ export interface SyncOperation {
   id: UUID;
   operation_id?: UUID;
   family_id: UUID;
-  entity_type: 'players' | 'clubs' | 'matches' | 'sets' | 'games' | 'points';
+  entity_type: 'players' | 'clubs' | 'tournaments' | 'matches' | 'sets' | 'games' | 'points';
   entity_id: UUID;
   operation: 'upsert' | 'delete';
   payload: unknown;

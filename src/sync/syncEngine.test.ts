@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../db/database';
 import type {
+  Club,
   FamilyMember,
   Game,
   Match,
@@ -11,6 +12,7 @@ import type {
   SyncMapping,
   SyncOperation,
   TennisSet,
+  Tournament,
 } from '../types';
 import type { ApplyRecordResult, RemoteChange, RemoteFamily, SyncRepository } from './contracts';
 import { markSyncFailure, recordQueueFailure, runSync } from './syncEngine';
@@ -34,7 +36,7 @@ class FakeSyncRepository implements SyncRepository {
   memberships: FamilyMember[] = [];
 
   constructor() {
-    for (const type of ['players', 'clubs', 'matches', 'sets', 'games', 'points'] as const) {
+    for (const type of ['players', 'clubs', 'tournaments', 'matches', 'sets', 'games', 'points'] as const) {
       this.records.set(type, new Map());
     }
   }
@@ -197,12 +199,12 @@ function queue(type: SyncEntityType, record: { id: string; version: number; fami
 
 beforeEach(async () => {
   await db.transaction('rw', [
-    db.families, db.family_members, db.family_invitations, db.players, db.matches,
+    db.families, db.family_members, db.family_invitations, db.players, db.clubs, db.tournaments, db.matches,
     db.sets, db.games, db.points, db.syncQueue, db.syncMetadata, db.syncConflicts,
   ], async () => {
     await Promise.all([
       db.families.clear(), db.family_members.clear(), db.family_invitations.clear(),
-      db.players.clear(), db.matches.clear(), db.sets.clear(), db.games.clear(),
+      db.players.clear(), db.clubs.clear(), db.tournaments.clear(), db.matches.clear(), db.sets.clear(), db.games.clear(),
       db.points.clear(), db.syncQueue.clear(), db.syncMetadata.clear(), db.syncConflicts.clear(),
     ]);
   });
@@ -254,9 +256,17 @@ describe('sync engine', () => {
   it('uploads the latest queued records parent-first and transmits tombstones as upserts', async () => {
     const remote = new FakeSyncRepository();
     const player = { ...localPlayer('player-id', 2), deleted: true };
+    const club: Club = {
+      id: 'club-id', family_id: localFamilyId, name: 'TC Lambrate', city: 'Milano', surface: null,
+      created_at: now, updated_at: now, version: 1, deleted: false,
+    };
+    const tournament: Tournament = {
+      id: 'tournament-id', family_id: localFamilyId, club_id: club.id, name: 'Torneo di primavera',
+      age_category_id: 3, start_date: '2026-03-01', created_at: now, updated_at: now, version: 1, deleted: false,
+    };
     const match: Match = {
       id: 'match-id', family_id: localFamilyId, match_date: '2026-03-01', player_id: player.id,
-      player_ranking_snapshot: '4.1', opponent: 'Bea',
+      tournament_id: tournament.id, player_ranking_snapshot: '4.1', opponent: 'Bea',
       number_of_sets: 3, third_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
       tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player',
       status: 'in-progress', created_at: now, updated_at: now, version: 1, deleted: false,
@@ -275,12 +285,16 @@ describe('sync engine', () => {
       created_at: now, updated_at: now, version: 1, deleted: true,
     };
     await db.players.add(player);
+    await db.clubs.add(club);
+    await db.tournaments.add(tournament);
     await db.matches.add(match);
     await db.sets.add(tennisSet);
     await db.games.add(game);
     await db.points.add(point);
     await db.syncQueue.bulkAdd([
-      queue('players', player), queue('matches', match), queue('sets', tennisSet),
+      // Queued children first: the upload still goes parent-first.
+      queue('matches', match), queue('tournaments', tournament), queue('clubs', club),
+      queue('players', player), queue('sets', tennisSet),
       queue('games', game), queue('points', point),
       queue('players', { ...player, version: 1 }),
     ]);
@@ -289,13 +303,15 @@ describe('sync engine', () => {
 
     const result = await runSync(remote, state, 0);
 
-    expect(remote.calls).toEqual(['players', 'matches', 'sets', 'games', 'points']);
+    expect(remote.calls).toEqual(['players', 'clubs', 'tournaments', 'matches', 'sets', 'games', 'points']);
     expect(remote.records.get('players')!.get(player.id)).toMatchObject({
       id: player.id, family_id: remoteFamilyId, deleted: true, version: 1,
     });
     expect(remote.records.get('points')!.get(point.id)).toMatchObject({ deleted: true, family_id: remoteFamilyId });
+    expect(remote.records.get('tournaments')!.get(tournament.id)).toMatchObject({ club_id: club.id, family_id: remoteFamilyId });
+    expect(remote.records.get('matches')!.get(match.id)).toMatchObject({ tournament_id: tournament.id });
     expect(await db.syncQueue.count()).toBe(0);
-    expect(result.uploaded).toBe(5);
+    expect(result.uploaded).toBe(7);
   });
 
   it('records a version conflict without overwriting local data or dropping the queue entry', async () => {

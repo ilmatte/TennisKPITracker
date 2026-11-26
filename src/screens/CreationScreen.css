@@ -1,0 +1,95 @@
+/* Full-screen creation forms opened over the current screen: the "Nuova partita" wizard and "Nuovo torneo".
+   Values from the design references (src/screens/Nuova partita (wizard)-html, src/screens/Nuovo torneo-html). */
+/* The form scrolls on its own (also with touch on iOS) without dragging the page underneath. */
+.cw-backdrop{position:fixed;z-index:90;inset:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:#F4F7FC}
+/* "Nuovo torneo" opens over the wizard. */
+.cw-backdrop.cw-stacked{z-index:95}
+.cw-screen{position:relative;display:flex;flex-direction:column;width:100%;max-width:560px;min-height:100%;margin:0 auto;background:#F4F7FC;color:#0B2A5B;font-family:'Plus Jakarta Sans',system-ui,sans-serif}
+.cw-screen button{font-family:inherit;cursor:pointer}
+.cw-screen button:focus-visible{outline:3px solid #C8F03A;outline-offset:2px}
+
+/* Header */
+.cw-header{position:relative;flex:none;height:196px;overflow:hidden;background:#02203d var(--cw-bg) center top/100% auto no-repeat}
+.cw-back{position:absolute;left:14px;top:86px;width:36px;height:36px;box-sizing:border-box;padding:0;border:1px solid rgba(255,255,255,.3);border-radius:18px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center}
+.cw-header h1{position:absolute;left:60px;top:86px;margin:0;font-size:30px;line-height:36px;font-weight:800;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.3)}
+.cw-steps{position:absolute;left:20px;right:20px;top:138px;display:flex;align-items:center;gap:8px}
+.cw-dot{width:8px;height:8px;border-radius:4px;background:rgba(255,255,255,.3)}
+.cw-dot.done{background:#C8F03A}
+.cw-dot.current{width:28px;background:#C8F03A}
+.cw-steps span{margin-left:6px;font-size:13.5px;font-weight:700;color:rgba(255,255,255,.9);text-shadow:0 1px 4px rgba(0,0,0,.35)}
+
+/* Panel. The bottom navigation bar (78px + iPhone safe area) may stay visible over the form: the bottom padding keeps
+   the action buttons above it. */
+.cw-panel{position:relative;flex:1;display:flex;flex-direction:column;margin-top:-26px;padding:28px 24px calc(28px + 78px + env(safe-area-inset-bottom));box-sizing:border-box;border-radius:28px 28px 0 0;background:#F4F7FC}
+.cw-panel.cw-panel-roomy{padding-bottom:calc(36px + 78px + env(safe-area-inset-bottom))}
+.cw-step{display:flex;flex-direction:column;gap:18px}
+.cw-step.cw-step-tight{gap:12px}
+.cw-step-title{font-size:20px;font-weight:800}
+.cw-step-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.cw-summary-chip{height:28px;max-width:190px;padding:0 12px;box-sizing:border-box;border-radius:14px;background:#E6ECF7;color:#0B2A5B;font-size:12.5px;font-weight:800;display:flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cw-summary-chip span{overflow:hidden;text-overflow:ellipsis}
+
+/* Fields */
+.cw-field{display:flex;flex-direction:column;gap:8px;min-width:0}
+.cw-label,.cw-field>label{font-size:13px;font-weight:700;color:#5C6B85}
+.cw-row{display:flex;gap:14px}
+.cw-row>.cw-field{flex:1}
+.cw-input,.cw-select{width:100%;height:52px;box-sizing:border-box;margin:0;border:1.5px solid #D9E0EE;border-radius:14px;background:#FFFFFF;color:#0B2A5B;font-family:inherit;font-size:16px;font-weight:700;padding:0 16px}
+.cw-input::placeholder{color:#8A96AB}
+.cw-input:focus,.cw-select:focus{outline:3px solid #C8F03A;border-color:#1FA64A}
+.cw-select{padding-right:44px;appearance:none;-webkit-appearance:none;text-overflow:ellipsis}
+.cw-select-wrap,.cw-date-wrap{position:relative}
+.cw-select-wrap svg,.cw-date-wrap svg{position:absolute;right:16px;top:16px;pointer-events:none}
+.cw-date-wrap svg{top:15px}
+.cw-date-wrap .cw-input{padding-right:48px;-webkit-appearance:none;appearance:none;display:flex;align-items:center}
+/* The native date picker opens from the calendar icon area (the browser's own indicator is hidden behind it). */
+.cw-date-wrap .cw-input::-webkit-calendar-picker-indicator{position:absolute;right:0;top:0;width:52px;height:100%;margin:0;padding:0;opacity:0;cursor:pointer}
+.cw-date-wrap .cw-input::-webkit-date-and-time-value{text-align:left}
+.cw-inline{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.cw-inline .cw-select-wrap{width:140px;flex:none}
+.cw-inline .cw-select{padding-right:40px}
+.cw-check{display:flex;align-items:center;justify-content:space-between;min-height:44px;font-size:13px;font-weight:700;color:#5C6B85}
+.cw-check input{width:24px;height:24px;margin:0;accent-color:#1FA64A}
+.cw-snapshot{height:52px;box-sizing:border-box;border-radius:14px;background:#E6ECF7;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 18px}
+.cw-snapshot strong{font-size:18px;font-weight:800;color:#0B2A5B;white-space:pre}
+.cw-snapshot span{font-size:13px;font-weight:500;color:#5C6B85;text-align:right}
+.cw-feedback{margin:0;font-size:13px;font-weight:600;color:#5C6B85}
+.cw-error{margin:0;padding:10px 14px;border-radius:14px;background:#FFE0E3;color:#C2333A;font-size:13.5px;font-weight:700}
+
+/* Step 1: tournament cards */
+.cw-cards{display:flex;flex-direction:column;gap:10px}
+.cw-card{display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;min-height:68px;padding:10px 14px;border-radius:18px;border:2px solid #D9E0EE;background:#fff;color:#0B2A5B;text-align:left}
+.cw-card.selected{border-color:#0B2A5B;background:#EEF3FB}
+.cw-card-icon{width:40px;height:40px;border-radius:20px;background:#0B2A5B;display:flex;align-items:center;justify-content:center;flex:none}
+.cw-card-text{flex:1;min-width:0}
+.cw-card-text strong{display:block;overflow:hidden;font-size:15px;font-weight:800;color:#0B2A5B;text-overflow:ellipsis;white-space:nowrap}
+.cw-card-text small{display:block;margin-top:2px;overflow:hidden;font-size:12.5px;font-weight:500;color:#5C6B85;text-overflow:ellipsis;white-space:nowrap}
+.cw-badge{height:24px;padding:0 10px;border-radius:12px;background:#E6ECF7;color:#5C6B85;font-size:12px;font-weight:800;display:flex;align-items:center;flex:none;white-space:nowrap}
+.cw-badge.in-progress{background:#C8F03A;color:#0B2A5B}
+.cw-empty{padding:18px 14px;border-radius:18px;border:2px dashed #D9E0EE;background:#fff;text-align:center}
+.cw-empty strong{display:block;font-size:15px;font-weight:800}
+.cw-empty span{display:block;margin-top:4px;font-size:12.5px;font-weight:500;color:#5C6B85}
+.cw-create{height:52px;border-radius:26px;border:1.5px dashed #17488F;background:#EEF3FB;color:#17488F;font-size:15.5px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px}
+.cw-hint{font-size:12.5px;font-weight:500;color:#5C6B85;text-align:center}
+
+/* "Nuovo torneo": club picker and category chips */
+.cw-field-heading{display:flex;align-items:center;justify-content:space-between}
+.cw-link{border:0;background:none;padding:4px 0;font-size:13px;font-weight:800;color:#17488F;display:flex;align-items:center;gap:4px}
+.cw-new-club{display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:16px;background:#EAF7D0;border:1.5px dashed #9CCB1B}
+.cw-new-club .cw-input.cw-light{font-weight:600}
+.cw-new-club p{margin:0;font-size:12.5px;font-weight:600;color:#4D6B12}
+.cw-chips{display:flex;flex-wrap:wrap;gap:8px}
+.cw-chips button{height:40px;padding:0 16px;border:1.5px solid #D9E0EE;border-radius:20px;background:#fff;color:#0B2A5B;font-size:14.5px;font-weight:800}
+.cw-chips button.selected{border-color:#0B2A5B;background:#0B2A5B;color:#C8F03A}
+
+/* Footer actions */
+.cw-actions{display:flex;gap:12px;margin-top:auto;padding-top:20px}
+.cw-secondary{height:58px;padding:0 24px;border-radius:29px;border:1.5px solid #17488F;background:#fff;color:#17488F;font-size:17px;font-weight:800}
+.cw-primary{flex:1;box-sizing:border-box;height:58px;border:0;border-radius:29px;background:#C8F03A;color:#0B2A5B;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 8px 20px rgba(139,190,20,.35)}
+.cw-primary:disabled{opacity:.5;cursor:not-allowed}
+
+/* Desktop: no bottom navigation bar, so no extra space is needed. */
+@media (min-width: 900px) {
+  .cw-panel{padding-bottom:28px}
+  .cw-panel.cw-panel-roomy{padding-bottom:36px}
+}

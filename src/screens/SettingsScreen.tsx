@@ -11,7 +11,7 @@ import { useSync } from '../sync/SyncContextDefinition';
 import { stamp, queueOperation } from './shared';
 import { BrandBar } from './BrandBar';
 import settingsBackground from '../assets/background-settings.png';
-import type { Club, Game, Match, Player, Point, TennisSet } from '../types';
+import type { Club, Game, Match, Player, Point, TennisSet, Tournament } from '../types';
 export function Settings() {
   const { activeFamily } = useFamily();
   const { user } = useAuth();
@@ -29,16 +29,17 @@ export function Settings() {
 
   async function jsonExport() {
     if (!activeFamily) return;
-    const [players, clubs, matches, sets, games] = await Promise.all([
+    const [players, clubs, tournaments, matches, sets, games] = await Promise.all([
       db.players.where('family_id').equals(activeFamily.id).toArray(),
       db.clubs.where('family_id').equals(activeFamily.id).toArray(),
+      db.tournaments.where('family_id').equals(activeFamily.id).toArray(),
       db.matches.where('family_id').equals(activeFamily.id).toArray(),
       db.sets.where('family_id').equals(activeFamily.id).toArray(),
       db.games.where('family_id').equals(activeFamily.id).toArray(),
     ]);
     const gameIds = new Set(games.map(game => game.id));
     const points = gameIds.size ? await db.points.where('game_id').anyOf([...gameIds]).toArray() : [];
-    const backup = { version: 3, exported_at: stamp(), family_id: activeFamily.id, players, clubs, matches, sets, games, points };
+    const backup = { version: 3, exported_at: stamp(), family_id: activeFamily.id, players, clubs, tournaments, matches, sets, games, points };
     download(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }), `tennis-kpi-backup-${new Date().toISOString().slice(0, 10)}.json`);
     setMessage('Backup JSON esportato');
   }
@@ -54,32 +55,39 @@ export function Settings() {
         throw new Error('Il backup deve essere versione 2 o 3 e appartenere allo spazio attivo.');
       }
       const data = backup as {
-        players?: Player[]; clubs?: Club[]; matches?: Match[]; sets?: TennisSet[]; games?: Game[]; points?: Point[];
+        players?: Player[]; clubs?: Club[]; tournaments?: Tournament[]; matches?: Match[]; sets?: TennisSet[]; games?: Game[]; points?: Point[];
       };
       const players = data.players ?? [];
       const clubs = data.clubs ?? []; // absent in backups written before clubs existed
-      const matches = data.matches ?? [];
+      const tournaments = data.tournaments ?? []; // absent in backups written before tournaments existed
+      // Backups written before tournaments may carry the removed free-text matches.tournament field: drop it.
+      const matches = (data.matches ?? []).map(({ tournament: _removed, ...match }: Match & { tournament?: unknown }) => match);
       const sets = data.sets ?? [];
       const games = data.games ?? [];
       // Version 2 backups use the legacy point fields (winner, server, double_fault, ...): convert them.
       const points = (data.points ?? []).map(point => migrateLegacyPointPayload(point));
-      const sameFamily = [...players, ...clubs, ...matches, ...sets, ...games, ...points].every(record => record.family_id === activeFamily.id);
+      const sameFamily = [...players, ...clubs, ...tournaments, ...matches, ...sets, ...games, ...points].every(record => record.family_id === activeFamily.id);
       const playerIds = new Set(players.map(player => player.id));
+      const clubIds = new Set(clubs.map(club => club.id));
+      const tournamentIds = new Set(tournaments.map(tournament => tournament.id));
       const matchIds = new Set(matches.map(match => match.id));
       const setIds = new Set(sets.map(set => set.id));
       const gameIds = new Set(games.map(game => game.id));
       if (!sameFamily || matches.some(match => !playerIds.has(match.player_id)) ||
+        tournaments.some(tournament => !clubIds.has(tournament.club_id)) ||
+        matches.some(match => match.tournament_id && !tournamentIds.has(match.tournament_id)) ||
         sets.some(set => !matchIds.has(set.match_id)) || games.some(game => !setIds.has(game.set_id)) ||
         points.some(point => !gameIds.has(point.game_id))) {
         throw new Error('Il backup contiene dati con famiglia o relazioni non valide.');
       }
       const updated_at = stamp();
       await db.transaction('rw', [
-        db.players, db.clubs, db.matches, db.sets, db.games, db.points, db.syncQueue,
+        db.players, db.clubs, db.tournaments, db.matches, db.sets, db.games, db.points, db.syncQueue,
       ], async () => {
-        const [storedPlayers, storedClubs, storedMatches, storedSets, storedGames, storedPoints] = await Promise.all([
+        const [storedPlayers, storedClubs, storedTournaments, storedMatches, storedSets, storedGames, storedPoints] = await Promise.all([
           db.players.bulkGet(players.map(player => player.id)),
           db.clubs.bulkGet(clubs.map(club => club.id)),
+          db.tournaments.bulkGet(tournaments.map(tournament => tournament.id)),
           db.matches.bulkGet(matches.map(match => match.id)),
           db.sets.bulkGet(sets.map(set => set.id)),
           db.games.bulkGet(games.map(game => game.id)),
@@ -100,12 +108,14 @@ export function Settings() {
         });
         const updatedPlayers = refreshVersions(players, storedPlayers);
         const updatedClubs = refreshVersions(clubs, storedClubs);
+        const updatedTournaments = refreshVersions(tournaments, storedTournaments);
         const updatedMatches = refreshVersions(matches, storedMatches);
         const updatedSets = refreshVersions(sets, storedSets);
         const updatedGames = refreshVersions(games, storedGames);
         const updatedPoints = refreshVersions(points, storedPoints);
         await db.players.bulkPut(updatedPlayers);
         await db.clubs.bulkPut(updatedClubs);
+        await db.tournaments.bulkPut(updatedTournaments);
         await db.matches.bulkPut(updatedMatches);
         await db.sets.bulkPut(updatedSets);
         await db.games.bulkPut(updatedGames);
@@ -113,6 +123,7 @@ export function Settings() {
         await db.syncQueue.bulkPut([
           ...updatedPlayers.map(record => queueOperation(activeFamily.id, 'players', record, updated_at)),
           ...updatedClubs.map(record => queueOperation(activeFamily.id, 'clubs', record, updated_at)),
+          ...updatedTournaments.map(record => queueOperation(activeFamily.id, 'tournaments', record, updated_at)),
           ...updatedMatches.map(record => queueOperation(activeFamily.id, 'matches', record, updated_at)),
           ...updatedSets.map(record => queueOperation(activeFamily.id, 'sets', record, updated_at)),
           ...updatedGames.map(record => queueOperation(activeFamily.id, 'games', record, updated_at)),

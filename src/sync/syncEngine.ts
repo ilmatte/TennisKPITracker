@@ -13,6 +13,7 @@ import type {
   SyncLease,
   SyncMetadata,
   TennisSet,
+  Tournament,
 } from '../types';
 import type { RemoteChange, SyncRepository } from './contracts';
 import { readRecordBaseline, saveSyncMapping, writeRecordBaseline } from './syncState';
@@ -24,7 +25,7 @@ const INITIAL_COMPLETE = '__complete__';
 const LEASE_DURATION_MS = 60_000;
 const LEASE_RENEWAL_MS = 15_000;
 const runLocks = new Map<string, Promise<SyncResult>>();
-type SportsRecord = Player | Club | Match | TennisSet | Game | Point;
+type SportsRecord = Player | Club | Tournament | Match | TennisSet | Game | Point;
 
 export interface SyncResult {
   status: SyncMapping['status'];
@@ -38,6 +39,7 @@ function storeFor(type: SyncEntityType): Table {
   switch (type) {
     case 'players': return db.players;
     case 'clubs': return db.clubs;
+    case 'tournaments': return db.tournaments;
     case 'matches': return db.matches;
     case 'sets': return db.sets;
     case 'games': return db.games;
@@ -122,7 +124,7 @@ async function withSyncLock<T>(localFamilyId: string, operation: () => Promise<T
 }
 
 function allSportsStores() {
-  return [db.players, db.clubs, db.matches, db.sets, db.games, db.points];
+  return [db.players, db.clubs, db.tournaments, db.matches, db.sets, db.games, db.points];
 }
 
 function getVersion(payload: unknown): number {
@@ -389,14 +391,27 @@ async function downloadChanges(
   return { downloaded, conflicts };
 }
 
+/** Parent records a record cannot be uploaded without: while one of them has an unresolved conflict, the record
+ *  waits. */
+function dependenciesOf(type: SyncEntityType, payload: SportsRecord): [SyncEntityType, string][] {
+  switch (type) {
+    case 'tournaments': return [['clubs', (payload as Tournament).club_id]];
+    case 'matches': {
+      const match = payload as Match;
+      return match.tournament_id ? [['players', match.player_id], ['tournaments', match.tournament_id]] : [['players', match.player_id]];
+    }
+    case 'sets': return [['matches', (payload as TennisSet).match_id]];
+    case 'games': return [['sets', (payload as Game).set_id]];
+    case 'points': return [['games', (payload as Point).game_id]];
+    default: return [];
+  }
+}
+
 async function hasBlockedDependency(type: SyncEntityType, payload: SportsRecord, familyId: string): Promise<boolean> {
-  const dependency = type === 'matches' ? ['players', (payload as Match).player_id]
-    : type === 'sets' ? ['matches', (payload as TennisSet).match_id]
-      : type === 'games' ? ['sets', (payload as Game).set_id]
-        : type === 'points' ? ['games', (payload as Point).game_id]
-          : null;
-  if (!dependency) return false;
-  return Boolean(await unresolvedConflict(dependency[0] as SyncEntityType, dependency[1] as string, familyId));
+  for (const [dependencyType, dependencyId] of dependenciesOf(type, payload)) {
+    if (await unresolvedConflict(dependencyType, dependencyId, familyId)) return true;
+  }
+  return false;
 }
 
 async function uploadPending(repository: SyncRepository, mapping: SyncMapping): Promise<number> {

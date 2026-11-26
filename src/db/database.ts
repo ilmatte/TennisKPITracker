@@ -17,6 +17,7 @@ import type {
   SyncConflict,
   SyncMetadata,
   TennisSet,
+  Tournament,
 } from '../types';
 
 export class TennisDatabase extends Dexie {
@@ -25,6 +26,7 @@ export class TennisDatabase extends Dexie {
   family_invitations!: EntityTable<FamilyInvitation, 'id'>;
   players!: EntityTable<Player, 'id'>;
   clubs!: EntityTable<Club, 'id'>;
+  tournaments!: EntityTable<Tournament, 'id'>;
   matches!: EntityTable<Match, 'id'>;
   sets!: EntityTable<TennisSet, 'id'>;
   games!: EntityTable<Game, 'id'>;
@@ -60,6 +62,15 @@ export class TennisDatabase extends Dexie {
     this.version(11).stores({
       clubs: 'id, family_id, name, city, updated_at, deleted',
     });
+    // v12: tournaments (family data, synchronized like clubs) and the matches.tournament_id foreign key, replacing the
+    // free-text matches.tournament field, which is removed. Mirrors supabase/initial_schema.sql. Existing matches keep
+    // tournament_id undefined (no tournament).
+    this.version(12).stores({
+      tournaments: 'id, family_id, club_id, start_date, updated_at, deleted',
+      matches: 'id, family_id, match_date, player_id, status, tournament_id, updated_at, deleted',
+    }).upgrade(transaction => transaction.table('matches').toCollection().modify(match => {
+      delete (match as { tournament?: unknown }).tournament;
+    }));
     // Reference tables are written every time the database opens, whatever version the device came from.
     this.on('ready', database => seedReferenceTables(database as TennisDatabase));
   }

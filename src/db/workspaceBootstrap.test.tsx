@@ -26,11 +26,11 @@ function localFamily(id: string, created_at = now): Family {
 beforeEach(async () => {
   await db.transaction('rw', [
     db.families, db.family_members, db.family_invitations,
-    db.players, db.matches, db.sets, db.games, db.points, db.syncQueue,
+    db.players, db.clubs, db.tournaments, db.matches, db.sets, db.games, db.points, db.syncQueue,
   ], async () => {
     await Promise.all([
       db.families.clear(), db.family_members.clear(), db.family_invitations.clear(),
-      db.players.clear(), db.matches.clear(), db.sets.clear(), db.games.clear(),
+      db.players.clear(), db.clubs.clear(), db.tournaments.clear(), db.matches.clear(), db.sets.clear(), db.games.clear(),
       db.points.clear(), db.syncQueue.clear(),
     ]);
   });
@@ -199,12 +199,35 @@ describe('automatic local workspace', () => {
 
     await user.click(screen.getByRole('link', { name: 'Le mie partite' }));
     await user.click(screen.getByRole('button', { name: 'Nuova partita' }));
+    // Step 1: no tournament yet, so create one; with no clubs the new-club fields are shown directly.
+    expect(await screen.findByText('Nessun torneo')).toBeTruthy();
+    expect((screen.getByRole('button', { name: /Avanti/ }) as HTMLButtonElement).disabled).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Crea un nuovo torneo' }));
+    expect(screen.getAllByRole('button', { name: /^(U12|U14|U16|U18|Open)$/ }).map(chip => chip.textContent))
+      .toEqual(['U12', 'U14', 'U16', 'U18', 'Open']);
+    await user.type(screen.getByPlaceholderText('Nome del nuovo club'), 'TC Lambrate');
+    await user.type(screen.getByLabelText('Nome torneo'), 'Torneo di primavera');
+    await user.click(screen.getByRole('button', { name: 'U14' }));
+    await user.click(screen.getByRole('button', { name: 'Crea torneo' }));
+    // Back to the wizard with the new tournament selected.
+    expect((await screen.findByRole('radio', { name: /Torneo di primavera/ })).getAttribute('aria-checked')).toBe('true');
+    expect(screen.queryByRole('dialog', { name: 'Nuovo torneo' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: /Avanti/ }));
+    // Step 2: who plays.
     const savedPlayer = await db.players.toCollection().first();
     await user.selectOptions(screen.getByLabelText('Giocatore'), savedPlayer!.id);
     await user.type(screen.getByLabelText('Avversario'), 'Avversaria');
+    await user.click(screen.getByRole('button', { name: /Avanti/ }));
+    // Step 3: rules.
+    await user.selectOptions(screen.getByLabelText('Game per vincere il set'), '6');
     await user.click(screen.getByRole('button', { name: 'Avvia partita' }));
     await waitFor(async () => expect(await db.matches.count()).toBe(1));
     const savedMatch = await db.matches.toCollection().first();
+    const savedClub = await db.clubs.toCollection().first();
+    const savedTournament = await db.tournaments.toCollection().first();
+    expect(savedClub).toMatchObject({ name: 'TC Lambrate' });
+    expect(savedTournament).toMatchObject({ name: 'Torneo di primavera', club_id: savedClub!.id, age_category_id: 2 });
+    expect(savedMatch).toMatchObject({ tournament_id: savedTournament!.id, opponent: 'Avversaria', games_to_win_set: 6 });
     expect(await db.matches.get(savedMatch!.id)).toEqual(savedMatch);
     expect(savedMatch?.family_id).toBe(screen.getByTestId('active-workspace').textContent);
     const set: TennisSet = {

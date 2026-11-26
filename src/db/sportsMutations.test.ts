@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, getMatchPoints } from './database';
 import {
   createClub,
+  createMatch,
   createPlayer,
+  createTournament,
   softDeleteClub,
   updateClub,
   softDeleteGame,
@@ -18,6 +20,7 @@ import {
   updatePoint,
   updateSet,
   type MatchChanges,
+  type NewMatchInput,
   type PointChanges,
 } from './sportsMutations';
 import { serveKpi } from '../features/kpi/kpi';
@@ -41,7 +44,7 @@ function match(id = 'match-1', family_id = 'family-1', player_id = 'player-1'): 
   return {
     id, family_id, match_date: '2026-01-01', player_id,
     player_ranking_snapshot: '4.1',
-    opponent: 'Bea', opponent_ranking: '3.5', tournament: 'Open',
+    opponent: 'Bea', opponent_ranking: '3.5', tournament_id: null,
     tournament_match_number: 4, number_of_sets: 3, third_set_type: 'normal',
     super_tiebreak_target: 10, tiebreak_target: 7, tiebreak_starts_at_363: true,
     deuce_single_point: false, first_server: 'player', status: 'in-progress', result: null,
@@ -85,10 +88,10 @@ async function operations(entity_id: string) {
 
 beforeEach(async () => {
   await db.transaction('rw', [
-    db.families, db.family_members, db.players, db.clubs, db.matches, db.sets, db.games, db.points, db.syncQueue,
+    db.families, db.family_members, db.players, db.clubs, db.tournaments, db.matches, db.sets, db.games, db.points, db.syncQueue,
   ], async () => {
     await Promise.all([
-      db.families.clear(), db.family_members.clear(), db.players.clear(), db.clubs.clear(), db.matches.clear(),
+      db.families.clear(), db.family_members.clear(), db.players.clear(), db.clubs.clear(), db.tournaments.clear(), db.matches.clear(),
       db.sets.clear(), db.games.clear(), db.points.clear(), db.syncQueue.clear(),
     ]);
   });
@@ -181,7 +184,7 @@ describe('sport entity mutations', () => {
     await db.players.put({ ...player('player-2'), first_name: 'Bea', last_name: 'Player', ranking: '2.8', birth_date: '2010-06-01' });
     const changes: MatchChanges = {
       match_date: '2026-02-02', player_id: 'player-2', opponent: 'Cam', opponent_ranking: '2.1',
-      tournament: 'Cup', tournament_match_number: 8, number_of_sets: 5,
+      tournament_id: null, tournament_match_number: 8, number_of_sets: 5,
       third_set_type: 'super-tiebreak', super_tiebreak_target: 12, tiebreak_target: 10,
       tiebreak_starts_at_363: false, deuce_single_point: true, first_server: 'opponent',
       status: 'completed', result: '6-2 6-4',
@@ -399,5 +402,114 @@ describe('club mutations', () => {
     const club = await createClub('family-2', { name: 'Altro club', city: '', surface: null });
     await expect(updateClub('family-1', club.id, { name: 'X', city: '', surface: null })).rejects.toThrow('Club non trovato');
     await expect(softDeleteClub('family-1', club.id)).rejects.toThrow('Club non trovato');
+  });
+});
+
+describe('tournament mutations', () => {
+  const springCup = { name: '  Torneo di primavera ', age_category_id: 3, start_date: '2026-04-12' };
+
+  it('creates a tournament for an existing club and queues an upsert', async () => {
+    await db.families.add(family('family-1'));
+    const club = await createClub('family-1', { name: 'TC Lambrate', city: 'Milano', surface: null });
+    const { tournament } = await createTournament('family-1', springCup, { id: club.id });
+    expect(tournament).toMatchObject({
+      family_id: 'family-1', club_id: club.id, name: 'Torneo di primavera', age_category_id: 3,
+      start_date: '2026-04-12', version: 1, deleted: false,
+    });
+    expect(await db.tournaments.get(tournament.id)).toEqual(tournament);
+    expect(await operations(tournament.id)).toMatchObject([{ entity_type: 'tournaments', operation: 'upsert', payload: { club_id: club.id } }]);
+  });
+
+  it('creates the new club together with the tournament', async () => {
+    await db.families.add(family('family-1'));
+    const { tournament, club } = await createTournament('family-1', springCup, { create: { name: ' ASD Tennis ', city: '', surface: null } });
+    expect(club).toMatchObject({ name: 'ASD Tennis', family_id: 'family-1' });
+    expect(tournament.club_id).toBe(club.id);
+    expect(await operations(club.id)).toMatchObject([{ entity_type: 'clubs' }]);
+  });
+
+  it('accepts only the U12 to Open categories', async () => {
+    await db.families.add(family('family-1'));
+    const club = await createClub('family-1', { name: 'TC Lambrate', city: '', surface: null });
+    for (const id of [1, 2, 3, 4, 5]) {
+      await expect(createTournament('family-1', { ...springCup, age_category_id: id }, { id: club.id })).resolves.toBeDefined();
+    }
+    await expect(createTournament('family-1', { ...springCup, age_category_id: 7 }, { id: club.id })).rejects.toThrow('Categoria');
+  });
+
+  it('writes nothing when the tournament is invalid, not even the new club', async () => {
+    await db.families.add(family('family-1'));
+    await expect(createTournament('family-1', { ...springCup, name: '  ' }, { create: { name: 'Nuovo', city: '', surface: null } }))
+      .rejects.toThrow('nome del torneo');
+    await expect(createTournament('family-1', { ...springCup, start_date: '' }, { create: { name: 'Nuovo', city: '', surface: null } }))
+      .rejects.toThrow('data di inizio');
+    expect(await db.clubs.count()).toBe(0);
+    expect(await db.tournaments.count()).toBe(0);
+    expect(await db.syncQueue.count()).toBe(0);
+  });
+
+  it('rejects a club of another family or a deleted one', async () => {
+    await db.families.bulkAdd([family('family-1'), family('family-2')]);
+    const foreign = await createClub('family-2', { name: 'Altro', city: '', surface: null });
+    await expect(createTournament('family-1', springCup, { id: foreign.id })).rejects.toThrow('Club non trovato');
+    const deleted = await createClub('family-1', { name: 'Chiuso', city: '', surface: null });
+    await softDeleteClub('family-1', deleted.id);
+    await expect(createTournament('family-1', springCup, { id: deleted.id })).rejects.toThrow('Club non trovato');
+  });
+});
+
+describe('match creation', () => {
+  async function seedTournament(familyId = 'family-1') {
+    const club = await createClub(familyId, { name: 'TC Lambrate', city: '', surface: null });
+    return (await createTournament(familyId, { name: 'Open', age_category_id: 5, start_date: '2026-01-01' }, { id: club.id })).tournament;
+  }
+
+  function input(overrides: Partial<NewMatchInput> = {}): NewMatchInput {
+    return {
+      tournament_id: 'missing', match_date: '2026-01-10', player_id: 'player-1', opponent: '  Bea ',
+      number_of_sets: 3, third_set_type: 'super-tiebreak', super_tiebreak_target: 10, tiebreak_target: 7,
+      games_to_win_set: 6, short_set_tiebreak_at: 3, deuce_single_point: true, first_server: 'opponent',
+      ...overrides,
+    };
+  }
+
+  it('creates an in-progress match in the tournament, snapshotting the player ranking', async () => {
+    await db.families.add(family('family-1'));
+    await db.players.add(player('player-1'));
+    const tournament = await seedTournament();
+    const created = await createMatch('family-1', input({ tournament_id: tournament.id }));
+    expect(created).toMatchObject({
+      family_id: 'family-1', tournament_id: tournament.id, opponent: 'Bea', player_ranking_snapshot: '4.1',
+      games_to_win_set: 6, tiebreak_starts_at_363: false, status: 'in-progress', version: 1, deleted: false,
+    });
+    expect(created).not.toHaveProperty('tournament');
+    expect(await db.matches.get(created.id)).toEqual(created);
+    expect(await operations(created.id)).toMatchObject([{ entity_type: 'matches', payload: { tournament_id: tournament.id } }]);
+  });
+
+  it('rejects a missing or foreign tournament, a foreign player and an empty opponent', async () => {
+    await db.families.bulkAdd([family('family-1'), family('family-2')]);
+    await db.players.bulkAdd([player('player-1'), player('other-player', 'family-2')]);
+    const tournament = await seedTournament();
+    const foreign = await seedTournament('family-2');
+    await expect(createMatch('family-1', input())).rejects.toThrow('Torneo non trovato');
+    await expect(createMatch('family-1', input({ tournament_id: foreign.id }))).rejects.toThrow('Torneo non trovato');
+    await expect(createMatch('family-1', input({ tournament_id: tournament.id, player_id: 'other-player' }))).rejects.toThrow('Giocatore non trovato');
+    await expect(createMatch('family-1', input({ tournament_id: tournament.id, opponent: ' ' }))).rejects.toThrow('avversario');
+    expect(await db.matches.count()).toBe(0);
+  });
+
+  it('moves a match to another tournament of the family only', async () => {
+    await db.families.bulkAdd([family('family-1'), family('family-2')]);
+    await db.players.add(player('player-1'));
+    const first = await seedTournament();
+    const second = await seedTournament();
+    const foreign = await seedTournament('family-2');
+    const created = await createMatch('family-1', input({ tournament_id: first.id }));
+    const { id, family_id, player_ranking_snapshot, created_at, updated_at, version, deleted, ...changes } = created;
+    void [id, family_id, player_ranking_snapshot, created_at, updated_at, version, deleted];
+    await expect(updateMatch('family-1', created.id, { ...changes, tournament_id: foreign.id } as MatchChanges)).rejects.toThrow('Torneo non trovato');
+    expect(await updateMatch('family-1', created.id, { ...changes, tournament_id: second.id } as MatchChanges))
+      .toMatchObject({ tournament_id: second.id, version: 2 });
   });
 });

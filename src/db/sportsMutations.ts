@@ -8,8 +8,10 @@ import type {
   ScoredPoint,
   SyncOperation,
   TennisSet,
+  Tournament,
 } from '../types';
 import { deriveSetScore } from '../features/scoring/scoring';
+import { TOURNAMENT_CATEGORIES } from '../features/tournaments/tournaments';
 
 const timestamp = () => new Date().toISOString();
 
@@ -140,7 +142,7 @@ export async function updatePlayer(
 
 export type MatchChanges = Pick<Match,
   'match_date' | 'player_id' | 'opponent' | 'opponent_ranking' |
-  'tournament' | 'tournament_match_number' | 'number_of_sets' | 'third_set_type' |
+  'tournament_id' | 'tournament_match_number' | 'number_of_sets' | 'third_set_type' |
   'super_tiebreak_target' | 'tiebreak_target' | 'games_to_win_set' | 'short_set_tiebreak_at' | 'tiebreak_starts_at_363' |
   'deuce_single_point' | 'first_server' | 'status' | 'result'
 >;
@@ -150,11 +152,15 @@ export async function updateMatch(
   id: string,
   changes: MatchChanges,
 ): Promise<Match> {
-  return db.transaction('rw', [db.players, db.matches, db.sets, db.games, db.points, db.syncQueue], async () => {
+  return db.transaction('rw', [db.players, db.tournaments, db.matches, db.sets, db.games, db.points, db.syncQueue], async () => {
     const current = await requireActive(id => db.matches.get(id), id, familyId, 'Partita');
     const player = changes.player_id === current.player_id
       ? undefined
       : await requireActive(id => db.players.get(id), changes.player_id, familyId, 'Giocatore');
+    // A deleted tournament already linked to the match may stay; a newly chosen one must be active in the family.
+    if (changes.tournament_id && changes.tournament_id !== current.tournament_id) {
+      await requireActive(id => db.tournaments.get(id), changes.tournament_id, familyId, 'Torneo');
+    }
     const sets = await db.sets.where('family_id').equals(familyId)
       .filter(set => set.match_id === id && !set.deleted).toArray();
     if (![3, 5].includes(changes.number_of_sets) || sets.some(set => set.set_number > changes.number_of_sets)) {
@@ -182,6 +188,44 @@ export async function updateMatch(
     await write(db.matches, 'matches', next, next.updated_at);
     await recalculate(next, next.updated_at);
     return next;
+  });
+}
+
+/** Fields of a new match chosen in the "Nuova partita" wizard. The ranking snapshot is taken from the player. */
+export type NewMatchInput = Pick<Match,
+  'match_date' | 'player_id' | 'opponent' | 'number_of_sets' | 'third_set_type' | 'super_tiebreak_target' |
+  'tiebreak_target' | 'games_to_win_set' | 'short_set_tiebreak_at' | 'deuce_single_point' | 'first_server'
+> & { tournament_id: string };
+
+export async function createMatch(familyId: string, input: NewMatchInput): Promise<Match> {
+  return db.transaction('rw', [db.players, db.tournaments, db.matches, db.syncQueue], async () => {
+    const player = await requireActive(id => db.players.get(id), input.player_id, familyId, 'Giocatore');
+    await requireActive(id => db.tournaments.get(id), input.tournament_id, familyId, 'Torneo');
+    const opponent = input.opponent.trim();
+    if (!opponent) throw new Error("Il nome dell'avversario è obbligatorio.");
+    if (input.tiebreak_target < 1 || input.super_tiebreak_target < 1) {
+      throw new Error('I target dei tie-break devono essere maggiori di zero.');
+    }
+    const gamesToWinSet = input.games_to_win_set ?? 4;
+    const created_at = timestamp();
+    const match: Match = {
+      ...input,
+      id: crypto.randomUUID(),
+      family_id: familyId,
+      opponent,
+      player_ranking_snapshot: player.ranking,
+      games_to_win_set: gamesToWinSet,
+      short_set_tiebreak_at: input.short_set_tiebreak_at ?? 3,
+      tiebreak_starts_at_363: gamesToWinSet === 4,
+      status: 'in-progress',
+      created_at,
+      updated_at: created_at,
+      version: 1,
+      deleted: false,
+    };
+    await db.matches.add(match);
+    await db.syncQueue.add(queueOperation(familyId, 'matches', match, created_at));
+    return match;
   });
 }
 
@@ -329,6 +373,47 @@ export async function softDeleteClub(familyId: string, id: string): Promise<void
   await db.transaction('rw', [db.clubs, db.syncQueue], async () => {
     const club = await requireActive(id => db.clubs.get(id), id, familyId, 'Club');
     await tombstone(db.clubs, 'clubs', club, timestamp());
+  });
+}
+
+export type TournamentChanges = Pick<Tournament, 'name' | 'age_category_id' | 'start_date'>;
+
+/** The hosting club: an existing one, or a new one created together with the tournament. */
+export type TournamentClub = { id: string } | { create: ClubChanges };
+
+function validTournament(changes: TournamentChanges): TournamentChanges {
+  const name = changes.name.trim();
+  if (!name) throw new Error('Il nome del torneo è obbligatorio.');
+  if (!TOURNAMENT_CATEGORIES.some(category => category.id === changes.age_category_id)) {
+    throw new Error('Categoria del torneo non valida.');
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(changes.start_date) || Number.isNaN(Date.parse(changes.start_date))) {
+    throw new Error('La data di inizio del torneo non è valida.');
+  }
+  return { name, age_category_id: changes.age_category_id, start_date: changes.start_date };
+}
+
+/** Creates a tournament, and its club too when `club` asks for a new one: both are written in one transaction, so a
+ *  failure leaves neither behind. */
+export async function createTournament(
+  familyId: string,
+  changes: TournamentChanges,
+  club: TournamentClub,
+): Promise<{ tournament: Tournament; club: Club }> {
+  return db.transaction('rw', [db.families, db.clubs, db.tournaments, db.syncQueue], async () => {
+    if (!await db.families.get(familyId)) throw new Error('La famiglia indicata non esiste.');
+    const valid = validTournament(changes);
+    const host = 'create' in club
+      ? await createClub(familyId, club.create)
+      : await requireActive(id => db.clubs.get(id), club.id, familyId, 'Club');
+    const created_at = timestamp();
+    const tournament: Tournament = {
+      id: crypto.randomUUID(), family_id: familyId, club_id: host.id, ...valid,
+      created_at, updated_at: created_at, version: 1, deleted: false,
+    };
+    await db.tournaments.add(tournament);
+    await db.syncQueue.add(queueOperation(familyId, 'tournaments', tournament, created_at));
+    return { tournament, club: host };
   });
 }
 
