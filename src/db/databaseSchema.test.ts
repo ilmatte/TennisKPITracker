@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { db, TennisDatabase } from './database';
 import { POINT_TYPES } from '../features/scoring/pointTypes';
 import { PLAYER_AGE_CATEGORIES } from '../features/players/ageCategories';
+import { STATUSES } from '../features/statuses/statuses';
 
 const databaseName = 'TennisKPITrackerSchemaTest';
 
@@ -16,13 +17,14 @@ describe('local database schema', () => {
   it('creates every store aligned with the Supabase tables and seeds the reference tables', async () => {
     const fresh = new TennisDatabase(databaseName);
     await fresh.open();
-    expect(fresh.verno).toBe(13);
+    expect(fresh.verno).toBe(14);
     expect(fresh.tables.map(table => table.name).sort()).toEqual([
       'clubs', 'families', 'family_invitations', 'family_members', 'games', 'matches', 'player_age_categories', 'players',
-      'point_types', 'points', 'sets', 'syncConflicts', 'syncMetadata', 'syncQueue', 'tournaments',
+      'point_types', 'points', 'sets', 'statuses', 'syncConflicts', 'syncMetadata', 'syncQueue', 'tournaments',
     ]);
     expect(await fresh.table('point_types').toArray()).toEqual([...POINT_TYPES]);
     expect(await fresh.table('player_age_categories').toArray()).toEqual([...PLAYER_AGE_CATEGORIES]);
+    expect(await fresh.table('statuses').toArray()).toEqual([...STATUSES]);
     const pointIndexes = fresh.points.schema.indexes.map(index => index.name);
     expect(pointIndexes).toContain('point_type_id');
     expect(pointIndexes).toContain('[game_id+point_number]');
@@ -47,7 +49,7 @@ describe('local database schema', () => {
 
     const reopened = new TennisDatabase(databaseName);
     await reopened.open();
-    expect(reopened.verno).toBe(13);
+    expect(reopened.verno).toBe(14);
     expect(await reopened.table('point_types').toArray()).toEqual([...POINT_TYPES]);
     expect(await reopened.table('player_age_categories').toArray()).toEqual([...PLAYER_AGE_CATEGORIES]);
     expect(await reopened.table('players').get('p1')).toEqual(player);
@@ -81,11 +83,12 @@ describe('local database schema', () => {
 
     const upgraded = new TennisDatabase(databaseName);
     await upgraded.open();
-    expect(upgraded.verno).toBe(13);
+    expect(upgraded.verno).toBe(14);
     expect(await upgraded.table('clubs').get('c1')).toEqual(club);
-    // The free-text tournament is removed; matches created before tournaments have no tournament_id.
-    const { tournament: _removed, ...withoutTournament } = match;
-    expect(await upgraded.table('matches').get('m1')).toEqual(withoutTournament);
+    // The free-text tournament is removed; matches created before tournaments have no tournament_id. The text status
+    // becomes status_id (v14).
+    const { tournament: _removed, status: _status, ...rest } = match;
+    expect(await upgraded.table('matches').get('m1')).toEqual({ ...rest, status_id: 3 });
     expect(upgraded.matches.schema.indexes.map(index => index.name)).toContain('tournament_id');
     expect(upgraded.matches.schema.indexes.map(index => index.name)).not.toContain('tournament');
     expect(upgraded.tournaments.schema.indexes.map(index => index.name)).toEqual(
@@ -94,7 +97,7 @@ describe('local database schema', () => {
     upgraded.close();
   });
 
-  it('upgrades a version 12 database giving its tournaments the "upcoming" status', async () => {
+  it('upgrades a version 12 database giving its tournaments the "upcoming" status (then converted to status_id)', async () => {
     const older = new Dexie(databaseName);
     older.version(12).stores({ tournaments: 'id, family_id, club_id, start_date, updated_at, deleted' });
     await older.open();
@@ -107,9 +110,9 @@ describe('local database schema', () => {
 
     const upgraded = new TennisDatabase(databaseName);
     await upgraded.open();
-    expect(upgraded.verno).toBe(13);
-    expect((await upgraded.tournaments.toArray()).map(item => [item.id, item.status])).toEqual([
-      ['t1', 'upcoming'], ['t2', 'upcoming'], ['t3', 'completed'],
+    expect(upgraded.verno).toBe(14);
+    expect((await upgraded.tournaments.toArray()).map(item => [item.id, item.status_id, 'status' in item])).toEqual([
+      ['t1', 1, false], ['t2', 1, false], ['t3', 3, false],
     ]);
     upgraded.close();
   });

@@ -140,7 +140,7 @@ describe('automatic local workspace', () => {
       tiebreak_starts_at_363: true,
       deuce_single_point: true,
       first_server: 'player',
-      status: 'in-progress',
+      status_id: 2,
       created_at: now,
       updated_at: now,
       version: 1,

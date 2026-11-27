@@ -8,19 +8,25 @@ import { useFamily } from '../features/families/FamilyContextDefinition';
 import { MATCH_OUTCOME_LABELS, formatMatchDate, summarizeMatch, type MatchSummary } from '../features/matches/matchSummary';
 import { playerShortName } from '../features/players/playerNames';
 import { loadTournamentRows, type TournamentRow } from '../features/tournaments/tournamentRows';
-import { TOURNAMENT_STATUS_LABELS, formatTournamentDate, tournamentCategoryLabel } from '../features/tournaments/tournaments';
+import { formatTournamentDate, tournamentCategoryLabel } from '../features/tournaments/tournaments';
+import { STATUS, statusClassName, statusLabel } from '../features/statuses/statuses';
 import tennisBallIcon from '../assets/icone/trasparente/512/pallina3d.png';
 import tournamentIcon from '../assets/icone/scuro/256/tornei.png';
 import { BrandBar } from './BrandBar';
 import { MatchesTabs } from './MatchesTabs';
 import { NewTournament } from './NewTournamentScreen';
-import type { Tournament, TournamentStatus } from '../types';
+import type { Tournament, TournamentStatusId } from '../types';
 
-type Filter = 'all' | 'in-progress' | 'completed';
-const FILTERS: readonly (readonly [Filter, string])[] = [['all', 'Tutti'], ['in-progress', 'In corso'], ['completed', 'Conclusi']];
+// 'all' or the status id the list is filtered by. The chip labels are plural ("Conclusi"), so they stay here rather
+// than in the statuses table.
+type Filter = 'all' | typeof STATUS.in_progress | typeof STATUS.completed;
+const FILTERS: readonly (readonly [Filter, string])[] = [['all', 'Tutti'], [STATUS.in_progress, 'In corso'], [STATUS.completed, 'Conclusi']];
 // Statuses the badge menu offers: a tournament is created "In programma", then started and concluded by hand.
-const MENU_STATUSES: readonly TournamentStatus[] = ['in-progress', 'completed'];
-const EMPTY_FILTER_TEXT: Record<Exclude<Filter, 'all'>, string> = { 'in-progress': 'Nessun torneo in corso', completed: 'Nessun torneo concluso' };
+const MENU_STATUSES: readonly TournamentStatusId[] = [STATUS.in_progress, STATUS.completed];
+const EMPTY_FILTER_TEXT: Record<Exclude<Filter, 'all'>, string> = {
+  [STATUS.in_progress]: 'Nessun torneo in corso',
+  [STATUS.completed]: 'Nessun torneo concluso',
+};
 
 /** "Tornei": the family's tournaments, each with its matches. Reached from the "Partite | Tornei" switch. */
 export function Tournaments() {
@@ -37,7 +43,7 @@ export function Tournaments() {
     async () => activeFamily ? loadTournamentRows(activeFamily.id) : [] as TournamentRow[],
     [activeFamily?.id],
   ) ?? [];
-  const matchKey = rows.flatMap(row => row.matches.map(match => `${match.id}:${match.status}:${match.version}`)).join(',');
+  const matchKey = rows.flatMap(row => row.matches.map(match => `${match.id}:${match.status_id}:${match.version}`)).join(',');
   const summaries = useLiveQuery(async () => {
     if (!activeFamily) return new Map<string, MatchSummary>();
     const all = await Promise.all(rows.flatMap(row => row.matches)
@@ -59,7 +65,7 @@ export function Tournaments() {
     setEditing(null);
   }
 
-  async function changeStatus(tournament: Tournament, status: TournamentStatus) {
+  async function changeStatus(tournament: Tournament, status: TournamentStatusId) {
     setStatusMenu(null);
     if (!activeFamily) return;
     try {
@@ -69,7 +75,7 @@ export function Tournaments() {
     }
   }
 
-  const visible = rows.filter(row => filter === 'all' || row.status === filter);
+  const visible = rows.filter(row => filter === 'all' || row.status_id === filter);
 
   return <div className="mg-page">
     <svg className="mg-waves" width="390" height="140" viewBox="0 0 390 140" aria-hidden="true"><path d="M120 120C220 110 320 80 390 20V60C330 100 220 135 120 135z" fill="#2F8F3E" opacity=".55" /><path d="M200 128C280 120 340 95 390 60V84C340 112 280 134 200 136z" fill="#C8F03A" opacity=".35" /></svg>
@@ -85,7 +91,7 @@ export function Tournaments() {
       </div>
     </header>
     <section className="mg-panel mt-panel">
-      {visible.map(({ tournament, club, status, matches }, index) => {
+      {visible.map(({ tournament, club, status_id: status, matches }, index) => {
         const expanded = expandedById[tournament.id] ?? index === 0;
         const matchesId = `mt-matches-${tournament.id}`;
         const details = [club?.name, tournamentCategoryLabel(tournament.age_category_id), `dal ${formatTournamentDate(tournament.start_date)}`]
@@ -97,14 +103,14 @@ export function Tournaments() {
               <span className="mg-info"><strong>{tournament.name}</strong><small>{details}</small></span>
             </button>
             <div className="mt-status">
-              <button type="button" className={`mt-badge ${status}`} aria-haspopup="menu" aria-expanded={statusMenu === tournament.id}
-                aria-label={`Stato: ${TOURNAMENT_STATUS_LABELS[status]}. Cambia stato`}
+              <button type="button" className={`mt-badge ${statusClassName(status)}`} aria-haspopup="menu" aria-expanded={statusMenu === tournament.id}
+                aria-label={`Stato: ${statusLabel(status, 'tournament')}. Cambia stato`}
                 onClick={() => setStatusMenu(statusMenu === tournament.id ? null : tournament.id)}>
-                {TOURNAMENT_STATUS_LABELS[status]}
+                {statusLabel(status, 'tournament')}
               </button>
               {statusMenu === tournament.id && <div className="mt-status-menu" role="menu" aria-label="Stato del torneo">
                 {MENU_STATUSES.map(value => <button key={value} type="button" role="menuitemradio" aria-checked={status === value}
-                  onClick={() => changeStatus(tournament, value)}>{TOURNAMENT_STATUS_LABELS[value]}</button>)}
+                  onClick={() => changeStatus(tournament, value)}>{statusLabel(value, 'tournament')}</button>)}
               </div>}
             </div>
             {matches.length > 0 && <button type="button" className="mt-toggle" aria-expanded={expanded} aria-controls={matchesId}
@@ -116,7 +122,7 @@ export function Tournaments() {
           {matches.length > 0 && expanded && <div className="mt-matches" id={matchesId}>
             {matches.map(match => {
               const summary = summaries.get(match.id);
-              const outcome = summary?.outcome ?? (match.status === 'completed' ? null : 'in-progress');
+              const outcome = summary?.outcome ?? (match.status_id === STATUS.completed ? null : 'in-progress');
               return <button key={match.id} className="mt-match" onClick={() => navigate(`/match/${match.id}`)}>
                 <img src={tennisBallIcon} alt="" />
                 <span className="mg-info">

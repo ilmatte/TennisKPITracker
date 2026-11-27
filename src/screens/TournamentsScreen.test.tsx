@@ -85,7 +85,7 @@ describe('Tornei screen', () => {
     expect(await screen.findByRole('article', { name: 'Open d’autunno' })).toBeTruthy();
     expect(screen.queryByRole('dialog', { name: 'Nuovo torneo' })).toBeNull();
     expect(await db.tournaments.count()).toBe(1);
-    expect((await db.tournaments.toArray())[0].status).toBe('upcoming');
+    expect((await db.tournaments.toArray())[0].status_id).toBe(1);
   });
 
   it('opens "Modifica torneo" from a tournament row, prefilled, and saves back to the list', async () => {
@@ -149,7 +149,7 @@ describe('Tornei screen', () => {
     expect(within(menu).getAllByRole('menuitemradio').map(item => item.textContent)).toEqual(['In corso', 'Concluso']);
     await user.click(within(menu).getByRole('menuitemradio', { name: 'In corso' }));
     await within(group).findByRole('button', { name: /Stato: In corso/ });
-    expect(await db.tournaments.get(tournament.id)).toMatchObject({ status: 'in-progress', version: 2 });
+    expect(await db.tournaments.get(tournament.id)).toMatchObject({ status_id: 2, version: 2 });
 
     await user.click(within(group).getByRole('button', { name: /Stato: In corso/ }));
     menu = screen.getByRole('menu', { name: 'Stato del torneo' });
@@ -159,14 +159,14 @@ describe('Tornei screen', () => {
     expect(screen.queryByRole('menu')).toBeNull();
     expect(screen.queryByRole('dialog', { name: 'Modifica torneo' })).toBeNull();
     await within(group).findByRole('button', { name: /Stato: Concluso/ });
-    expect(await db.tournaments.get(tournament.id)).toMatchObject({ status: 'completed', version: 3 });
+    expect(await db.tournaments.get(tournament.id)).toMatchObject({ status_id: 3, version: 3 });
     await user.click(screen.getByRole('button', { name: 'Conclusi' }));
     expect(await screen.findByRole('article', { name: 'Memorial Conti' })).toBeTruthy();
 
     await user.click(screen.getByRole('button', { name: /Stato: Concluso/ }));
     await user.click(screen.getByRole('menuitemradio', { name: 'In corso' }));
     expect(await screen.findByText('Nessun torneo concluso')).toBeTruthy();
-    expect(await db.tournaments.get(tournament.id)).toMatchObject({ status: 'in-progress', version: 4 });
+    expect(await db.tournaments.get(tournament.id)).toMatchObject({ status_id: 2, version: 4 });
   });
 
   it('offers no delete button when creating a tournament', async () => {

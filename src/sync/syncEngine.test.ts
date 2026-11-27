@@ -219,7 +219,7 @@ describe('sync engine', () => {
       player_ranking_snapshot: '4.1', opponent: 'Bea',
       number_of_sets: 3, third_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
       tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player',
-      status: 'in-progress', created_at: now, updated_at: now, version: 2, deleted: false,
+      status_id: 2, created_at: now, updated_at: now, version: 2, deleted: false,
     };
     const tennisSet: TennisSet = {
       id: 'set-id', family_id: remoteFamilyId, match_id: match.id, set_number: 1,
@@ -253,6 +253,33 @@ describe('sync engine', () => {
     expect(state.initial_download_complete).toBe(true);
   });
 
+  it('converts the text status of tournaments and matches saved on the server before the statuses table', async () => {
+    const remote = new FakeSyncRepository();
+    remote.seed('players', { ...localPlayer(), family_id: remoteFamilyId, version: 1 });
+    remote.seed('clubs', { id: 'club-id', name: 'TC', city: '', surface: null, created_at: now, updated_at: now, version: 1, deleted: false });
+    remote.seed('tournaments', {
+      id: 'tournament-id', club_id: 'club-id', name: 'Open', age_category_id: 5, start_date: '2025-10-03', status: 'completed',
+      created_at: now, updated_at: now, version: 1, deleted: false,
+    });
+    remote.seed('matches', {
+      id: 'match-id', match_date: '2026-03-01', player_id: 'player-id', tournament_id: 'tournament-id',
+      player_ranking_snapshot: '4.1', opponent: 'Bea', number_of_sets: 3, third_set_type: 'normal', super_tiebreak_target: 10,
+      tiebreak_target: 7, tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player', status: 'in-progress',
+      created_at: now, updated_at: now, version: 1, deleted: false,
+    });
+    const state = mapping();
+    await saveSyncMapping(state);
+
+    await runSync(remote, state, remote.revision);
+
+    const tournament = await db.tournaments.get('tournament-id');
+    const match = await db.matches.get('match-id');
+    expect(tournament).toMatchObject({ status_id: 3 });
+    expect(tournament).not.toHaveProperty('status');
+    expect(match).toMatchObject({ status_id: 2 });
+    expect(match).not.toHaveProperty('status');
+  });
+
   it('uploads the latest queued records parent-first and transmits tombstones as upserts', async () => {
     const remote = new FakeSyncRepository();
     const player = { ...localPlayer('player-id', 2), deleted: true };
@@ -262,14 +289,14 @@ describe('sync engine', () => {
     };
     const tournament: Tournament = {
       id: 'tournament-id', family_id: localFamilyId, club_id: club.id, name: 'Torneo di primavera',
-      age_category_id: 3, start_date: '2026-03-01', status: 'upcoming', created_at: now, updated_at: now, version: 1, deleted: false,
+      age_category_id: 3, start_date: '2026-03-01', status_id: 1, created_at: now, updated_at: now, version: 1, deleted: false,
     };
     const match: Match = {
       id: 'match-id', family_id: localFamilyId, match_date: '2026-03-01', player_id: player.id,
       tournament_id: tournament.id, player_ranking_snapshot: '4.1', opponent: 'Bea',
       number_of_sets: 3, third_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
       tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player',
-      status: 'in-progress', created_at: now, updated_at: now, version: 1, deleted: false,
+      status_id: 2, created_at: now, updated_at: now, version: 1, deleted: false,
     };
     const tennisSet: TennisSet = {
       id: 'set-id', family_id: localFamilyId, match_id: match.id, set_number: 1,

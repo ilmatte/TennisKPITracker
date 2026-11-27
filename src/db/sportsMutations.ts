@@ -9,10 +9,11 @@ import type {
   SyncOperation,
   TennisSet,
   Tournament,
-  TournamentStatus,
+  TournamentStatusId,
 } from '../types';
 import { deriveSetScore } from '../features/scoring/scoring';
 import { TOURNAMENT_CATEGORIES } from '../features/tournaments/tournaments';
+import { STATUS, isMatchStatusId, isTournamentStatusId } from '../features/statuses/statuses';
 
 const timestamp = () => new Date().toISOString();
 
@@ -145,7 +146,7 @@ export type MatchChanges = Pick<Match,
   'match_date' | 'player_id' | 'opponent' | 'opponent_ranking' |
   'tournament_id' | 'tournament_match_number' | 'number_of_sets' | 'third_set_type' |
   'super_tiebreak_target' | 'tiebreak_target' | 'games_to_win_set' | 'short_set_tiebreak_at' | 'tiebreak_starts_at_363' |
-  'deuce_single_point' | 'first_server' | 'status' | 'result'
+  'deuce_single_point' | 'first_server' | 'status_id' | 'result'
 >;
 
 export async function updateMatch(
@@ -170,6 +171,7 @@ export async function updateMatch(
     if (changes.tiebreak_target < 1 || changes.super_tiebreak_target < 1) {
       throw new Error('I target dei tie-break devono essere maggiori di zero.');
     }
+    if (!isMatchStatusId(changes.status_id)) throw new Error('Stato della partita non valido.');
     const gamesToWinSet = changes.games_to_win_set ?? (changes.tiebreak_starts_at_363 ? 4 : 6);
     const shortSetTiebreakAt = changes.short_set_tiebreak_at ?? current.short_set_tiebreak_at ?? 3;
     if (gamesToWinSet !== 4 && gamesToWinSet !== 6) {
@@ -218,7 +220,7 @@ export async function createMatch(familyId: string, input: NewMatchInput): Promi
       games_to_win_set: gamesToWinSet,
       short_set_tiebreak_at: input.short_set_tiebreak_at ?? 3,
       tiebreak_starts_at_363: gamesToWinSet === 4,
-      status: 'in-progress',
+      status_id: STATUS.in_progress,
       created_at,
       updated_at: created_at,
       version: 1,
@@ -409,7 +411,7 @@ export async function createTournament(
       : await requireActive(id => db.clubs.get(id), club.id, familyId, 'Club');
     const created_at = timestamp();
     const tournament: Tournament = {
-      id: crypto.randomUUID(), family_id: familyId, club_id: host.id, ...valid, status: 'upcoming',
+      id: crypto.randomUUID(), family_id: familyId, club_id: host.id, ...valid, status_id: STATUS.upcoming,
       created_at, updated_at: created_at, version: 1, deleted: false,
     };
     await db.tournaments.add(tournament);
@@ -442,15 +444,13 @@ export async function updateTournament(
   });
 }
 
-const TOURNAMENT_STATUSES: readonly TournamentStatus[] = ['upcoming', 'in-progress', 'completed'];
-
-/** Changes the status of a tournament: it is created 'upcoming' and changes only through this function. */
-export async function setTournamentStatus(familyId: string, id: string, status: TournamentStatus): Promise<Tournament> {
-  if (!TOURNAMENT_STATUSES.includes(status)) throw new Error('Stato del torneo non valido.');
+/** Changes the status of a tournament: it is created In programma and changes only through this function. */
+export async function setTournamentStatus(familyId: string, id: string, statusId: TournamentStatusId): Promise<Tournament> {
+  if (!isTournamentStatusId(statusId)) throw new Error('Stato del torneo non valido.');
   return db.transaction('rw', [db.tournaments, db.syncQueue], async () => {
     const current = await requireActive(id => db.tournaments.get(id), id, familyId, 'Torneo');
-    if (current.status === status) return current;
-    const next: Tournament = { ...updated(current, timestamp()), status };
+    if (current.status_id === statusId) return current;
+    const next: Tournament = { ...updated(current, timestamp()), status_id: statusId };
     await write(db.tournaments, 'tournaments', next, next.updated_at);
     return next;
   });

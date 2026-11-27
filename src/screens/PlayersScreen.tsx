@@ -7,6 +7,7 @@ import { deriveSetScore } from '../features/scoring/scoring';
 import { createPlayer, softDeletePlayer, updatePlayer } from '../db/sportsMutations';
 import { useAuth } from '../features/auth/AuthContext';
 import { useFamily } from '../features/families/FamilyContextDefinition';
+import { STATUS } from '../features/statuses/statuses';
 import tennisBallIcon from '../assets/icone/trasparente/512/pallina3d.png';
 import settingsBackground from '../assets/background-settings.png';
 import { stamp } from './shared';
@@ -36,7 +37,7 @@ export function Players() {
     for (const match of matches) {
       const entry = stats.get(match.player_id) ?? { played: 0, completed: 0, won: 0 };
       entry.played += 1;
-      if (match.status === 'completed') {
+      if (match.status_id === STATUS.completed) {
         entry.completed += 1;
         const points = await getMatchPoints(activeFamily.id, match.id);
         let playerSets = 0;

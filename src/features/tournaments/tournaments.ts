@@ -1,5 +1,5 @@
 import { PLAYER_AGE_CATEGORIES } from '../players/ageCategories';
-import type { PlayerAgeCategory, TournamentStatus } from '../../types';
+import type { PlayerAgeCategory } from '../../types';
 
 /** Categories a tournament can be created for: the youth sectors and Open (U12 to Open). They are rows of the
  *  player_age_categories reference table, which tournaments.age_category_id points to. */
@@ -31,8 +31,3 @@ export function formatTournamentDate(isoDate: string): string {
   return new Date(year, month - 1, day).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export const TOURNAMENT_STATUS_LABELS: Record<TournamentStatus, string> = {
-  upcoming: 'In programma',
-  'in-progress': 'In corso',
-  completed: 'Concluso',
-};

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } fr
 import { useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getMatchPoints } from '../db/database';
+import { STATUS } from '../features/statuses/statuses';
 import { nextPointNumber } from '../db/pointNumbers';
 import { configuredSetNavigation, deriveGameScore, deriveSetScore, getGameServer, getServer, isActionAvailable, matchWinner, serverOverrideKey, tiebreakServer, type ServerOverrides, type Side, isSetComplete, unavailableReason, isSuperTiebreakSet, nextGameNumber, pointsToGame, tiebreakTarget, resolvePointAction, sortedPoints, type PointAction } from '../features/scoring/scoring';
 import { countGameDescendants, countMatchDescendants, countSetDescendants, softDeleteGame, softDeleteMatch, softDeletePoint, softDeleteSet, updateGame, updateMatch, updatePoint, updateSet, type PointChanges } from '../db/sportsMutations';
@@ -91,11 +92,11 @@ export function Tracker() {
   const matchHasWinner = winnerSide !== null;
   // A match with a winner is completed automatically (also for matches finished before this rule existed).
   useEffect(() => {
-    if (match && matchHasWinner && match.status === 'in-progress') {
-      void setMatchStatus(match.family_id, match.id, 'completed').catch(cause =>
+    if (match && matchHasWinner && match.status_id === STATUS.in_progress) {
+      void setMatchStatus(match.family_id, match.id, STATUS.completed).catch(cause =>
         setTrackerError(cause instanceof Error ? cause.message : 'Impossibile completare la partita.'));
     }
-  }, [match?.id, match?.status, matchHasWinner]);
+  }, [match?.id, match?.status_id, matchHasWinner]);
   useEffect(() => {
     if (!match) return;
     const latestCompleted = Math.max(0, ...completedSets.map(set => set.set_number));
@@ -107,7 +108,7 @@ export function Tracker() {
 
   if (!match || !activeFamily) return <div className="page"><div className="empty-state">Partita non trovata</div></div>;
   // A finished match accepts no more points: outcome buttons, shot counter and first/second ball selector are disabled.
-  const matchOver = matchHasWinner || match.status === 'completed';
+  const matchOver = matchHasWinner || match.status_id === STATUS.completed;
   const activeMatch = match;
 
   function selectGame(number: number) {
@@ -271,8 +272,8 @@ export function Tracker() {
     const hadWinner = matchWinner(points, activeMatch) !== null;
     await softDeletePoint(activeMatch.family_id, point.id);
     const remaining = points.filter(existing => existing.id !== point.id);
-    if (activeMatch.status === 'completed' && hadWinner && matchWinner(remaining, activeMatch) === null) {
-      await setMatchStatus(activeMatch.family_id, activeMatch.id, 'in-progress');
+    if (activeMatch.status_id === STATUS.completed && hadWinner && matchWinner(remaining, activeMatch) === null) {
+      await setMatchStatus(activeMatch.family_id, activeMatch.id, STATUS.in_progress);
     }
   }
 
@@ -329,7 +330,7 @@ export function Tracker() {
 
   async function completeMatch() {
     try {
-      await setMatchStatus(activeMatch.family_id, activeMatch.id, 'completed');
+      await setMatchStatus(activeMatch.family_id, activeMatch.id, STATUS.completed);
       setTrackerError(null);
     } catch (cause) {
       setTrackerError(cause instanceof Error ? cause.message : 'Impossibile completare la partita.');
@@ -560,22 +561,22 @@ export function Tracker() {
         <hr /><span className="menu-section-label">PARTITA</span>
         <button onClick={() => { setMatchMenuOpen(false); setEditingMatch(true); }}>✎ <span>Modifica partita</span></button>
         <button className="menu-delete" onClick={() => { setMatchMenuOpen(false); void removeCurrentMatch(); }}>⌫ <span>Elimina partita</span></button>
-        {match.status === 'in-progress' && <button onClick={() => { setMatchMenuOpen(false); void completeMatch(); }}>✓ <span>Termina partita</span></button>}
+        {match.status_id === STATUS.in_progress && <button onClick={() => { setMatchMenuOpen(false); void completeMatch(); }}>✓ <span>Termina partita</span></button>}
       </div>
     </div>}
   </div>;
 }
 
 /** Saves the match status (and queues it for sync). */
-async function setMatchStatus(familyId: string, matchId: string, status: Match['status']): Promise<void> {
+async function setMatchStatus(familyId: string, matchId: string, statusId: Match['status_id']): Promise<void> {
   await db.transaction('rw', db.matches, db.syncQueue, async () => {
     const current = await db.matches.get(matchId);
     if (!current || current.family_id !== familyId || current.deleted) {
       throw new Error('La partita non è più attiva nello spazio corrente.');
     }
-    if (current.status === status) return;
+    if (current.status_id === statusId) return;
     const updated_at = stamp();
-    const updated = { ...current, status, updated_at, version: current.version + 1 };
+    const updated = { ...current, status_id: statusId, updated_at, version: current.version + 1 };
     await db.matches.put(updated);
     await db.syncQueue.put(queueOperation(familyId, 'matches', updated, updated_at));
   });

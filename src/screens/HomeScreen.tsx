@@ -15,6 +15,7 @@ import historyIcon from '../assets/icone/trasparente/256/storico.png';
 import tennisBallIcon from '../assets/icone/trasparente/512/pallina3d.png';
 import { NewMatch } from './NewMatchWizard';
 import { playerShortName } from '../features/players/playerNames';
+import { STATUS, statusLabel } from '../features/statuses/statuses';
 import type { Match, Player, ScoredPoint } from '../types';
 export function HomeRoute() {
   const location = useLocation();
@@ -56,8 +57,8 @@ export function DashboardHome() {
         if (setScore.opponent > setScore.player) opponentSets += 1;
       }
       return { match, won: playerSets > opponentSets };
-    }))).filter(item => item.match.status === 'completed');
-  }, [activeFamily?.id, matches.map(match => `${match.id}:${match.status}`).join(',')]) ?? [];
+    }))).filter(item => item.match.status_id === STATUS.completed);
+  }, [activeFamily?.id, matches.map(match => `${match.id}:${match.status_id}`).join(',')]) ?? [];
 
   const wins = results.filter(result => result.won).length;
   const winRate = results.length ? Math.round((wins / results.length) * 100) : 0;
@@ -81,15 +82,15 @@ export function DashboardHome() {
 
   const recentDetails = useLiveQuery(async () => {
     if (!activeFamily) return [] as { match: Match; points: ScoredPoint[]; player: Player | undefined }[];
-    const inProgressMatches = matches.filter(match => match.status === 'in-progress');
-    const completedMatches = matches.filter(match => match.status === 'completed');
+    const inProgressMatches = matches.filter(match => match.status_id === STATUS.in_progress);
+    const completedMatches = matches.filter(match => match.status_id === STATUS.completed);
     const recentMatches = [...inProgressMatches, ...completedMatches].slice(0, 2);
     return Promise.all(recentMatches.map(async match => ({
       match,
       points: await getMatchPoints(activeFamily.id, match.id),
       player: await db.players.get(match.player_id), // also a deleted player, so that the name is still shown
     })));
-  }, [activeFamily?.id, matches.map(match => `${match.id}:${match.status}`).join(',')]) ?? [];
+  }, [activeFamily?.id, matches.map(match => `${match.id}:${match.status_id}`).join(',')]) ?? [];
 
   return <div className="home-page">
     <section className="home-hero">
@@ -130,7 +131,7 @@ export function DashboardHome() {
             if (score.player > score.opponent) playerSets += 1;
             if (score.opponent > score.player) opponentSets += 1;
           }
-          const inProgress = match.status === 'in-progress';
+          const inProgress = match.status_id === STATUS.in_progress;
           const won = !inProgress && playerSets > opponentSets;
           const setLabels = [1, 2, 3].map(setNumber => deriveSetScore(points, setNumber, match)).filter(score => score.player || score.opponent);
           const scoreText = setLabels.map(score => `${score.player}-${score.opponent}`).join(' ');
@@ -138,7 +139,7 @@ export function DashboardHome() {
             <img className="recent-match-ball" src={tennisBallIcon} alt="" />
             <span className="recent-info"><strong>{playerShortName(player)} vs {match.opponent}</strong><small>{new Date(match.match_date).toLocaleDateString('it-IT')}</small></span>
             <strong className="recent-score">{scoreText || '—'}</strong>
-            <span className={`match-result ${inProgress ? 'in-progress' : won ? 'win' : 'loss'}`}>{inProgress ? 'In corso' : won ? 'Vinta' : 'Persa'}</span>
+            <span className={`match-result ${inProgress ? 'in-progress' : won ? 'win' : 'loss'}`}>{inProgress ? statusLabel(STATUS.in_progress, 'match') : won ? 'Vinta' : 'Persa'}</span>
             <svg className="recent-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
           </button>;
         })}

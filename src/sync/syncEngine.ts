@@ -19,6 +19,7 @@ import type { RemoteChange, SyncRepository } from './contracts';
 import { readRecordBaseline, saveSyncMapping, writeRecordBaseline } from './syncState';
 import { syncEntityOrder } from './supabaseRepository';
 import { normalizeUiError } from '../services/uiMessages';
+import { migrateLegacyStatus } from '../features/statuses/statuses';
 
 const PAGE_SIZE = 200;
 const INITIAL_COMPLETE = '__complete__';
@@ -200,7 +201,10 @@ async function applyRemoteRecord(
   type: SyncEntityType,
   remotePayload: Record<string, unknown>,
 ): Promise<'applied' | 'ignored' | 'conflict'> {
-  const localPayload = toLocalPayload(remotePayload, mapping);
+  // Records saved on the server before the statuses table may still carry a text status: converted to status_id.
+  const converted = type === 'matches' ? migrateLegacyStatus('match', remotePayload)
+    : type === 'tournaments' ? migrateLegacyStatus('tournament', remotePayload) : remotePayload;
+  const localPayload = toLocalPayload(converted, mapping);
   const id = String(localPayload.id);
   const version = Number(localPayload.version);
   const store = storeFor(type);
@@ -595,8 +599,10 @@ export async function resolveSyncConflict(
         typeof remotePayload.deleted !== 'boolean') {
         throw new Error('La versione remota del conflitto non è valida.');
       }
+      const converted = conflict.entity_type === 'matches' ? migrateLegacyStatus('match', remotePayload)
+        : conflict.entity_type === 'tournaments' ? migrateLegacyStatus('tournament', remotePayload) : remotePayload;
       await store.put({
-        ...remotePayload,
+        ...converted,
         family_id: syncMapping.local_family_id,
       });
       const operations = await queuedFor(conflict.entity_type, conflict.entity_id, conflict.family_id);

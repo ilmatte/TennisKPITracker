@@ -12,6 +12,7 @@ import { BrandBar } from './BrandBar';
 import { MatchesTabs } from './MatchesTabs';
 import { playerFullName, playerShortName } from '../features/players/playerNames';
 import { tournamentCategoryLabel } from '../features/tournaments/tournaments';
+import { MATCH_STATUS_IDS, statusLabel } from '../features/statuses/statuses';
 import type { Match } from '../types';
 
 export function Matches() {
@@ -26,7 +27,7 @@ export function Matches() {
   const summaries = useLiveQuery(async () => {
     if (!activeFamily) return [] as MatchSummary[];
     return Promise.all(matches.map(async match => summarizeMatch(match, await getMatchPoints(activeFamily.id, match.id))));
-  }, [activeFamily?.id, matches.map(match => `${match.id}:${match.status}:${match.version}`).join(',')]) ?? [];
+  }, [activeFamily?.id, matches.map(match => `${match.id}:${match.status_id}:${match.version}`).join(',')]) ?? [];
   const [newOpen, setNewOpen] = useState(false);
   const [filter, setFilter] = useState<'all' | 'won' | 'lost'>('all');
   const navigate = useNavigate();
@@ -137,7 +138,9 @@ export function MatchEditor({ match, error, onClose, onSave }: {
       <label>Target tie-break<select value={draft.tiebreak_target} onChange={event => field('tiebreak_target', Number(event.target.value))}><option value={7}>7 punti</option><option value={10}>10 punti</option></select></label>
       <label>Primo servizio<select value={draft.first_server} onChange={event => field('first_server', event.target.value as Match['first_server'])}><ServerOptions playerName={editorPlayerName} opponent={draft.opponent} /></select></label>
     </div>
-    <label>Stato<select value={draft.status} onChange={event => field('status', event.target.value as Match['status'])}><option value="in-progress">In corso</option><option value="completed">Terminata</option></select></label>
+    <label>Stato<select value={draft.status_id} onChange={event => field('status_id', Number(event.target.value) as Match['status_id'])}>
+      {MATCH_STATUS_IDS.map(statusId => <option key={statusId} value={statusId}>{statusLabel(statusId, 'match')}</option>)}
+    </select></label>
     <label>Risultato<input value={draft.result ?? ''} onChange={event => field('result', event.target.value || null)} /></label>
     <label className="toggle-row"><span>Punto secco al 40-40</span><input type="checkbox" checked={draft.deuce_single_point} onChange={event => field('deuce_single_point', event.target.checked)} /></label>
     <div className="form-grid">
@@ -165,7 +168,7 @@ export function MatchEditor({ match, error, onClose, onSave }: {
         tiebreak_starts_at_363: (draft.games_to_win_set ?? (draft.tiebreak_starts_at_363 ? 4 : 6)) === 4,
         deuce_single_point: draft.deuce_single_point,
         first_server: draft.first_server,
-        status: draft.status,
+        status_id: draft.status_id,
         result: draft.result,
       })}>Salva modifiche</button>
   </div></div>;

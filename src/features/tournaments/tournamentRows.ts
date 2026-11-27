@@ -1,17 +1,18 @@
 import { db } from '../../db/database';
-import type { Club, Match, Tournament, TournamentStatus } from '../../types';
+import { STATUS } from '../statuses/statuses';
+import type { Club, Match, Tournament, TournamentStatusId } from '../../types';
 
 export type TournamentRow = {
   tournament: Tournament;
   club: Club | undefined;
-  status: TournamentStatus;
+  status_id: TournamentStatusId;
   /** Latest of the start date and the last match date. */
   lastActivity: string;
   /** The tournament's matches, most recent first. */
   matches: Match[];
 };
 
-const STATUS_ORDER: Record<TournamentStatus, number> = { 'in-progress': 0, upcoming: 1, completed: 2 };
+const STATUS_ORDER: Record<TournamentStatusId, number> = { [STATUS.in_progress]: 0, [STATUS.upcoming]: 1, [STATUS.completed]: 2 };
 
 /** Active tournaments of a family with their club, status and matches: those in progress first, then the
  *  upcoming and the completed ones, each group by most recent activity. */
@@ -34,11 +35,11 @@ export async function loadTournamentRows(familyId: string): Promise<TournamentRo
     return {
       tournament,
       club: clubById.get(tournament.club_id),
-      status: tournament.status,
+      status_id: tournament.status_id,
       lastActivity: last && last > tournament.start_date ? last : tournament.start_date,
       matches: tournamentMatches,
     };
-  }).sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
+  }).sort((a, b) => STATUS_ORDER[a.status_id] - STATUS_ORDER[b.status_id]
     || b.lastActivity.localeCompare(a.lastActivity)
     || a.tournament.name.localeCompare(b.tournament.name, 'it'));
 }

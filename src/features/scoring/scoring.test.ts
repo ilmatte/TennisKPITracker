@@ -9,7 +9,7 @@ const match = (overrides: Partial<Match> = {}): Match => ({
   player_ranking_snapshot: '4.1', opponent: 'Andrea',
   number_of_sets: 3, third_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
   tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player',
-  status: 'in-progress', created_at: '2026-11-17', updated_at: '2026-11-17', version: 1, deleted: false,
+  status_id: 2, created_at: '2026-11-17', updated_at: '2026-11-17', version: 1, deleted: false,
   ...overrides,
 });
 

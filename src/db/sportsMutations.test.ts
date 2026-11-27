@@ -49,7 +49,7 @@ function match(id = 'match-1', family_id = 'family-1', player_id = 'player-1'): 
     opponent: 'Bea', opponent_ranking: '3.5', tournament_id: null,
     tournament_match_number: 4, number_of_sets: 3, third_set_type: 'normal',
     super_tiebreak_target: 10, tiebreak_target: 7, tiebreak_starts_at_363: true,
-    deuce_single_point: false, first_server: 'player', status: 'in-progress', result: null,
+    deuce_single_point: false, first_server: 'player', status_id: 2, result: null,
     created_at: now, updated_at: now, version: 1, deleted: false,
   };
 }
@@ -189,7 +189,7 @@ describe('sport entity mutations', () => {
       tournament_id: null, tournament_match_number: 8, number_of_sets: 5,
       third_set_type: 'super-tiebreak', super_tiebreak_target: 12, tiebreak_target: 10,
       tiebreak_starts_at_363: false, deuce_single_point: true, first_server: 'opponent',
-      status: 'completed', result: '6-2 6-4',
+      status_id: 3, result: '6-2 6-4',
     };
     const saved = await updateMatch('family-1', 'match-1', changes);
     expect(saved).toMatchObject({
@@ -555,7 +555,7 @@ describe('match creation', () => {
     const created = await createMatch('family-1', input({ tournament_id: tournament.id }));
     expect(created).toMatchObject({
       family_id: 'family-1', tournament_id: tournament.id, opponent: 'Bea', player_ranking_snapshot: '4.1',
-      games_to_win_set: 6, tiebreak_starts_at_363: false, status: 'in-progress', version: 1, deleted: false,
+      games_to_win_set: 6, tiebreak_starts_at_363: false, status_id: 2, version: 1, deleted: false,
     });
     expect(created).not.toHaveProperty('tournament');
     expect(await db.matches.get(created.id)).toEqual(created);

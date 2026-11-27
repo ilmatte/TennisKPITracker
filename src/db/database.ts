@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable, type Table } from 'dexie';
 import { POINT_TYPES } from '../features/scoring/pointTypes';
 import { PLAYER_AGE_CATEGORIES } from '../features/players/ageCategories';
+import { STATUSES, migrateLegacyStatus } from '../features/statuses/statuses';
 import type {
   Club,
   Family,
@@ -13,6 +14,7 @@ import type {
   PointType,
   PlayerAgeCategory,
   ScoredPoint,
+  Status,
   SyncOperation,
   SyncConflict,
   SyncMetadata,
@@ -33,6 +35,7 @@ export class TennisDatabase extends Dexie {
   points!: EntityTable<Point, 'id'>;
   point_types!: Table<PointType, number>;
   player_age_categories!: Table<PlayerAgeCategory, number>;
+  statuses!: Table<Status, number>;
   syncQueue!: EntityTable<SyncOperation, 'id'>;
   syncMetadata!: EntityTable<SyncMetadata, 'key'>;
   syncConflicts!: EntityTable<SyncConflict, 'id'>;
@@ -78,6 +81,19 @@ export class TennisDatabase extends Dexie {
         (tournament as { status: string }).status = 'upcoming';
       }
     }));
+    // v14: the statuses reference table, shared by tournaments and matches, whose text status becomes status_id (FK to
+    // statuses). Mirrors supabase/initial_schema.sql and supabase/migrations/20261127_unified_statuses.sql.
+    this.version(14).stores({
+      statuses: 'id, &code, sort_order',
+      matches: 'id, family_id, match_date, player_id, status_id, tournament_id, updated_at, deleted',
+    }).upgrade(async transaction => {
+      await transaction.table('tournaments').toCollection().modify((tournament, ref) => {
+        ref.value = migrateLegacyStatus('tournament', tournament);
+      });
+      await transaction.table('matches').toCollection().modify((match, ref) => {
+        ref.value = migrateLegacyStatus('match', match);
+      });
+    });
     // Reference tables are written every time the database opens, whatever version the device came from.
     this.on('ready', database => seedReferenceTables(database as TennisDatabase));
   }
@@ -86,9 +102,10 @@ export class TennisDatabase extends Dexie {
 /** Writes the reference tables (same rows as supabase/initial_schema.sql). Idempotent: rows are keyed by their stable
  *  id, so running it at every start updates them instead of creating duplicates. */
 function seedReferenceTables(database: TennisDatabase): Promise<unknown> {
-  return database.transaction('rw', database.point_types, database.player_age_categories, () => Promise.all([
+  return database.transaction('rw', [database.point_types, database.player_age_categories, database.statuses], () => Promise.all([
     database.point_types.bulkPut([...POINT_TYPES]),
     database.player_age_categories.bulkPut([...PLAYER_AGE_CATEGORIES]),
+    database.statuses.bulkPut([...STATUSES]),
   ]));
 }
 

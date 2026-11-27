@@ -84,16 +84,33 @@ export interface Tournament {
   age_category_id: number;
   /** ISO calendar date (YYYY-MM-DD). */
   start_date: string;
-  /** 'upcoming' when created; changed only by hand from the Tornei list. */
-  status: TournamentStatus;
+  /** FK to statuses.id: In programma (1) when created, then In corso (2) or Concluso (3), changed only by hand from the
+   *  Tornei list. */
+  status_id: TournamentStatusId;
   created_at: string;
   updated_at: string;
   version: number;
   deleted: boolean;
 }
 
-/** In programma, In corso, Concluso (labels in features/tournaments/tournaments.ts). */
-export type TournamentStatus = 'upcoming' | 'in-progress' | 'completed';
+/** Row of the statuses reference table, shared by tournaments and matches (see features/statuses/statuses.ts). The
+ *  label has a masculine and a feminine form, so that it agrees with the entity: "torneo concluso", "partita
+ *  conclusa". */
+export interface Status {
+  id: number;
+  code: 'upcoming' | 'in_progress' | 'completed';
+  label_masculine: string;
+  label_feminine: string;
+  applies_to_tournaments: boolean;
+  applies_to_matches: boolean;
+  sort_order: number;
+}
+
+/** statuses.id: 1 upcoming (In programma), 2 in_progress (In corso), 3 completed (Concluso / Conclusa). */
+export type StatusId = 1 | 2 | 3;
+export type TournamentStatusId = StatusId;
+/** A match is never "In programma": it exists from the moment it starts. */
+export type MatchStatusId = 2 | 3;
 
 export interface Match {
   id: UUID;
@@ -118,7 +135,8 @@ export interface Match {
   tiebreak_starts_at_363: boolean;
   deuce_single_point: boolean;
   first_server: 'player' | 'opponent';
-  status: 'in-progress' | 'completed';
+  /** FK to statuses.id: In corso (2) or Conclusa (3). */
+  status_id: MatchStatusId;
   result?: string | null;
   created_at: string;
   updated_at: string;

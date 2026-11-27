@@ -80,6 +80,25 @@ create table public.clubs (
   unique (family_id, id)
 );
 
+-- Statuses of tournaments and matches. Reference data (not synced): ids are stable and mirrored by the app
+-- (src/features/statuses/statuses.ts) and by the Dexie statuses store: never renumber them. Each label has a masculine
+-- and a feminine form, so that it agrees with the entity ("torneo concluso", "partita conclusa"); applies_to_* say which
+-- entities can take the status (a match is never upcoming).
+create table public.statuses (
+  id smallint primary key,
+  code text not null unique,
+  label_masculine text not null,
+  label_feminine text not null,
+  applies_to_tournaments boolean not null,
+  applies_to_matches boolean not null,
+  sort_order smallint not null unique
+);
+
+insert into public.statuses (id, code, label_masculine, label_feminine, applies_to_tournaments, applies_to_matches, sort_order) values
+  (1, 'upcoming', 'In programma', 'In programma', true, false, 1),
+  (2, 'in_progress', 'In corso', 'In corso', true, true, 2),
+  (3, 'completed', 'Concluso', 'Conclusa', true, true, 3);
+
 -- Tournaments the family takes part in. club_id: hosting club. age_category_id: FK to player_age_categories (the
 -- constraint is added after that table is created, at the end of this script); the app offers U12 to Open.
 create table public.tournaments (
@@ -89,13 +108,14 @@ create table public.tournaments (
   name text not null check (length(btrim(name)) > 0),
   age_category_id smallint not null,
   start_date date not null,
-  -- 'upcoming' (In programma) when created; changed only by hand in the app.
-  status text not null default 'upcoming'
-    constraint tournaments_status_check check (status in ('upcoming', 'in-progress', 'completed')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   version integer not null default 1 check (version > 0),
   deleted boolean not null default false,
+  -- In programma (1) when created; changed only by hand in the app. Last column, as in a database upgraded with
+  -- migrations/20261127_unified_statuses.sql.
+  status_id smallint not null default 1
+    constraint tournaments_status_id_fkey references public.statuses(id),
   unique (family_id, id),
   constraint tournaments_family_id_club_id_fkey foreign key (family_id, club_id)
     references public.clubs(family_id, id)
@@ -121,7 +141,6 @@ create table public.matches (
   tiebreak_starts_at_363 boolean not null default true,
   deuce_single_point boolean not null default true,
   first_server text not null check (first_server in ('player', 'opponent')),
-  status text not null check (status in ('in-progress', 'completed')),
   result text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -129,6 +148,11 @@ create table public.matches (
   deleted boolean not null default false,
   -- Tournament of the match; null only for matches created before tournaments existed.
   tournament_id uuid,
+  -- In corso (2) or Conclusa (3): a match is never upcoming. Last column, as in a database upgraded with
+  -- migrations/20261127_unified_statuses.sql.
+  status_id smallint not null
+    constraint matches_status_id_fkey references public.statuses(id)
+    constraint matches_status_id_check check (status_id in (2, 3)),
   unique (family_id, id),
   foreign key (family_id, player_id)
     references public.players(family_id, id)
@@ -1022,6 +1046,18 @@ grant select on table public.point_types to authenticated;
 alter table public.point_types enable row level security;
 create policy "authenticated users can read point types"
   on public.point_types for select to authenticated
+  using (true);
+
+commit;
+
+-- Statuses are read-only reference data for signed-in users.
+begin;
+
+revoke all on table public.statuses from public, anon;
+grant select on table public.statuses to authenticated;
+alter table public.statuses enable row level security;
+create policy "authenticated users can read statuses"
+  on public.statuses for select to authenticated
   using (true);
 
 commit;

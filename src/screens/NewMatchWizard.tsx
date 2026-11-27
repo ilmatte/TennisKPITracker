@@ -7,11 +7,11 @@ import { useFamily } from '../features/families/FamilyContextDefinition';
 import { playerAgeCategory } from '../features/players/ageCategories';
 import { playerFullName } from '../features/players/playerNames';
 import {
-  TOURNAMENT_STATUS_LABELS,
   formatTournamentDate,
   localIsoDate,
   tournamentCategoryLabel,
 } from '../features/tournaments/tournaments';
+import { statusClassName, statusLabel } from '../features/statuses/statuses';
 import { loadTournamentRows, type TournamentRow } from '../features/tournaments/tournamentRows';
 import { CreationScreen, DateBox, PlusIcon, SelectBox } from './CreationScreen';
 import { NewTournament } from './NewTournamentScreen';
@@ -136,7 +136,7 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
         <div className="cw-step-title">In quale torneo si gioca?</div>
         {tournaments.length > 0
           ? <div className="cw-cards" role="radiogroup" aria-label="Torneo">
-            {tournaments.map(({ tournament, club, status }) => {
+            {tournaments.map(({ tournament, club, status_id }) => {
               const selected = tournament.id === selectedRow?.tournament.id;
               const details = [club?.name, tournamentCategoryLabel(tournament.age_category_id), `dal ${formatTournamentDate(tournament.start_date)}`]
                 .filter(Boolean).join(' • ');
@@ -144,7 +144,7 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
                 className={`cw-card${selected ? ' selected' : ''}`} onClick={() => setChosenTournamentId(tournament.id)}>
                 <span className="cw-card-icon"><TrophyIcon /></span>
                 <span className="cw-card-text"><strong>{tournament.name}</strong><small>{details}</small></span>
-                <span className={`cw-badge ${status}`}>{TOURNAMENT_STATUS_LABELS[status]}</span>
+                <span className={`cw-badge ${statusClassName(status_id)}`}>{statusLabel(status_id, 'tournament')}</span>
               </button>;
             })}
           </div>
