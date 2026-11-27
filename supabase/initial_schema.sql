@@ -124,8 +124,7 @@ create table public.matches (
   updated_at timestamptz not null default now(),
   version integer not null default 1 check (version > 0),
   deleted boolean not null default false,
-  -- Tournament of the match; null only for matches created before tournaments existed. Last column, as in a project
-  -- upgraded with 003_tournaments.sql.
+  -- Tournament of the match; null only for matches created before tournaments existed.
   tournament_id uuid,
   unique (family_id, id),
   foreign key (family_id, player_id)

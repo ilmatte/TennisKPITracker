@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import schema from '../../supabase/initial_schema.sql?raw';
-import tournamentsMigration from '../../supabase/003_tournaments.sql?raw';
 
 function functionBody(sql: string, name: string): string {
   const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -60,24 +59,16 @@ describe('workspace ownership SQL guarantees', () => {
 
 describe('tournaments SQL', () => {
   it('links tournaments to clubs and age categories, and matches to tournaments, within the family', () => {
-    expect(tournamentsMigration).not.toMatch(/\b(drop|truncate)\s+table\b/i);
-    for (const sql of [schema, tournamentsMigration]) {
-      expect(sql).toMatch(/constraint tournaments_family_id_club_id_fkey foreign key \(family_id, club_id\)\s+references public\.clubs\(family_id, id\)/i);
-      expect(sql).toMatch(/add constraint tournaments_age_category_id_fkey\s+foreign key \(age_category_id\) references public\.player_age_categories\(id\)/i);
-      expect(sql).toMatch(/constraint matches_family_id_tournament_id_fkey foreign key \(family_id, tournament_id\)\s+references public\.tournaments\(family_id, id\)/i);
-      expect(sql).toMatch(/create policy "family members can read tournaments"/i);
-      expect(sql.match(/'players', 'clubs', 'tournaments', 'matches', 'sets', 'games', 'points'/g)).toHaveLength(4);
-    }
+    expect(schema).toMatch(/constraint tournaments_family_id_club_id_fkey foreign key \(family_id, club_id\)\s+references public\.clubs\(family_id, id\)/i);
+    expect(schema).toMatch(/add constraint tournaments_age_category_id_fkey\s+foreign key \(age_category_id\) references public\.player_age_categories\(id\)/i);
+    expect(schema).toMatch(/constraint matches_family_id_tournament_id_fkey foreign key \(family_id, tournament_id\)\s+references public\.tournaments\(family_id, id\)/i);
+    expect(schema).toMatch(/create policy "family members can read tournaments"/i);
+    expect(schema).not.toMatch(/^\s*tournament text,/m);
   });
 
-  it('upgrades existing projects with the same sync functions as a new project', () => {
-    for (const name of ['apply_sync_record', 'list_initial_snapshot']) {
-      expect(functionBody(tournamentsMigration, name)).toBe(functionBody(schema, name));
-    }
+  it('accepts the tournaments entity type in the sync tables and functions', () => {
+    expect(schema.match(/'players', 'clubs', 'tournaments', 'matches', 'sets', 'games', 'points'/g)).toHaveLength(4);
     expect(functionBody(schema, 'apply_sync_record')).toMatch(/when 'tournaments' then 'tournaments'/);
-    expect(tournamentsMigration).toMatch(/create table if not exists public\.tournaments/i);
-    expect(tournamentsMigration).toMatch(/alter table public\.matches add column if not exists tournament_id uuid/i);
-    expect(tournamentsMigration).toMatch(/alter table public\.matches drop column if exists tournament;/i);
-    expect(schema).not.toMatch(/^\s*tournament text,/m);
+    expect(functionBody(schema, 'list_initial_snapshot')).toMatch(/'tournaments'/);
   });
 });
