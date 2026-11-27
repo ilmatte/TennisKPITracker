@@ -17,7 +17,7 @@ describe('local database schema', () => {
   it('creates every store aligned with the Supabase tables and seeds the reference tables', async () => {
     const fresh = new TennisDatabase(databaseName);
     await fresh.open();
-    expect(fresh.verno).toBe(14);
+    expect(fresh.verno).toBe(15);
     expect(fresh.tables.map(table => table.name).sort()).toEqual([
       'clubs', 'families', 'family_invitations', 'family_members', 'games', 'matches', 'player_age_categories', 'players',
       'point_types', 'points', 'sets', 'statuses', 'syncConflicts', 'syncMetadata', 'syncQueue', 'tournaments',
@@ -49,7 +49,7 @@ describe('local database schema', () => {
 
     const reopened = new TennisDatabase(databaseName);
     await reopened.open();
-    expect(reopened.verno).toBe(14);
+    expect(reopened.verno).toBe(15);
     expect(await reopened.table('point_types').toArray()).toEqual([...POINT_TYPES]);
     expect(await reopened.table('player_age_categories').toArray()).toEqual([...PLAYER_AGE_CATEGORIES]);
     expect(await reopened.table('players').get('p1')).toEqual(player);
@@ -83,7 +83,7 @@ describe('local database schema', () => {
 
     const upgraded = new TennisDatabase(databaseName);
     await upgraded.open();
-    expect(upgraded.verno).toBe(14);
+    expect(upgraded.verno).toBe(15);
     expect(await upgraded.table('clubs').get('c1')).toEqual(club);
     // The free-text tournament is removed; matches created before tournaments have no tournament_id. The text status
     // becomes status_id (v14).
@@ -110,10 +110,39 @@ describe('local database schema', () => {
 
     const upgraded = new TennisDatabase(databaseName);
     await upgraded.open();
-    expect(upgraded.verno).toBe(14);
+    expect(upgraded.verno).toBe(15);
     expect((await upgraded.tournaments.toArray()).map(item => [item.id, item.status_id, 'status' in item])).toEqual([
       ['t1', 1, false], ['t2', 1, false], ['t3', 3, false],
     ]);
+    upgraded.close();
+  });
+
+  it('upgrades a version 14 database renaming third_set_type to last_set_type in matches, pending operations and conflicts', async () => {
+    const older = new Dexie(databaseName);
+    older.version(14).stores({
+      matches: 'id, family_id, match_date, player_id, status_id, tournament_id, updated_at, deleted',
+      syncQueue: 'id, operation_id, family_id, entity_type, entity_id, created_at, attempts',
+      syncConflicts: 'id, family_id, entity_type, entity_id, status, created_at',
+    });
+    await older.open();
+    await older.table('matches').add({ id: 'm1', family_id: 'f1', third_set_type: 'super-tiebreak' });
+    await older.table('syncQueue').bulkAdd([
+      { id: 'q1', family_id: 'f1', entity_type: 'matches', entity_id: 'm1', payload: { id: 'm1', third_set_type: 'normal' } },
+      { id: 'q2', family_id: 'f1', entity_type: 'players', entity_id: 'p1', payload: { id: 'p1', third_set_type: 'kept' } },
+    ]);
+    await older.table('syncConflicts').add({
+      id: 'c1', family_id: 'f1', entity_type: 'matches', entity_id: 'm1',
+      local_payload: { third_set_type: 'normal' }, remote_payload: null,
+    });
+    older.close();
+
+    const upgraded = new TennisDatabase(databaseName);
+    await upgraded.open();
+    expect(upgraded.verno).toBe(15);
+    expect(await upgraded.matches.get('m1')).toEqual({ id: 'm1', family_id: 'f1', last_set_type: 'super-tiebreak' });
+    expect((await upgraded.syncQueue.get('q1'))?.payload).toEqual({ id: 'm1', last_set_type: 'normal' });
+    expect((await upgraded.syncQueue.get('q2'))?.payload).toEqual({ id: 'p1', third_set_type: 'kept' });
+    expect(await upgraded.syncConflicts.get('c1')).toMatchObject({ local_payload: { last_set_type: 'normal' }, remote_payload: null });
     upgraded.close();
   });
 });

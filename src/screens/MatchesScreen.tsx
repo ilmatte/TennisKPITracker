@@ -131,7 +131,7 @@ export function MatchEditor({ match, error, onClose, onSave }: {
       <label>Numero set<select value={draft.number_of_sets} onChange={event => field('number_of_sets', Number(event.target.value) as 3 | 5)}><option value={3}>Al meglio dei 3</option><option value={5}>Al meglio dei 5</option></select></label>
     </div>
     <div className="form-grid">
-      <label>Set decisivo<select value={draft.third_set_type} onChange={event => field('third_set_type', event.target.value as Match['third_set_type'])}><option value="normal">Normale</option><option value="super-tiebreak">Super tie-break</option></select></label>
+      <label>Set decisivo<select value={draft.last_set_type} onChange={event => field('last_set_type', event.target.value as Match['last_set_type'])}><option value="normal">Normale</option><option value="super-tiebreak">Super tie-break</option></select></label>
       <label>Target super tie-break<select value={draft.super_tiebreak_target} onChange={event => field('super_tiebreak_target', Number(event.target.value))}><option value={7}>7 punti</option><option value={10}>10 punti</option></select></label>
     </div>
     <div className="form-grid">
@@ -160,7 +160,7 @@ export function MatchEditor({ match, error, onClose, onSave }: {
         tournament_id: draft.tournament_id ?? null,
         tournament_match_number: draft.tournament_match_number,
         number_of_sets: draft.number_of_sets,
-        third_set_type: draft.third_set_type,
+        last_set_type: draft.last_set_type,
         super_tiebreak_target: draft.super_tiebreak_target,
         tiebreak_target: draft.tiebreak_target,
         games_to_win_set: draft.games_to_win_set ?? (draft.tiebreak_starts_at_363 ? 4 : 6),

@@ -138,7 +138,7 @@ export function isSuperTiebreakSet(match: Match, setNumber: number): boolean {
   // In best-of-three, the deciding set is replaced by a super tie-break.
   // In best-of-five, the fifth set remains a normal set and only its closing
   // tie-break is replaced by a super tie-break.
-  return match.number_of_sets === 3 && match.third_set_type === 'super-tiebreak' && setNumber === 3;
+  return match.number_of_sets === 3 && match.last_set_type === 'super-tiebreak' && setNumber === 3;
 }
 
 /** Games won by each side in a set, counting only games before `beforeGame` (all games when omitted). */
@@ -164,7 +164,7 @@ export function tiebreakTarget(points: ScoredPoint[], match: Match, setNumber: n
   // Only the game after tiebreakAt-tiebreakAt can be a tie-break, so every game before it is a normal game.
   const score = countGames(points, setNumber, match, gameNumber);
   if (score.player !== tiebreakAt || score.opponent !== tiebreakAt) return null;
-  return match.number_of_sets === 5 && match.third_set_type === 'super-tiebreak' && setNumber === 5
+  return match.number_of_sets === 5 && match.last_set_type === 'super-tiebreak' && setNumber === 5
     ? (match.super_tiebreak_target || 10)
     : (match.tiebreak_target || 7);
 }

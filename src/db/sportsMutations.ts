@@ -144,7 +144,7 @@ export async function updatePlayer(
 
 export type MatchChanges = Pick<Match,
   'match_date' | 'player_id' | 'opponent' | 'opponent_ranking' |
-  'tournament_id' | 'tournament_match_number' | 'number_of_sets' | 'third_set_type' |
+  'tournament_id' | 'tournament_match_number' | 'number_of_sets' | 'last_set_type' |
   'super_tiebreak_target' | 'tiebreak_target' | 'games_to_win_set' | 'short_set_tiebreak_at' | 'tiebreak_starts_at_363' |
   'deuce_single_point' | 'first_server' | 'status_id' | 'result'
 >;
@@ -196,7 +196,7 @@ export async function updateMatch(
 
 /** Fields of a new match chosen in the "Nuova partita" wizard. The ranking snapshot is taken from the player. */
 export type NewMatchInput = Pick<Match,
-  'match_date' | 'player_id' | 'opponent' | 'number_of_sets' | 'third_set_type' | 'super_tiebreak_target' |
+  'match_date' | 'player_id' | 'opponent' | 'number_of_sets' | 'last_set_type' | 'super_tiebreak_target' |
   'tiebreak_target' | 'games_to_win_set' | 'short_set_tiebreak_at' | 'deuce_single_point' | 'first_server'
 > & { tournament_id: string };
 

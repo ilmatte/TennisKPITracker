@@ -125,7 +125,7 @@ export interface Match {
   tournament_id?: UUID | null;
   tournament_match_number?: number | null;
   number_of_sets: 3 | 5;
-  third_set_type: 'normal' | 'super-tiebreak';
+  last_set_type: 'normal' | 'super-tiebreak';
   super_tiebreak_target: number;
   tiebreak_target: number;
   /** Games required to win a standard set; optional for legacy local records. */

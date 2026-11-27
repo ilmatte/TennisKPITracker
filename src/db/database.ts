@@ -94,9 +94,32 @@ export class TennisDatabase extends Dexie {
         ref.value = migrateLegacyStatus('match', match);
       });
     });
+    // v15: matches.third_set_type renamed last_set_type (it is the deciding set: the third or the fifth). Not indexed.
+    // Pending sync operations and conflicts carry match records too, so they are renamed as well: an unsent upsert
+    // with the old column would be rejected by Supabase.
+    this.version(15).stores({}).upgrade(async transaction => {
+      await transaction.table('matches').toCollection().modify((match, ref) => {
+        ref.value = renameLastSetType(match);
+      });
+      await transaction.table('syncQueue').toCollection().modify((operation: SyncOperation) => {
+        if (operation.entity_type === 'matches') operation.payload = renameLastSetType(operation.payload);
+      });
+      await transaction.table('syncConflicts').toCollection().modify((conflict: SyncConflict) => {
+        if (conflict.entity_type !== 'matches') return;
+        conflict.local_payload = renameLastSetType(conflict.local_payload);
+        conflict.remote_payload = renameLastSetType(conflict.remote_payload);
+      });
+    });
     // Reference tables are written every time the database opens, whatever version the device came from.
     this.on('ready', database => seedReferenceTables(database as TennisDatabase));
   }
+}
+
+/** A match record (or match payload) with third_set_type renamed last_set_type; anything else is returned unchanged. */
+export function renameLastSetType<T>(record: T): T {
+  if (!record || typeof record !== 'object' || !('third_set_type' in record)) return record;
+  const { third_set_type, ...rest } = record as Record<string, unknown>;
+  return { ...rest, last_set_type: (rest.last_set_type as unknown) ?? third_set_type } as T;
 }
 
 /** Writes the reference tables (same rows as supabase/initial_schema.sql). Idempotent: rows are keyed by their stable

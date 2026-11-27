@@ -47,7 +47,7 @@ function match(id = 'match-1', family_id = 'family-1', player_id = 'player-1'): 
     id, family_id, match_date: '2026-01-01', player_id,
     player_ranking_snapshot: '4.1',
     opponent: 'Bea', opponent_ranking: '3.5', tournament_id: null,
-    tournament_match_number: 4, number_of_sets: 3, third_set_type: 'normal',
+    tournament_match_number: 4, number_of_sets: 3, last_set_type: 'normal',
     super_tiebreak_target: 10, tiebreak_target: 7, tiebreak_starts_at_363: true,
     deuce_single_point: false, first_server: 'player', status_id: 2, result: null,
     created_at: now, updated_at: now, version: 1, deleted: false,
@@ -187,7 +187,7 @@ describe('sport entity mutations', () => {
     const changes: MatchChanges = {
       match_date: '2026-02-02', player_id: 'player-2', opponent: 'Cam', opponent_ranking: '2.1',
       tournament_id: null, tournament_match_number: 8, number_of_sets: 5,
-      third_set_type: 'super-tiebreak', super_tiebreak_target: 12, tiebreak_target: 10,
+      last_set_type: 'super-tiebreak', super_tiebreak_target: 12, tiebreak_target: 10,
       tiebreak_starts_at_363: false, deuce_single_point: true, first_server: 'opponent',
       status_id: 3, result: '6-2 6-4',
     };
@@ -513,7 +513,7 @@ describe('tournament deletion', () => {
       { create: { name: 'Club', city: '', surface: null } });
     const created = await createMatch('family-1', {
       tournament_id: tournament.id, match_date: '2026-01-02', player_id: 'player-1', opponent: 'Bea', number_of_sets: 3,
-      third_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7, games_to_win_set: 6,
+      last_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7, games_to_win_set: 6,
       short_set_tiebreak_at: 3, deuce_single_point: true, first_server: 'player',
     });
     await softDeleteTournament('family-1', tournament.id);
@@ -542,7 +542,7 @@ describe('match creation', () => {
   function input(overrides: Partial<NewMatchInput> = {}): NewMatchInput {
     return {
       tournament_id: 'missing', match_date: '2026-01-10', player_id: 'player-1', opponent: '  Bea ',
-      number_of_sets: 3, third_set_type: 'super-tiebreak', super_tiebreak_target: 10, tiebreak_target: 7,
+      number_of_sets: 3, last_set_type: 'super-tiebreak', super_tiebreak_target: 10, tiebreak_target: 7,
       games_to_win_set: 6, short_set_tiebreak_at: 3, deuce_single_point: true, first_server: 'opponent',
       ...overrides,
     };

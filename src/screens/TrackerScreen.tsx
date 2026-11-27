@@ -367,7 +367,7 @@ export function Tracker() {
   const playerName = playerFullName(matchPlayer);
   const opponentName = match.opponent || 'Avversario';
   const tiebreakLabel = isSuperTiebreakSet(match, selectedSetNumber) ||
-    (match.number_of_sets === 5 && match.third_set_type === 'super-tiebreak' && selectedSetNumber === 5 && currentTiebreak === match.super_tiebreak_target)
+    (match.number_of_sets === 5 && match.last_set_type === 'super-tiebreak' && selectedSetNumber === 5 && currentTiebreak === match.super_tiebreak_target)
     ? 'Super tie-break' : 'Tie-break';
   const lostActions: { action: PointAction; label: string; icon: string }[] = [
     { action: 'free_error', label: 'Errore gratuito', icon: freeErrorIcon },

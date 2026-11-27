@@ -41,7 +41,7 @@ describe('Tornei screen', () => {
       { create: { name: 'TC Lambrate', city: '', surface: null } });
     await createMatch(family.id, {
       tournament_id: tournament.id, match_date: localIsoDate(), player_id: 'p1', opponent: 'Bianchi', number_of_sets: 3,
-      third_set_type: 'super-tiebreak', super_tiebreak_target: 10, tiebreak_target: 7, games_to_win_set: 4,
+      last_set_type: 'super-tiebreak', super_tiebreak_target: 10, tiebreak_target: 7, games_to_win_set: 4,
       short_set_tiebreak_at: 3, deuce_single_point: true, first_server: 'player',
     });
     const user = userEvent.setup();
@@ -186,7 +186,7 @@ describe('Tornei screen', () => {
     const older = (await createTournament(family.id, { name: 'Memorial Conti', age_category_id: 3, start_date: '2025-06-14' }, club)).tournament;
     await createTournament(family.id, { name: 'Senza partite', age_category_id: 3, start_date: '2024-01-01' }, club);
     const rules = {
-      player_id: 'p1', number_of_sets: 3 as const, third_set_type: 'super-tiebreak' as const, super_tiebreak_target: 10,
+      player_id: 'p1', number_of_sets: 3 as const, last_set_type: 'super-tiebreak' as const, super_tiebreak_target: 10,
       tiebreak_target: 7, games_to_win_set: 4 as const, short_set_tiebreak_at: 3 as const, deuce_single_point: true, first_server: 'player' as const,
     };
     await createMatch(family.id, { ...rules, tournament_id: recent.id, match_date: '2026-04-20', opponent: 'Bianchi' });

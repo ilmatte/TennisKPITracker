@@ -7,7 +7,7 @@ import { POINT_TYPE } from './pointTypes';
 const match = (overrides: Partial<Match> = {}): Match => ({
   id: 'm1', family_id: 'f1', match_date: '2026-11-17', player_id: 'alessandro',
   player_ranking_snapshot: '4.1', opponent: 'Andrea',
-  number_of_sets: 3, third_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
+  number_of_sets: 3, last_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
   tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player',
   status_id: 2, created_at: '2026-11-17', updated_at: '2026-11-17', version: 1, deleted: false,
   ...overrides,
@@ -202,7 +202,7 @@ describe('tie-break', () => {
   });
 
   it('declares the match winner when the deciding super tie-break ends (best of 3)', () => {
-    const m = match({ third_set_type: 'super-tiebreak', number_of_sets: 3, tiebreak_starts_at_363: false, deuce_single_point: false });
+    const m = match({ last_set_type: 'super-tiebreak', number_of_sets: 3, tiebreak_starts_at_363: false, deuce_single_point: false });
     const sixLove = (setNumber: number, winner: 'player' | 'opponent') =>
       Array.from({ length: 6 }, (_, index) => wonGame(setNumber, index + 1, winner)).flat();
     const superTiebreak = (wins: number, losses: number) => [
@@ -228,7 +228,7 @@ describe('tie-break', () => {
   });
 
   it('plays the deciding set as a super tie-break to 10 when configured', () => {
-    const superTiebreak = match({ third_set_type: 'super-tiebreak', number_of_sets: 3, tiebreak_starts_at_363: false });
+    const superTiebreak = match({ last_set_type: 'super-tiebreak', number_of_sets: 3, tiebreak_starts_at_363: false });
     expect(tiebreakTarget([], superTiebreak, 3, 1)).toBe(10);
     expect(tiebreakTarget([], superTiebreak, 2, 1)).toBeNull();
     expect(isSetComplete({ player: 1, opponent: 0 }, superTiebreak, 3)).toBe(true);

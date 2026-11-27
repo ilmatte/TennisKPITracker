@@ -134,7 +134,7 @@ describe('automatic local workspace', () => {
      
       opponent: 'Opponent',
       number_of_sets: 3,
-      third_set_type: 'normal',
+      last_set_type: 'normal',
       super_tiebreak_target: 10,
       tiebreak_target: 7,
       tiebreak_starts_at_363: true,

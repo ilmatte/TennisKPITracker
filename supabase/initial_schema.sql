@@ -132,7 +132,7 @@ create table public.matches (
   opponent_ranking text,
   tournament_match_number integer,
   number_of_sets integer not null check (number_of_sets in (3, 5)),
-  third_set_type text not null check (third_set_type in ('normal', 'super-tiebreak')),
+  last_set_type text not null check (last_set_type in ('normal', 'super-tiebreak')),
   super_tiebreak_target integer not null default 10 check (super_tiebreak_target > 0),
   tiebreak_target integer not null default 7 check (tiebreak_target > 0),
   games_to_win_set integer not null default 4 check (games_to_win_set in (4, 6)),

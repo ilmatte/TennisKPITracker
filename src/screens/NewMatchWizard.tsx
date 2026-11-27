@@ -67,7 +67,7 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
 
   // Step 3: match rules
   const [sets, setSets] = useState<3 | 5>(3);
-  const [third, setThird] = useState<Match['third_set_type']>('super-tiebreak');
+  const [lastSetType, setLastSetType] = useState<Match['last_set_type']>('super-tiebreak');
   const [firstServer, setFirstServer] = useState<Match['first_server']>('player');
   const [deuce, setDeuce] = useState(true);
   const [gamesToWinSet, setGamesToWinSet] = useState<4 | 6>(4);
@@ -102,7 +102,7 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
         player_id: selectedPlayer.id,
         opponent,
         number_of_sets: sets,
-        third_set_type: third,
+        last_set_type: lastSetType,
         super_tiebreak_target: superTiebreakTarget,
         tiebreak_target: tiebreakTarget,
         games_to_win_set: gamesToWinSet,
@@ -190,8 +190,8 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
             </SelectBox>
           </div>
           <div className="cw-field">
-            <label htmlFor="terzo">{sets === 3 ? 'Terzo set' : 'Quinto set'}</label>
-            <SelectBox id="terzo" value={third} onChange={value => setThird(value as Match['third_set_type'])}>
+            <label htmlFor="ultimo-set">{sets === 3 ? 'Terzo set' : 'Quinto set'}</label>
+            <SelectBox id="ultimo-set" value={lastSetType} onChange={value => setLastSetType(value as Match['last_set_type'])}>
               <option value="super-tiebreak">Super tie-break</option><option value="normal">Set completo</option>
             </SelectBox>
           </div>

@@ -217,7 +217,7 @@ describe('sync engine', () => {
     const match: Match = {
       id: 'match-id', family_id: remoteFamilyId, match_date: '2026-03-01', player_id: 'player-id',
       player_ranking_snapshot: '4.1', opponent: 'Bea',
-      number_of_sets: 3, third_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
+      number_of_sets: 3, last_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
       tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player',
       status_id: 2, created_at: now, updated_at: now, version: 2, deleted: false,
     };
@@ -263,7 +263,7 @@ describe('sync engine', () => {
     });
     remote.seed('matches', {
       id: 'match-id', match_date: '2026-03-01', player_id: 'player-id', tournament_id: 'tournament-id',
-      player_ranking_snapshot: '4.1', opponent: 'Bea', number_of_sets: 3, third_set_type: 'normal', super_tiebreak_target: 10,
+      player_ranking_snapshot: '4.1', opponent: 'Bea', number_of_sets: 3, last_set_type: 'normal', super_tiebreak_target: 10,
       tiebreak_target: 7, tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player', status: 'in-progress',
       created_at: now, updated_at: now, version: 1, deleted: false,
     });
@@ -294,7 +294,7 @@ describe('sync engine', () => {
     const match: Match = {
       id: 'match-id', family_id: localFamilyId, match_date: '2026-03-01', player_id: player.id,
       tournament_id: tournament.id, player_ranking_snapshot: '4.1', opponent: 'Bea',
-      number_of_sets: 3, third_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
+      number_of_sets: 3, last_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
       tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player',
       status_id: 2, created_at: now, updated_at: now, version: 1, deleted: false,
     };
