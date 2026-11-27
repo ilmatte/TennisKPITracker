@@ -11,18 +11,14 @@ import {
   formatTournamentDate,
   localIsoDate,
   tournamentCategoryLabel,
-  tournamentStatus,
-  type TournamentStatus,
 } from '../features/tournaments/tournaments';
+import { loadTournamentRows, type TournamentRow } from '../features/tournaments/tournamentRows';
 import { CreationScreen, DateBox, PlusIcon, SelectBox } from './CreationScreen';
 import { NewTournament } from './NewTournamentScreen';
-import type { Club, Match, Tournament } from '../types';
+import type { Match } from '../types';
 
 type Step = 1 | 2 | 3;
 const STEP_LABELS: Record<Step, string> = { 1: 'Passo 1 di 3 · Torneo', 2: 'Passo 2 di 3 · Giocatori', 3: 'Passo 3 di 3 · Regole' };
-const STATUS_ORDER: Record<TournamentStatus, number> = { 'in-progress': 0, upcoming: 1, completed: 2 };
-
-type TournamentRow = { tournament: Tournament; club: Club | undefined; status: TournamentStatus; lastActivity: string };
 
 /** Labels for the "who serves first" choice: the player's name, and the opponent's name marked "(avversario)". */
 export function ServerOptions({ playerName, opponent }: { playerName: string; opponent: string }) {
@@ -48,33 +44,10 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
   // Step 1: tournament
   const [chosenTournamentId, setChosenTournamentId] = useState<string | null>(null);
   const [creatingTournament, setCreatingTournament] = useState(false);
-  const tournaments = useLiveQuery(async () => {
-    if (!activeFamily) return [] as TournamentRow[];
-    const [rows, clubs, matches] = await Promise.all([
-      db.tournaments.where('family_id').equals(activeFamily.id).toArray(),
-      db.clubs.where('family_id').equals(activeFamily.id).toArray(),
-      db.matches.where('family_id').equals(activeFamily.id).toArray(),
-    ]);
-    const clubById = new Map(clubs.map(club => [club.id, club]));
-    const lastMatchDate = new Map<string, string>();
-    for (const match of matches) {
-      if (match.deleted || !match.tournament_id) continue;
-      const last = lastMatchDate.get(match.tournament_id);
-      if (!last || match.match_date > last) lastMatchDate.set(match.tournament_id, match.match_date);
-    }
-    const today = localIsoDate();
-    return rows.filter(tournament => !tournament.deleted).map(tournament => {
-      const last = lastMatchDate.get(tournament.id) ?? null;
-      return {
-        tournament,
-        club: clubById.get(tournament.club_id),
-        status: tournamentStatus(tournament.start_date, last, today),
-        lastActivity: last && last > tournament.start_date ? last : tournament.start_date,
-      };
-    }).sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
-      || b.lastActivity.localeCompare(a.lastActivity)
-      || a.tournament.name.localeCompare(b.tournament.name, 'it'));
-  }, [activeFamily?.id]) ?? [];
+  const tournaments = useLiveQuery(
+    async () => activeFamily ? loadTournamentRows(activeFamily.id) : [] as TournamentRow[],
+    [activeFamily?.id],
+  ) ?? [];
   // Until one is picked, the first tournament of the list (the most recent one in progress) is selected.
   const selectedRow = tournaments.find(row => row.tournament.id === chosenTournamentId)
     ?? (chosenTournamentId ? undefined : tournaments[0]);
@@ -273,7 +246,7 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
       </div>
     </CreationScreen>
     {creatingTournament && <NewTournament stacked onClose={() => setCreatingTournament(false)}
-      onCreated={tournament => {
+      onSaved={tournament => {
         // Back to the tournament step, with the new tournament selected.
         setChosenTournamentId(tournament.id);
         setCreatingTournament(false);

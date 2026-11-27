@@ -87,6 +87,9 @@
 .cw-secondary{height:58px;padding:0 24px;border-radius:29px;border:1.5px solid #17488F;background:#fff;color:#17488F;font-size:17px;font-weight:800}
 .cw-primary{flex:1;box-sizing:border-box;height:58px;border:0;border-radius:29px;background:#C8F03A;color:#0B2A5B;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 8px 20px rgba(139,190,20,.35)}
 .cw-primary:disabled{opacity:.5;cursor:not-allowed}
+.cw-actions.cw-actions-stacked{flex-direction:column}
+.cw-actions-stacked .cw-primary{flex:none;width:100%}
+.cw-delete{height:48px;border:0;background:transparent;color:#D3343A;font-size:15px;font-weight:700}
 
 /* Desktop: no bottom navigation bar, so no extra space is needed. */
 @media (min-width: 900px) {

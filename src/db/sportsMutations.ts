@@ -417,6 +417,39 @@ export async function createTournament(
   });
 }
 
+/** Updates a tournament; like createTournament, `club` may ask for a new club, created in the same transaction. The
+ *  tournament may keep its current club even if that club has since been deleted; a newly chosen one must be active. */
+export async function updateTournament(
+  familyId: string,
+  id: string,
+  changes: TournamentChanges,
+  club: TournamentClub,
+): Promise<{ tournament: Tournament; club: Club }> {
+  return db.transaction('rw', [db.families, db.clubs, db.tournaments, db.syncQueue], async () => {
+    const current = await requireActive(id => db.tournaments.get(id), id, familyId, 'Torneo');
+    const valid = validTournament(changes);
+    let host: Club;
+    if ('create' in club) host = await createClub(familyId, club.create);
+    else if (club.id === current.club_id) {
+      const existing = await db.clubs.get(club.id);
+      if (!existing || existing.family_id !== familyId) throw new Error('Club non trovato nello spazio attivo.');
+      host = existing;
+    } else host = await requireActive(id => db.clubs.get(id), club.id, familyId, 'Club');
+    const next: Tournament = { ...updated(current, timestamp()), ...valid, club_id: host.id };
+    await write(db.tournaments, 'tournaments', next, next.updated_at);
+    return { tournament: next, club: host };
+  });
+}
+
+/** Deletes a tournament logically (tombstone synchronized like the other records). Its matches are kept and still
+ *  point to it, so they show their tournament as deleted. */
+export async function softDeleteTournament(familyId: string, id: string): Promise<void> {
+  await db.transaction('rw', [db.tournaments, db.syncQueue], async () => {
+    const tournament = await requireActive(id => db.tournaments.get(id), id, familyId, 'Torneo');
+    await tombstone(db.tournaments, 'tournaments', tournament, timestamp());
+  });
+}
+
 export async function softDeleteMatch(familyId: string, id: string): Promise<void> {
   await db.transaction('rw', [db.matches, db.sets, db.games, db.points, db.syncQueue], async () => {
     const match = await requireActive(id => db.matches.get(id), id, familyId, 'Partita');

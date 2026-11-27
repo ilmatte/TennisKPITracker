@@ -6,6 +6,7 @@ import AuthStatus from './features/auth/AuthStatus';
 import { useFamily } from './features/families/FamilyContextDefinition';
 import matchesNavIcon from './assets/icone/trasparente/512/partite.png';
 import matchesActiveIcon from './assets/icone/chiaro/256/partite.png';
+import tournamentsActiveIcon from './assets/icone/chiaro/256/tornei.png';
 // Same trophy with a light blue pedestal (the gradient of the statistics icon's third bar): the standard one has a
 // dark blue pedestal that disappears on the dark nav bar.
 import matchesDarkNavIcon from './assets/icone/trasparente/512/partite-sfondo-scuro.png';
@@ -19,6 +20,7 @@ import clubsActiveIcon from './assets/icone/scuro/256/campo.png';
 import './design.css';
 import { HomeRoute } from './screens/HomeScreen';
 import { Matches } from './screens/MatchesScreen';
+import { Tournaments } from './screens/TournamentsScreen';
 import { Players } from './screens/PlayersScreen';
 import { Clubs } from './screens/ClubsScreen';
 import { Tracker } from './screens/TrackerScreen';
@@ -44,7 +46,9 @@ export default function TennisApp() {
 
   const tracking = location.pathname.startsWith('/match/');
   const onHome = location.pathname === '/';
-  const onMatches = location.pathname === '/matches';
+  // Tornei is a section of Partite: same theme; its own item replaces Partite in the bottom bar.
+  const onTournaments = location.pathname === '/tournaments';
+  const onMatches = location.pathname === '/matches' || onTournaments;
   const onSettings = location.pathname === '/settings';
   const onPlayers = location.pathname === '/players';
   const onClubs = location.pathname === '/clubs';
@@ -77,6 +81,7 @@ export default function TennisApp() {
     <main><Routes>
       <Route path="/" element={<HomeRoute />} />
       <Route path="/matches" element={<Matches />} />
+      <Route path="/tournaments" element={<Tournaments />} />
       <Route path="/players" element={<Players />} />
       <Route path="/clubs" element={<Clubs />} />
       <Route path="/match/:id" element={<Tracker />} />
@@ -87,7 +92,10 @@ export default function TennisApp() {
     <nav className={`bottom-nav${tracking ? ' tracker-hidden' : ''}${darkNav ? ' nav-dark' : ''}`}>
       <NavLink to="/" end><img src={onHome ? homeActiveIcon : homeIcon} alt="" />Home</NavLink>
       <NavLink to="/dashboard"><img src={statisticsIcon} alt="" />Statistiche</NavLink>
-      <NavLink to="/matches"><img src={onMatches ? matchesActiveIcon : darkNav ? matchesDarkNavIcon : matchesNavIcon} alt="" />Partite</NavLink>
+      {/* Tornei, a section of Partite, replaces its item with its own, in the same icon style. */}
+      {onTournaments
+        ? <NavLink to="/tournaments"><img src={tournamentsActiveIcon} alt="" />Tornei</NavLink>
+        : <NavLink to="/matches"><img src={onMatches ? matchesActiveIcon : darkNav ? matchesDarkNavIcon : matchesNavIcon} alt="" />Partite</NavLink>}
       {/* Sections of Impostazioni (Giocatori, Club) replace its item with their own, in the same icon style. */}
       {onPlayers
         ? <NavLink to="/players"><img src={playersActiveIcon} alt="" />Giocatori</NavLink>

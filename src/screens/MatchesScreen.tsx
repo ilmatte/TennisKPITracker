@@ -3,36 +3,16 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getMatchPoints } from '../db/database';
-import { deriveSetScore } from '../features/scoring/scoring';
+import { MATCH_OUTCOME_LABELS, formatMatchDate, summarizeMatch, type MatchSummary } from '../features/matches/matchSummary';
 import type { MatchChanges } from '../db/sportsMutations';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import tennisBallIcon from '../assets/icone/trasparente/512/pallina3d.png';
 import { NewMatch, ServerOptions } from './NewMatchWizard';
 import { BrandBar } from './BrandBar';
+import { MatchesTabs } from './MatchesTabs';
 import { playerFullName, playerShortName } from '../features/players/playerNames';
 import { tournamentCategoryLabel } from '../features/tournaments/tournaments';
-import type { Match, ScoredPoint } from '../types';
-
-type MatchSummary = { match: Match; scoreText: string; outcome: 'won' | 'lost' | 'in-progress'; duration: string | null };
-
-function summarize(match: Match, points: ScoredPoint[]): MatchSummary {
-  let playerSets = 0;
-  let opponentSets = 0;
-  const labels: string[] = [];
-  for (let setNumber = 1; setNumber <= match.number_of_sets; setNumber += 1) {
-    const score = deriveSetScore(points, setNumber, match);
-    if (score.player > score.opponent) playerSets += 1;
-    if (score.opponent > score.player) opponentSets += 1;
-    if (score.player || score.opponent) labels.push(`${score.player}-${score.opponent}`);
-  }
-  const outcome = match.status !== 'completed' ? 'in-progress' : playerSets > opponentSets ? 'won' : 'lost';
-  const times = points.map(point => Date.parse(point.created_at)).filter(Number.isFinite);
-  const minutes = times.length > 1 ? Math.round((Math.max(...times) - Math.min(...times)) / 60000) : 0;
-  const duration = minutes > 0 ? (minutes >= 60 ? `${Math.floor(minutes / 60)}h ${minutes % 60}m` : `${minutes}m`) : null;
-  return { match, scoreText: labels.join(' '), outcome, duration };
-}
-
-const outcomeLabel = { won: 'Vinta', lost: 'Persa', 'in-progress': 'In corso' } as const;
+import type { Match } from '../types';
 
 export function Matches() {
   const { activeFamily } = useFamily();
@@ -45,7 +25,7 @@ export function Matches() {
   ) ?? [];
   const summaries = useLiveQuery(async () => {
     if (!activeFamily) return [] as MatchSummary[];
-    return Promise.all(matches.map(async match => summarize(match, await getMatchPoints(activeFamily.id, match.id))));
+    return Promise.all(matches.map(async match => summarizeMatch(match, await getMatchPoints(activeFamily.id, match.id))));
   }, [activeFamily?.id, matches.map(match => `${match.id}:${match.status}:${match.version}`).join(',')]) ?? [];
   const [newOpen, setNewOpen] = useState(false);
   const [filter, setFilter] = useState<'all' | 'won' | 'lost'>('all');
@@ -73,7 +53,7 @@ export function Matches() {
     <svg className="mg-waves" width="390" height="140" viewBox="0 0 390 140" aria-hidden="true"><path d="M120 120C220 110 320 80 390 20V60C330 100 220 135 120 135z" fill="#2F8F3E" opacity=".55" /><path d="M200 128C280 120 340 95 390 60V84C340 112 280 134 200 136z" fill="#C8F03A" opacity=".35" /></svg>
     <header className="mg-header">
       <BrandBar />
-      <h1>Le mie partite</h1>
+      <MatchesTabs active="matches" />
       <div className="mg-filters" role="group" aria-label="Filtra partite">
         {filters.map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}
         <button className="mg-new" onClick={openNewMatch} aria-label="Nuova partita" title="Nuova partita">
@@ -86,10 +66,10 @@ export function Matches() {
         <img src={tennisBallIcon} alt="" />
         <span className="mg-info">
           <strong>{playerShortName(playersById.get(match.player_id))} vs {match.opponent}</strong>
-          <small>{new Date(match.match_date).toLocaleDateString('it-IT', { day: 'numeric', month: 'short', year: 'numeric' })}{duration && ` • ${duration}`}</small>
+          <small>{formatMatchDate(match.match_date)}{duration && ` • ${duration}`}</small>
         </span>
         <span className="mg-score">{scoreText || '—'}</span>
-        <span className={`mg-badge ${outcome}`}>{outcomeLabel[outcome]}</span>
+        <span className={`mg-badge ${outcome}`}>{MATCH_OUTCOME_LABELS[outcome]}</span>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
       </button>)}
       {!matches.length && <div className="mg-empty"><strong>Nessuna partita</strong><span>Crea la prima partita per iniziare il tracking.</span></div>}

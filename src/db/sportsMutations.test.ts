@@ -7,6 +7,8 @@ import {
   createMatch,
   createPlayer,
   createTournament,
+  updateTournament,
+  softDeleteTournament,
   softDeleteClub,
   updateClub,
   softDeleteGame,
@@ -455,6 +457,79 @@ describe('tournament mutations', () => {
     const deleted = await createClub('family-1', { name: 'Chiuso', city: '', surface: null });
     await softDeleteClub('family-1', deleted.id);
     await expect(createTournament('family-1', springCup, { id: deleted.id })).rejects.toThrow('Club non trovato');
+  });
+});
+
+describe('tournament update', () => {
+  const changes = { name: 'Open', age_category_id: 5, start_date: '2026-05-01' };
+
+  it('updates fields and club, bumps the version and queues an upsert', async () => {
+    await db.families.add(family('family-1'));
+    const first = await createClub('family-1', { name: 'Primo', city: '', surface: null });
+    const second = await createClub('family-1', { name: 'Secondo', city: '', surface: null });
+    const { tournament } = await createTournament('family-1', { name: 'Torneo', age_category_id: 1, start_date: '2026-04-01' }, { id: first.id });
+    const { tournament: saved } = await updateTournament('family-1', tournament.id, { ...changes, name: ' Open ' }, { id: second.id });
+    expect(saved).toMatchObject({ ...changes, club_id: second.id, version: 2, created_at: tournament.created_at });
+    expect(await db.tournaments.get(tournament.id)).toEqual(saved);
+    expect((await operations(tournament.id)).map(operation => (operation.payload as { version: number }).version).sort()).toEqual([1, 2]);
+  });
+
+  it('can move the tournament to a new club created in the same transaction', async () => {
+    await db.families.add(family('family-1'));
+    const { tournament } = await createTournament('family-1', changes, { create: { name: 'Vecchio', city: '', surface: null } });
+    const { tournament: saved, club } = await updateTournament('family-1', tournament.id, changes, { create: { name: 'Nuovo', city: 'Roma', surface: null } });
+    expect(club).toMatchObject({ name: 'Nuovo', city: 'Roma' });
+    expect(saved.club_id).toBe(club.id);
+  });
+
+  it('keeps a club deleted after the tournament was created, but rejects choosing a deleted or foreign one', async () => {
+    await db.families.bulkAdd([family('family-1'), family('family-2')]);
+    const own = await createClub('family-1', { name: 'Chiuso', city: '', surface: null });
+    const other = await createClub('family-1', { name: 'Altro chiuso', city: '', surface: null });
+    const foreign = await createClub('family-2', { name: 'Estraneo', city: '', surface: null });
+    const { tournament } = await createTournament('family-1', changes, { id: own.id });
+    await softDeleteClub('family-1', own.id);
+    await softDeleteClub('family-1', other.id);
+    await expect(updateTournament('family-1', tournament.id, { ...changes, name: 'Rinominato' }, { id: own.id }))
+      .resolves.toMatchObject({ tournament: { name: 'Rinominato', club_id: own.id } });
+    await expect(updateTournament('family-1', tournament.id, changes, { id: other.id })).rejects.toThrow('Club non trovato');
+    await expect(updateTournament('family-1', tournament.id, changes, { id: foreign.id })).rejects.toThrow('Club non trovato');
+  });
+
+  it('rejects invalid changes and tournaments of another family', async () => {
+    await db.families.bulkAdd([family('family-1'), family('family-2')]);
+    const { tournament, club } = await createTournament('family-2', changes, { create: { name: 'Club', city: '', surface: null } });
+    await expect(updateTournament('family-1', tournament.id, changes, { id: club.id })).rejects.toThrow('Torneo non trovato');
+    await expect(updateTournament('family-2', tournament.id, { ...changes, age_category_id: 9 }, { id: club.id })).rejects.toThrow('Categoria');
+    expect(await db.tournaments.get(tournament.id)).toMatchObject({ version: 1 });
+  });
+});
+
+describe('tournament deletion', () => {
+  it('deletes a tournament logically, keeping its matches linked to it', async () => {
+    await db.families.add(family('family-1'));
+    await db.players.add(player('player-1'));
+    const { tournament } = await createTournament('family-1', { name: 'Open', age_category_id: 5, start_date: '2026-01-01' },
+      { create: { name: 'Club', city: '', surface: null } });
+    const created = await createMatch('family-1', {
+      tournament_id: tournament.id, match_date: '2026-01-02', player_id: 'player-1', opponent: 'Bea', number_of_sets: 3,
+      third_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7, games_to_win_set: 6,
+      short_set_tiebreak_at: 3, deuce_single_point: true, first_server: 'player',
+    });
+    await softDeleteTournament('family-1', tournament.id);
+    expect(await db.tournaments.get(tournament.id)).toMatchObject({ deleted: true, version: 2 });
+    expect((await operations(tournament.id)).find(operation => (operation.payload as { version: number }).version === 2))
+      .toMatchObject({ entity_type: 'tournaments', payload: { deleted: true } });
+    expect(await db.matches.get(created.id)).toMatchObject({ tournament_id: tournament.id, deleted: false });
+    await expect(softDeleteTournament('family-1', tournament.id)).rejects.toThrow('Torneo non trovato');
+  });
+
+  it('does not delete a tournament of another family', async () => {
+    await db.families.bulkAdd([family('family-1'), family('family-2')]);
+    const { tournament } = await createTournament('family-2', { name: 'Open', age_category_id: 5, start_date: '2026-01-01' },
+      { create: { name: 'Club', city: '', surface: null } });
+    await expect(softDeleteTournament('family-1', tournament.id)).rejects.toThrow('Torneo non trovato');
+    expect(await db.tournaments.get(tournament.id)).toMatchObject({ deleted: false, version: 1 });
   });
 });
 
