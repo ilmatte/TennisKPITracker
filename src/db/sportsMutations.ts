@@ -9,6 +9,7 @@ import type {
   SyncOperation,
   TennisSet,
   Tournament,
+  TournamentStatus,
 } from '../types';
 import { deriveSetScore } from '../features/scoring/scoring';
 import { TOURNAMENT_CATEGORIES } from '../features/tournaments/tournaments';
@@ -408,7 +409,7 @@ export async function createTournament(
       : await requireActive(id => db.clubs.get(id), club.id, familyId, 'Club');
     const created_at = timestamp();
     const tournament: Tournament = {
-      id: crypto.randomUUID(), family_id: familyId, club_id: host.id, ...valid,
+      id: crypto.randomUUID(), family_id: familyId, club_id: host.id, ...valid, status: 'upcoming',
       created_at, updated_at: created_at, version: 1, deleted: false,
     };
     await db.tournaments.add(tournament);
@@ -438,6 +439,20 @@ export async function updateTournament(
     const next: Tournament = { ...updated(current, timestamp()), ...valid, club_id: host.id };
     await write(db.tournaments, 'tournaments', next, next.updated_at);
     return { tournament: next, club: host };
+  });
+}
+
+const TOURNAMENT_STATUSES: readonly TournamentStatus[] = ['upcoming', 'in-progress', 'completed'];
+
+/** Changes the status of a tournament: it is created 'upcoming' and changes only through this function. */
+export async function setTournamentStatus(familyId: string, id: string, status: TournamentStatus): Promise<Tournament> {
+  if (!TOURNAMENT_STATUSES.includes(status)) throw new Error('Stato del torneo non valido.');
+  return db.transaction('rw', [db.tournaments, db.syncQueue], async () => {
+    const current = await requireActive(id => db.tournaments.get(id), id, familyId, 'Torneo');
+    if (current.status === status) return current;
+    const next: Tournament = { ...updated(current, timestamp()), status };
+    await write(db.tournaments, 'tournaments', next, next.updated_at);
+    return next;
   });
 }
 

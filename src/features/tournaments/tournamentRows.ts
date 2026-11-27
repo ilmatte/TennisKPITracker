@@ -1,6 +1,5 @@
 import { db } from '../../db/database';
-import { localIsoDate, tournamentStatus, type TournamentStatus } from './tournaments';
-import type { Club, Match, Tournament } from '../../types';
+import type { Club, Match, Tournament, TournamentStatus } from '../../types';
 
 export type TournamentRow = {
   tournament: Tournament;
@@ -14,9 +13,9 @@ export type TournamentRow = {
 
 const STATUS_ORDER: Record<TournamentStatus, number> = { 'in-progress': 0, upcoming: 1, completed: 2 };
 
-/** Active tournaments of a family with their club, estimated status and matches: those in progress first, then the
+/** Active tournaments of a family with their club, status and matches: those in progress first, then the
  *  upcoming and the completed ones, each group by most recent activity. */
-export async function loadTournamentRows(familyId: string, today: string = localIsoDate()): Promise<TournamentRow[]> {
+export async function loadTournamentRows(familyId: string): Promise<TournamentRow[]> {
   const [tournaments, clubs, matches] = await Promise.all([
     db.tournaments.where('family_id').equals(familyId).toArray(),
     db.clubs.where('family_id').equals(familyId).toArray(),
@@ -35,7 +34,7 @@ export async function loadTournamentRows(familyId: string, today: string = local
     return {
       tournament,
       club: clubById.get(tournament.club_id),
-      status: tournamentStatus(tournament.start_date, last, today),
+      status: tournament.status,
       lastActivity: last && last > tournament.start_date ? last : tournament.start_date,
       matches: tournamentMatches,
     };

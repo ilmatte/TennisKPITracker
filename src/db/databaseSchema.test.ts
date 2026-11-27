@@ -16,7 +16,7 @@ describe('local database schema', () => {
   it('creates every store aligned with the Supabase tables and seeds the reference tables', async () => {
     const fresh = new TennisDatabase(databaseName);
     await fresh.open();
-    expect(fresh.verno).toBe(12);
+    expect(fresh.verno).toBe(13);
     expect(fresh.tables.map(table => table.name).sort()).toEqual([
       'clubs', 'families', 'family_invitations', 'family_members', 'games', 'matches', 'player_age_categories', 'players',
       'point_types', 'points', 'sets', 'syncConflicts', 'syncMetadata', 'syncQueue', 'tournaments',
@@ -47,7 +47,7 @@ describe('local database schema', () => {
 
     const reopened = new TennisDatabase(databaseName);
     await reopened.open();
-    expect(reopened.verno).toBe(12);
+    expect(reopened.verno).toBe(13);
     expect(await reopened.table('point_types').toArray()).toEqual([...POINT_TYPES]);
     expect(await reopened.table('player_age_categories').toArray()).toEqual([...PLAYER_AGE_CATEGORIES]);
     expect(await reopened.table('players').get('p1')).toEqual(player);
@@ -81,7 +81,7 @@ describe('local database schema', () => {
 
     const upgraded = new TennisDatabase(databaseName);
     await upgraded.open();
-    expect(upgraded.verno).toBe(12);
+    expect(upgraded.verno).toBe(13);
     expect(await upgraded.table('clubs').get('c1')).toEqual(club);
     // The free-text tournament is removed; matches created before tournaments have no tournament_id.
     const { tournament: _removed, ...withoutTournament } = match;
@@ -91,6 +91,26 @@ describe('local database schema', () => {
     expect(upgraded.tournaments.schema.indexes.map(index => index.name)).toEqual(
       expect.arrayContaining(['family_id', 'club_id', 'start_date']),
     );
+    upgraded.close();
+  });
+
+  it('upgrades a version 12 database giving its tournaments the "upcoming" status', async () => {
+    const older = new Dexie(databaseName);
+    older.version(12).stores({ tournaments: 'id, family_id, club_id, start_date, updated_at, deleted' });
+    await older.open();
+    await older.table('tournaments').bulkAdd([
+      { id: 't1', family_id: 'f1', name: 'Senza stato' },
+      { id: 't2', family_id: 'f1', name: 'Stato nullo', status: null },
+      { id: 't3', family_id: 'f1', name: 'Concluso', status: 'completed' },
+    ]);
+    older.close();
+
+    const upgraded = new TennisDatabase(databaseName);
+    await upgraded.open();
+    expect(upgraded.verno).toBe(13);
+    expect((await upgraded.tournaments.toArray()).map(item => [item.id, item.status])).toEqual([
+      ['t1', 'upcoming'], ['t2', 'upcoming'], ['t3', 'completed'],
+    ]);
     upgraded.close();
   });
 });

@@ -262,7 +262,7 @@ describe('sync engine', () => {
     };
     const tournament: Tournament = {
       id: 'tournament-id', family_id: localFamilyId, club_id: club.id, name: 'Torneo di primavera',
-      age_category_id: 3, start_date: '2026-03-01', created_at: now, updated_at: now, version: 1, deleted: false,
+      age_category_id: 3, start_date: '2026-03-01', status: 'upcoming', created_at: now, updated_at: now, version: 1, deleted: false,
     };
     const match: Match = {
       id: 'match-id', family_id: localFamilyId, match_date: '2026-03-01', player_id: player.id,

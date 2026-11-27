@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import schema from '../../supabase/initial_schema.sql?raw';
+import tournamentStatusMigration from '../../supabase/migrations/20261127_tournament_status.sql?raw';
 
 function functionBody(sql: string, name: string): string {
   const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -70,5 +71,16 @@ describe('tournaments SQL', () => {
     expect(schema.match(/'players', 'clubs', 'tournaments', 'matches', 'sets', 'games', 'points'/g)).toHaveLength(4);
     expect(functionBody(schema, 'apply_sync_record')).toMatch(/when 'tournaments' then 'tournaments'/);
     expect(functionBody(schema, 'list_initial_snapshot')).toMatch(/'tournaments'/);
+  });
+
+  it('gives tournaments a required status, "upcoming" by default, in the schema and in the incremental migration', () => {
+    const check = /constraint tournaments_status_check check \(status in \('upcoming', 'in-progress', 'completed'\)\)/i;
+    expect(schema).toMatch(/status text not null default 'upcoming'/i);
+    expect(schema).toMatch(check);
+    expect(tournamentStatusMigration).toMatch(/add column if not exists status text/i);
+    expect(tournamentStatusMigration).toMatch(/set status = 'upcoming'\s+where status is null/i);
+    expect(tournamentStatusMigration).toMatch(/alter column status set default 'upcoming'/i);
+    expect(tournamentStatusMigration).toMatch(/alter column status set not null/i);
+    expect(tournamentStatusMigration).toMatch(check);
   });
 });

@@ -71,6 +71,13 @@ export class TennisDatabase extends Dexie {
     }).upgrade(transaction => transaction.table('matches').toCollection().modify(match => {
       delete (match as { tournament?: unknown }).tournament;
     }));
+    // v13: tournaments.status (Mirrors supabase/initial_schema.sql and supabase/migrations/20261127_tournament_status.sql).
+    // Not indexed; tournaments stored before it existed (or with the earlier nullable status) become 'upcoming'.
+    this.version(13).stores({}).upgrade(transaction => transaction.table('tournaments').toCollection().modify(tournament => {
+      if (!['upcoming', 'in-progress', 'completed'].includes((tournament as { status?: unknown }).status as string)) {
+        (tournament as { status: string }).status = 'upcoming';
+      }
+    }));
     // Reference tables are written every time the database opens, whatever version the device came from.
     this.on('ready', database => seedReferenceTables(database as TennisDatabase));
   }

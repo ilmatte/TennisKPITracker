@@ -89,6 +89,9 @@ create table public.tournaments (
   name text not null check (length(btrim(name)) > 0),
   age_category_id smallint not null,
   start_date date not null,
+  -- 'upcoming' (In programma) when created; changed only by hand in the app.
+  status text not null default 'upcoming'
+    constraint tournaments_status_check check (status in ('upcoming', 'in-progress', 'completed')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   version integer not null default 1 check (version > 0),

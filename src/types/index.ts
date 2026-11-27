@@ -84,11 +84,16 @@ export interface Tournament {
   age_category_id: number;
   /** ISO calendar date (YYYY-MM-DD). */
   start_date: string;
+  /** 'upcoming' when created; changed only by hand from the Tornei list. */
+  status: TournamentStatus;
   created_at: string;
   updated_at: string;
   version: number;
   deleted: boolean;
 }
+
+/** In programma, In corso, Concluso (labels in features/tournaments/tournaments.ts). */
+export type TournamentStatus = 'upcoming' | 'in-progress' | 'completed';
 
 export interface Match {
   id: UUID;
