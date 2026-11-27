@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import schema from '../../supabase/initial_schema.sql?raw';
-import tournamentStatusMigration from '../../supabase/migrations/20261127_tournament_status.sql?raw';
-import unifiedStatusesMigration from '../../supabase/migrations/20261127_unified_statuses.sql?raw';
 
 function functionBody(sql: string, name: string): string {
   const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -74,48 +72,21 @@ describe('tournaments SQL', () => {
     expect(functionBody(schema, 'list_initial_snapshot')).toMatch(/'tournaments'/);
   });
 
-  it('gave tournaments a required text status in the earlier incremental migration', () => {
-    expect(tournamentStatusMigration).toMatch(/add column if not exists status text/i);
-    expect(tournamentStatusMigration).toMatch(/alter column status set default 'upcoming'/i);
-    expect(tournamentStatusMigration).toMatch(/constraint tournaments_status_check check \(status in \('upcoming', 'in-progress', 'completed'\)\)/i);
-  });
 });
 
 describe('statuses SQL', () => {
-  const rows = [
-    "(1, 'upcoming', 'In programma', 'In programma', true, false, 1)",
-    "(2, 'in_progress', 'In corso', 'In corso', true, true, 2)",
-    "(3, 'completed', 'Concluso', 'Conclusa', true, true, 3)",
-  ];
-
   it('defines one statuses reference table, with masculine and feminine labels, used by tournaments and matches', () => {
-    for (const sql of [schema, unifiedStatusesMigration]) {
-      for (const row of rows) expect(sql).toContain(row);
-      expect(sql).toMatch(/label_masculine text not null,\s+label_feminine text not null/i);
-      expect(sql).toMatch(/grant select on table public\.statuses to authenticated/i);
-      expect(sql).toMatch(/create policy "authenticated users can read statuses"/i);
-    }
+    for (const row of [
+      "(1, 'upcoming', 'In programma', 'In programma', true, false, 1)",
+      "(2, 'in_progress', 'In corso', 'In corso', true, true, 2)",
+      "(3, 'completed', 'Concluso', 'Conclusa', true, true, 3)",
+    ]) expect(schema).toContain(row);
+    expect(schema).toMatch(/label_masculine text not null,\s+label_feminine text not null/i);
+    expect(schema).toMatch(/grant select on table public\.statuses to authenticated/i);
+    expect(schema).toMatch(/create policy "authenticated users can read statuses"/i);
     expect(schema).toMatch(/status_id smallint not null default 1\s+constraint tournaments_status_id_fkey references public\.statuses\(id\)/i);
     expect(schema).toMatch(/status_id smallint not null\s+constraint matches_status_id_fkey references public\.statuses\(id\)\s+constraint matches_status_id_check check \(status_id in \(2, 3\)\)/i);
     // No text status column is left.
     expect(schema).not.toMatch(/^\s*status text/m);
-  });
-
-  it('upgrades existing databases to the same schema, converting the text statuses and the sync payloads', () => {
-    const sql = unifiedStatusesMigration;
-    expect(sql).toMatch(/set status_id = case status when 'in-progress' then 2 when 'completed' then 3 else 1 end/i);
-    expect(sql).toMatch(/set status_id = case status when 'completed' then 3 else 2 end/i);
-    expect(sql).toMatch(/add constraint tournaments_status_id_fkey foreign key \(status_id\) references public\.statuses\(id\)/i);
-    expect(sql).toMatch(/add constraint matches_status_id_fkey foreign key \(status_id\) references public\.statuses\(id\)/i);
-    expect(sql).toMatch(/add constraint matches_status_id_check check \(status_id in \(2, 3\)\)/i);
-    expect(sql).toMatch(/alter column status_id set default 1/i);
-    expect(sql).toMatch(/alter table public\.tournaments drop column if exists status;/i);
-    expect(sql).toMatch(/alter table public\.matches drop column if exists status;/i);
-    for (const table of ['sync_changes', 'sync_entity_snapshots']) {
-      for (const entity of ['tournaments', 'matches']) {
-        expect(sql).toMatch(new RegExp(`update public\\.${table}\\s+set payload = \\(payload - 'status'\\)[\\s\\S]*?where entity_type = '${entity}'`, 'i'));
-      }
-    }
-    expect(sql).not.toMatch(/\b(drop|truncate)\s+table\b/i);
   });
 });

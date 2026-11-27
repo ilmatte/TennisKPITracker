@@ -112,8 +112,7 @@ create table public.tournaments (
   updated_at timestamptz not null default now(),
   version integer not null default 1 check (version > 0),
   deleted boolean not null default false,
-  -- In programma (1) when created; changed only by hand in the app. Last column, as in a database upgraded with
-  -- migrations/20261127_unified_statuses.sql.
+  -- In programma (1) when created; changed only by hand in the app.
   status_id smallint not null default 1
     constraint tournaments_status_id_fkey references public.statuses(id),
   unique (family_id, id),
@@ -148,8 +147,7 @@ create table public.matches (
   deleted boolean not null default false,
   -- Tournament of the match; null only for matches created before tournaments existed.
   tournament_id uuid,
-  -- In corso (2) or Conclusa (3): a match is never upcoming. Last column, as in a database upgraded with
-  -- migrations/20261127_unified_statuses.sql.
+  -- In corso (2) or Conclusa (3): a match is never upcoming.
   status_id smallint not null
     constraint matches_status_id_fkey references public.statuses(id)
     constraint matches_status_id_check check (status_id in (2, 3)),

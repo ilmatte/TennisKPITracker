@@ -74,7 +74,7 @@ export class TennisDatabase extends Dexie {
     }).upgrade(transaction => transaction.table('matches').toCollection().modify(match => {
       delete (match as { tournament?: unknown }).tournament;
     }));
-    // v13: tournaments.status (Mirrors supabase/initial_schema.sql and supabase/migrations/20261127_tournament_status.sql).
+    // v13: tournaments.status (later replaced by status_id, v14).
     // Not indexed; tournaments stored before it existed (or with the earlier nullable status) become 'upcoming'.
     this.version(13).stores({}).upgrade(transaction => transaction.table('tournaments').toCollection().modify(tournament => {
       if (!['upcoming', 'in-progress', 'completed'].includes((tournament as { status?: unknown }).status as string)) {
@@ -82,7 +82,7 @@ export class TennisDatabase extends Dexie {
       }
     }));
     // v14: the statuses reference table, shared by tournaments and matches, whose text status becomes status_id (FK to
-    // statuses). Mirrors supabase/initial_schema.sql and supabase/migrations/20261127_unified_statuses.sql.
+    // statuses). Mirrors supabase/initial_schema.sql.
     this.version(14).stores({
       statuses: 'id, &code, sort_order',
       matches: 'id, family_id, match_date, player_id, status_id, tournament_id, updated_at, deleted',
