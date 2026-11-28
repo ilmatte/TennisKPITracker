@@ -8,7 +8,7 @@ const match = (overrides: Partial<Match> = {}): Match => ({
   id: 'm1', family_id: 'f1', match_date: '2026-11-17', player_id: 'alessandro',
   player_ranking_snapshot: '4.1', opponent: 'Andrea',
   number_of_sets: 3, last_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
-  tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player',
+  games_to_win_set: 4, deuce_single_point: true, first_server: 'player',
   status_id: 2, created_at: '2026-11-17', updated_at: '2026-11-17', version: 1, deleted: false,
   ...overrides,
 });
@@ -130,7 +130,7 @@ const levelSet = (setNumber: number, n: number) =>
   Array.from({ length: n * 2 }, (_, index) => wonGame(setNumber, index + 1, index % 2 === 0 ? 'player' : 'opponent')).flat();
 
 describe('tie-break', () => {
-  const sixGameSets = match({ tiebreak_starts_at_363: false, deuce_single_point: false });
+  const sixGameSets = match({ games_to_win_set: 6, deuce_single_point: false });
 
   it('starts a tie-break to 7 only at 6-6 in standard sets', () => {
     const points = levelSet(1, 6);
@@ -184,7 +184,7 @@ describe('tie-break', () => {
   });
 
   it('does not open a new game once the set is over', () => {
-    const shortSets = match({ tiebreak_starts_at_363: true, deuce_single_point: false });
+    const shortSets = match({ games_to_win_set: 4, deuce_single_point: false });
     // Set won 4-1: games 1-5 played, there is no game 6.
     const set1 = [...wonGame(1, 1, 'player'), ...wonGame(1, 2, 'opponent'), ...wonGame(1, 3, 'player'), ...wonGame(1, 4, 'player'), ...wonGame(1, 5, 'player')];
     expect(deriveSetScore(set1, 1, shortSets)).toEqual({ player: 4, opponent: 1 });
@@ -194,7 +194,7 @@ describe('tie-break', () => {
   });
 
   it('plays short sets to 4 games with a tie-break at 3-3', () => {
-    const shortSets = match({ tiebreak_starts_at_363: true, deuce_single_point: false });
+    const shortSets = match({ games_to_win_set: 4, deuce_single_point: false });
     expect(tiebreakTarget(levelSet(1, 3), shortSets, 1, 7)).toBe(7);
     expect(isSetComplete({ player: 4, opponent: 2 }, shortSets, 1)).toBe(true);
     expect(isSetComplete({ player: 4, opponent: 3 }, shortSets, 1)).toBe(true);
@@ -202,7 +202,7 @@ describe('tie-break', () => {
   });
 
   it('declares the match winner when the deciding super tie-break ends (best of 3)', () => {
-    const m = match({ last_set_type: 'super-tiebreak', number_of_sets: 3, tiebreak_starts_at_363: false, deuce_single_point: false });
+    const m = match({ last_set_type: 'super-tiebreak', number_of_sets: 3, games_to_win_set: 6, deuce_single_point: false });
     const sixLove = (setNumber: number, winner: 'player' | 'opponent') =>
       Array.from({ length: 6 }, (_, index) => wonGame(setNumber, index + 1, winner)).flat();
     const superTiebreak = (wins: number, losses: number) => [
@@ -219,16 +219,16 @@ describe('tie-break', () => {
   it('declares the match winner after two sets in best of 3 and three sets in best of 5', () => {
     const sixLove = (setNumber: number, winner: 'player' | 'opponent') =>
       Array.from({ length: 6 }, (_, index) => wonGame(setNumber, index + 1, winner)).flat();
-    const bestOf3 = match({ number_of_sets: 3, tiebreak_starts_at_363: false, deuce_single_point: false });
+    const bestOf3 = match({ number_of_sets: 3, games_to_win_set: 6, deuce_single_point: false });
     expect(matchWinner(sixLove(1, 'player'), bestOf3)).toBeNull();
     expect(matchWinner([...sixLove(1, 'player'), ...sixLove(2, 'player')], bestOf3)).toBe('player');
-    const bestOf5 = match({ number_of_sets: 5, tiebreak_starts_at_363: false, deuce_single_point: false });
+    const bestOf5 = match({ number_of_sets: 5, games_to_win_set: 6, deuce_single_point: false });
     expect(matchWinner([...sixLove(1, 'opponent'), ...sixLove(2, 'opponent')], bestOf5)).toBeNull();
     expect(matchWinner([...sixLove(1, 'opponent'), ...sixLove(2, 'opponent'), ...sixLove(3, 'opponent')], bestOf5)).toBe('opponent');
   });
 
   it('plays the deciding set as a super tie-break to 10 when configured', () => {
-    const superTiebreak = match({ last_set_type: 'super-tiebreak', number_of_sets: 3, tiebreak_starts_at_363: false });
+    const superTiebreak = match({ last_set_type: 'super-tiebreak', number_of_sets: 3, games_to_win_set: 6 });
     expect(tiebreakTarget([], superTiebreak, 3, 1)).toBe(10);
     expect(tiebreakTarget([], superTiebreak, 2, 1)).toBeNull();
     expect(isSetComplete({ player: 1, opponent: 0 }, superTiebreak, 3)).toBe(true);

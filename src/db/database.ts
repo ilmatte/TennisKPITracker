@@ -1,4 +1,5 @@
-import Dexie, { type EntityTable, type Table } from 'dexie';
+import Dexie, { type EntityTable, type Table, type Transaction } from 'dexie';
+import { migrateLegacyMatchColumns } from '../features/matches/legacyMatch';
 import { POINT_TYPES } from '../features/scoring/pointTypes';
 import { PLAYER_AGE_CATEGORIES } from '../features/players/ageCategories';
 import { STATUSES, migrateLegacyStatus } from '../features/statuses/statuses';
@@ -94,32 +95,31 @@ export class TennisDatabase extends Dexie {
         ref.value = migrateLegacyStatus('match', match);
       });
     });
-    // v15: matches.third_set_type renamed last_set_type (it is the deciding set: the third or the fifth). Not indexed.
-    // Pending sync operations and conflicts carry match records too, so they are renamed as well: an unsent upsert
-    // with the old column would be rejected by Supabase.
-    this.version(15).stores({}).upgrade(async transaction => {
-      await transaction.table('matches').toCollection().modify((match, ref) => {
-        ref.value = renameLastSetType(match);
-      });
-      await transaction.table('syncQueue').toCollection().modify((operation: SyncOperation) => {
-        if (operation.entity_type === 'matches') operation.payload = renameLastSetType(operation.payload);
-      });
-      await transaction.table('syncConflicts').toCollection().modify((conflict: SyncConflict) => {
-        if (conflict.entity_type !== 'matches') return;
-        conflict.local_payload = renameLastSetType(conflict.local_payload);
-        conflict.remote_payload = renameLastSetType(conflict.remote_payload);
-      });
-    });
+    // v15: matches.third_set_type renamed last_set_type (it is the deciding set: the third or the fifth).
+    // v16: matches.tiebreak_starts_at_363 removed; games_to_win_set, which replaces it, takes its value when missing.
+    // Neither column is indexed. Both upgrades run the same idempotent conversion, so a device coming from v14 or v15
+    // ends up the same.
+    this.version(15).stores({}).upgrade(migrateLegacyMatchStores);
+    this.version(16).stores({}).upgrade(migrateLegacyMatchStores);
     // Reference tables are written every time the database opens, whatever version the device came from.
     this.on('ready', database => seedReferenceTables(database as TennisDatabase));
   }
 }
 
-/** A match record (or match payload) with third_set_type renamed last_set_type; anything else is returned unchanged. */
-export function renameLastSetType<T>(record: T): T {
-  if (!record || typeof record !== 'object' || !('third_set_type' in record)) return record;
-  const { third_set_type, ...rest } = record as Record<string, unknown>;
-  return { ...rest, last_set_type: (rest.last_set_type as unknown) ?? third_set_type } as T;
+/** Converts the legacy match columns in stored matches and in the match records carried by pending sync operations
+ *  and conflicts: an unsent upsert with a removed or renamed column would be rejected by Supabase. */
+async function migrateLegacyMatchStores(transaction: Transaction): Promise<void> {
+  await transaction.table('matches').toCollection().modify((match, ref) => {
+    ref.value = migrateLegacyMatchColumns(match);
+  });
+  await transaction.table('syncQueue').toCollection().modify((operation: SyncOperation) => {
+    if (operation.entity_type === 'matches') operation.payload = migrateLegacyMatchColumns(operation.payload);
+  });
+  await transaction.table('syncConflicts').toCollection().modify((conflict: SyncConflict) => {
+    if (conflict.entity_type !== 'matches') return;
+    conflict.local_payload = migrateLegacyMatchColumns(conflict.local_payload);
+    conflict.remote_payload = migrateLegacyMatchColumns(conflict.remote_payload);
+  });
 }
 
 /** Writes the reference tables (same rows as supabase/initial_schema.sql). Idempotent: rows are keyed by their stable

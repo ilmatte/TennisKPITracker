@@ -144,11 +144,8 @@ export function MatchEditor({ match, error, onClose, onSave }: {
     <label>Risultato<input value={draft.result ?? ''} onChange={event => field('result', event.target.value || null)} /></label>
     <label className="toggle-row"><span>Punto secco al 40-40</span><input type="checkbox" checked={draft.deuce_single_point} onChange={event => field('deuce_single_point', event.target.checked)} /></label>
     <div className="form-grid">
-      <label>Game per vincere il set<select value={draft.games_to_win_set ?? (draft.tiebreak_starts_at_363 ? 4 : 6)} onChange={event => {
-        const games = Number(event.target.value) as 4 | 6;
-        setDraft(current => ({ ...current, games_to_win_set: games, tiebreak_starts_at_363: games === 4 }));
-      }}><option value={4}>4 game</option><option value={6}>6 game</option></select></label>
-      {(draft.games_to_win_set ?? (draft.tiebreak_starts_at_363 ? 4 : 6)) === 4 && <label>Tie-break sul<select value={draft.short_set_tiebreak_at ?? 3} onChange={event => field('short_set_tiebreak_at', Number(event.target.value) as 3 | 4)}><option value={3}>3-3</option><option value={4}>4-4</option></select></label>}
+      <label>Game per vincere il set<select value={draft.games_to_win_set} onChange={event => field('games_to_win_set', Number(event.target.value) as 4 | 6)}><option value={4}>4 game</option><option value={6}>6 game</option></select></label>
+      {draft.games_to_win_set === 4 && <label>Tie-break sul<select value={draft.short_set_tiebreak_at ?? 3} onChange={event => field('short_set_tiebreak_at', Number(event.target.value) as 3 | 4)}><option value={3}>3-3</option><option value={4}>4-4</option></select></label>}
     </div>
     {error && <p className="family-feedback error" role="alert">{error}</p>}
     <button className="primary wide" disabled={!draft.opponent.trim() || !draft.player_id || draft.tiebreak_target < 1 || draft.super_tiebreak_target < 1}
@@ -163,9 +160,8 @@ export function MatchEditor({ match, error, onClose, onSave }: {
         last_set_type: draft.last_set_type,
         super_tiebreak_target: draft.super_tiebreak_target,
         tiebreak_target: draft.tiebreak_target,
-        games_to_win_set: draft.games_to_win_set ?? (draft.tiebreak_starts_at_363 ? 4 : 6),
+        games_to_win_set: draft.games_to_win_set,
         short_set_tiebreak_at: draft.short_set_tiebreak_at ?? 3,
-        tiebreak_starts_at_363: (draft.games_to_win_set ?? (draft.tiebreak_starts_at_363 ? 4 : 6)) === 4,
         deuce_single_point: draft.deuce_single_point,
         first_server: draft.first_server,
         status_id: draft.status_id,

@@ -145,7 +145,7 @@ export async function updatePlayer(
 export type MatchChanges = Pick<Match,
   'match_date' | 'player_id' | 'opponent' | 'opponent_ranking' |
   'tournament_id' | 'tournament_match_number' | 'number_of_sets' | 'last_set_type' |
-  'super_tiebreak_target' | 'tiebreak_target' | 'games_to_win_set' | 'short_set_tiebreak_at' | 'tiebreak_starts_at_363' |
+  'super_tiebreak_target' | 'tiebreak_target' | 'games_to_win_set' | 'short_set_tiebreak_at' |
   'deuce_single_point' | 'first_server' | 'status_id' | 'result'
 >;
 
@@ -172,7 +172,7 @@ export async function updateMatch(
       throw new Error('I target dei tie-break devono essere maggiori di zero.');
     }
     if (!isMatchStatusId(changes.status_id)) throw new Error('Stato della partita non valido.');
-    const gamesToWinSet = changes.games_to_win_set ?? (changes.tiebreak_starts_at_363 ? 4 : 6);
+    const gamesToWinSet = changes.games_to_win_set;
     const shortSetTiebreakAt = changes.short_set_tiebreak_at ?? current.short_set_tiebreak_at ?? 3;
     if (gamesToWinSet !== 4 && gamesToWinSet !== 6) {
       throw new Error('Il set deve essere impostato a 4 o 6 game.');
@@ -185,7 +185,6 @@ export async function updateMatch(
       ...changes,
       games_to_win_set: gamesToWinSet,
       short_set_tiebreak_at: shortSetTiebreakAt,
-      tiebreak_starts_at_363: gamesToWinSet === 4,
       ...(player ? { player_ranking_snapshot: player.ranking } : {}),
     };
     await write(db.matches, 'matches', next, next.updated_at);
@@ -209,7 +208,10 @@ export async function createMatch(familyId: string, input: NewMatchInput): Promi
     if (input.tiebreak_target < 1 || input.super_tiebreak_target < 1) {
       throw new Error('I target dei tie-break devono essere maggiori di zero.');
     }
-    const gamesToWinSet = input.games_to_win_set ?? 4;
+    const gamesToWinSet = input.games_to_win_set;
+    if (gamesToWinSet !== 4 && gamesToWinSet !== 6) {
+      throw new Error('Il set deve essere impostato a 4 o 6 game.');
+    }
     const created_at = timestamp();
     const match: Match = {
       ...input,
@@ -219,7 +221,6 @@ export async function createMatch(familyId: string, input: NewMatchInput): Promi
       player_ranking_snapshot: player.ranking,
       games_to_win_set: gamesToWinSet,
       short_set_tiebreak_at: input.short_set_tiebreak_at ?? 3,
-      tiebreak_starts_at_363: gamesToWinSet === 4,
       status_id: STATUS.in_progress,
       created_at,
       updated_at: created_at,

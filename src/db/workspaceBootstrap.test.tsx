@@ -137,7 +137,7 @@ describe('automatic local workspace', () => {
       last_set_type: 'normal',
       super_tiebreak_target: 10,
       tiebreak_target: 7,
-      tiebreak_starts_at_363: true,
+      games_to_win_set: 4,
       deuce_single_point: true,
       first_server: 'player',
       status_id: 2,

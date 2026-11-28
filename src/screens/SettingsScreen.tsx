@@ -5,6 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import { migrateLegacyPointPayload } from '../db/pointWinner';
 import { migrateLegacyStatus } from '../features/statuses/statuses';
+import { migrateLegacyMatch } from '../features/matches/legacyMatch';
 import { useAuth } from '../features/auth/AuthContext';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import FamilyManager from '../features/families/FamilyManager';
@@ -63,9 +64,10 @@ export function Settings() {
       // Absent in backups written before tournaments existed; older ones carry a text status, converted to status_id.
       const tournaments = (data.tournaments ?? []).map(tournament => migrateLegacyStatus('tournament', tournament));
       // Backups written before tournaments may carry the removed free-text matches.tournament field: drop it.
-      // Backups written before the statuses table carry a text status: converted to status_id.
+      // Backups written before the statuses table carry a text status (converted to status_id), older ones the legacy
+      // third_set_type / tiebreak_starts_at_363 columns (converted to the current ones).
       const matches = (data.matches ?? []).map(({ tournament: _removed, ...match }: Match & { tournament?: unknown }) =>
-        migrateLegacyStatus('match', match));
+        migrateLegacyMatch(match));
       const sets = data.sets ?? [];
       const games = data.games ?? [];
       // Version 2 backups use the legacy point fields (winner, server, double_fault, ...): convert them.

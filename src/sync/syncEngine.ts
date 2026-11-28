@@ -20,6 +20,7 @@ import { readRecordBaseline, saveSyncMapping, writeRecordBaseline } from './sync
 import { syncEntityOrder } from './supabaseRepository';
 import { normalizeUiError } from '../services/uiMessages';
 import { migrateLegacyStatus } from '../features/statuses/statuses';
+import { migrateLegacyMatch } from '../features/matches/legacyMatch';
 
 const PAGE_SIZE = 200;
 const INITIAL_COMPLETE = '__complete__';
@@ -201,8 +202,9 @@ async function applyRemoteRecord(
   type: SyncEntityType,
   remotePayload: Record<string, unknown>,
 ): Promise<'applied' | 'ignored' | 'conflict'> {
-  // Records saved on the server before the statuses table may still carry a text status: converted to status_id.
-  const converted = type === 'matches' ? migrateLegacyStatus('match', remotePayload)
+  // Records saved on the server by an older schema may still carry a text status (converted to status_id) and, for
+  // matches, the legacy third_set_type / tiebreak_starts_at_363 columns (converted to the current ones).
+  const converted = type === 'matches' ? migrateLegacyMatch(remotePayload)
     : type === 'tournaments' ? migrateLegacyStatus('tournament', remotePayload) : remotePayload;
   const localPayload = toLocalPayload(converted, mapping);
   const id = String(localPayload.id);
@@ -599,7 +601,7 @@ export async function resolveSyncConflict(
         typeof remotePayload.deleted !== 'boolean') {
         throw new Error('La versione remota del conflitto non è valida.');
       }
-      const converted = conflict.entity_type === 'matches' ? migrateLegacyStatus('match', remotePayload)
+      const converted = conflict.entity_type === 'matches' ? migrateLegacyMatch(remotePayload)
         : conflict.entity_type === 'tournaments' ? migrateLegacyStatus('tournament', remotePayload) : remotePayload;
       await store.put({
         ...converted,

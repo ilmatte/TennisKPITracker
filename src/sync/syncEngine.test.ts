@@ -218,7 +218,7 @@ describe('sync engine', () => {
       id: 'match-id', family_id: remoteFamilyId, match_date: '2026-03-01', player_id: 'player-id',
       player_ranking_snapshot: '4.1', opponent: 'Bea',
       number_of_sets: 3, last_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
-      tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player',
+      games_to_win_set: 4, deuce_single_point: true, first_server: 'player',
       status_id: 2, created_at: now, updated_at: now, version: 2, deleted: false,
     };
     const tennisSet: TennisSet = {
@@ -263,8 +263,8 @@ describe('sync engine', () => {
     });
     remote.seed('matches', {
       id: 'match-id', match_date: '2026-03-01', player_id: 'player-id', tournament_id: 'tournament-id',
-      player_ranking_snapshot: '4.1', opponent: 'Bea', number_of_sets: 3, last_set_type: 'normal', super_tiebreak_target: 10,
-      tiebreak_target: 7, tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player', status: 'in-progress',
+      player_ranking_snapshot: '4.1', opponent: 'Bea', number_of_sets: 3, third_set_type: 'normal', super_tiebreak_target: 10,
+      tiebreak_target: 7, tiebreak_starts_at_363: false, deuce_single_point: true, first_server: 'player', status: 'in-progress',
       created_at: now, updated_at: now, version: 1, deleted: false,
     });
     const state = mapping();
@@ -276,8 +276,10 @@ describe('sync engine', () => {
     const match = await db.matches.get('match-id');
     expect(tournament).toMatchObject({ status_id: 3 });
     expect(tournament).not.toHaveProperty('status');
-    expect(match).toMatchObject({ status_id: 2 });
+    expect(match).toMatchObject({ status_id: 2, last_set_type: 'normal', games_to_win_set: 6 });
     expect(match).not.toHaveProperty('status');
+    expect(match).not.toHaveProperty('third_set_type');
+    expect(match).not.toHaveProperty('tiebreak_starts_at_363');
   });
 
   it('uploads the latest queued records parent-first and transmits tombstones as upserts', async () => {
@@ -295,7 +297,7 @@ describe('sync engine', () => {
       id: 'match-id', family_id: localFamilyId, match_date: '2026-03-01', player_id: player.id,
       tournament_id: tournament.id, player_ranking_snapshot: '4.1', opponent: 'Bea',
       number_of_sets: 3, last_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
-      tiebreak_starts_at_363: true, deuce_single_point: true, first_server: 'player',
+      games_to_win_set: 4, deuce_single_point: true, first_server: 'player',
       status_id: 2, created_at: now, updated_at: now, version: 1, deleted: false,
     };
     const tennisSet: TennisSet = {

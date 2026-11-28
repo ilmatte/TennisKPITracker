@@ -137,7 +137,6 @@ create table public.matches (
   tiebreak_target integer not null default 7 check (tiebreak_target > 0),
   games_to_win_set integer not null default 4 check (games_to_win_set in (4, 6)),
   short_set_tiebreak_at integer not null default 3 check (short_set_tiebreak_at in (3, 4)),
-  tiebreak_starts_at_363 boolean not null default true,
   deuce_single_point boolean not null default true,
   first_server text not null check (first_server in ('player', 'opponent')),
   result text,

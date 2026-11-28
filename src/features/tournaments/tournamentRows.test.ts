@@ -13,7 +13,7 @@ const tournament = (id: string, start_date: string, extra: Partial<Tournament> =
   ({ id, family_id: 'f1', club_id: club.id, name: id, age_category_id: 3, start_date, status_id: 1, ...base, ...extra });
 const match = (id: string, tournament_id: string | null, match_date: string, extra: Partial<Match> = {}): Match => ({
   id, family_id: 'f1', match_date, player_id: 'p', player_ranking_snapshot: '', opponent: 'Bea', tournament_id,
-  number_of_sets: 3, last_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7, tiebreak_starts_at_363: true,
+  number_of_sets: 3, last_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7, games_to_win_set: 4,
   deuce_single_point: true, first_server: 'player', status_id: 3, ...base, ...extra,
 });
 

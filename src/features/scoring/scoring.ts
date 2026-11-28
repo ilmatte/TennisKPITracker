@@ -126,9 +126,9 @@ export function deriveGameScore(points: ScoredPoint[], deuceSinglePoint = false,
 
 const otherSide = (side: Side): Side => side === 'player' ? 'opponent' : 'player';
 
-/** Resolve current explicit settings, falling back to legacy records. */
+/** Games to win a set and the score at which its tie-break starts. */
 export function setFormat(match: Match): { gamesToWin: number; tiebreakAt: number } {
-  const gamesToWin = match.games_to_win_set ?? (match.tiebreak_starts_at_363 ? 4 : 6);
+  const gamesToWin = match.games_to_win_set;
   const tiebreakAt = gamesToWin === 4 ? (match.short_set_tiebreak_at ?? 3) : 6;
   return { gamesToWin, tiebreakAt };
 }
