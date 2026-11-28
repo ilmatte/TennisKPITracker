@@ -3,7 +3,8 @@ import { migrateLegacyMatchColumns } from '../features/matches/legacyMatch';
 import { POINT_TYPES } from '../features/scoring/pointTypes';
 import { PLAYER_AGE_CATEGORIES } from '../features/players/ageCategories';
 import { FITP_RANKINGS, migrateLegacyPlayerRanking } from '../features/players/fitpRankings';
-import { STATUSES, migrateLegacyStatus } from '../features/statuses/statuses';
+import { STATUS, STATUSES, migrateLegacyStatus } from '../features/statuses/statuses';
+import { withDerivedSetStatuses } from '../features/scoring/setStatuses';
 import type {
   Club,
   Family,
@@ -114,6 +115,18 @@ export class TennisDatabase extends Dexie {
     // opponent_ranking becomes opponent_ranking_snapshot (FK too). Same idempotent conversion as v15/v16, which now
     // includes the rankings; codes that match no registry row become null. Neither column is indexed.
     this.version(18).stores({}).upgrade(migrateLegacyMatchStores);
+    // v19: sets.status_id (FK to statuses: In programma, In corso, Concluso), computed from the points of each set.
+    // Not indexed. Mirrors supabase/initial_schema.sql.
+    this.version(19).stores({}).upgrade(async transaction => {
+      const [matches, sets, games, points] = await Promise.all([
+        transaction.table('matches').toArray(), transaction.table('sets').toArray(),
+        transaction.table('games').toArray(), transaction.table('points').toArray(),
+      ]);
+      const statusById = new Map(withDerivedSetStatuses(matches, sets, games, points).map(set => [set.id, set.status_id]));
+      await transaction.table('sets').toCollection().modify((set: TennisSet) => {
+        set.status_id = statusById.get(set.id) ?? set.status_id ?? STATUS.upcoming;
+      });
+    });
     // Reference tables are written every time the database opens, whatever version the device came from.
     this.on('ready', database => seedReferenceTables(database as TennisDatabase));
   }

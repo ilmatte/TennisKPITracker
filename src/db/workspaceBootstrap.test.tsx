@@ -148,7 +148,7 @@ describe('automatic local workspace', () => {
     };
     const set: TennisSet = {
       id: 'existing-set-id', family_id: match.family_id, match_id: match.id, set_number: 1,
-      player_games: 0, opponent_games: 0, created_at: now, updated_at: now, version: 1, deleted: false,
+      player_games: 0, opponent_games: 0, status_id: 1, created_at: now, updated_at: now, version: 1, deleted: false,
     };
     const game: Game = {
       id: 'existing-game-id', family_id: match.family_id, set_id: set.id, game_number: 1,
@@ -232,7 +232,7 @@ describe('automatic local workspace', () => {
     expect(savedMatch?.family_id).toBe(screen.getByTestId('active-workspace').textContent);
     const set: TennisSet = {
       id: crypto.randomUUID(), family_id: savedMatch!.family_id, match_id: savedMatch!.id,
-      set_number: 1, player_games: 0, opponent_games: 0,
+      set_number: 1, player_games: 0, opponent_games: 0, status_id: 1,
       created_at: now, updated_at: now, version: 1, deleted: false,
     };
     const game: Game = {

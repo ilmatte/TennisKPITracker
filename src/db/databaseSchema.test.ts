@@ -18,7 +18,7 @@ describe('local database schema', () => {
   it('creates every store aligned with the Supabase tables and seeds the reference tables', async () => {
     const fresh = new TennisDatabase(databaseName);
     await fresh.open();
-    expect(fresh.verno).toBe(18);
+    expect(fresh.verno).toBe(19);
     expect(fresh.tables.map(table => table.name).sort()).toEqual([
       'clubs', 'families', 'family_invitations', 'family_members', 'fitp_rankings', 'games', 'matches', 'player_age_categories', 'players',
       'point_types', 'points', 'sets', 'statuses', 'syncConflicts', 'syncMetadata', 'syncQueue', 'tournaments',
@@ -51,7 +51,7 @@ describe('local database schema', () => {
 
     const reopened = new TennisDatabase(databaseName);
     await reopened.open();
-    expect(reopened.verno).toBe(18);
+    expect(reopened.verno).toBe(19);
     expect(await reopened.table('point_types').toArray()).toEqual([...POINT_TYPES]);
     expect(await reopened.table('player_age_categories').toArray()).toEqual([...PLAYER_AGE_CATEGORIES]);
     // The free-text ranking typed before the registry existed becomes ranking_id (4.1 is id 7).
@@ -87,7 +87,7 @@ describe('local database schema', () => {
 
     const upgraded = new TennisDatabase(databaseName);
     await upgraded.open();
-    expect(upgraded.verno).toBe(18);
+    expect(upgraded.verno).toBe(19);
     expect(await upgraded.table('clubs').get('c1')).toEqual(club);
     // The free-text tournament is removed; matches created before tournaments have no tournament_id. The text status
     // becomes status_id (v14).
@@ -114,7 +114,7 @@ describe('local database schema', () => {
 
     const upgraded = new TennisDatabase(databaseName);
     await upgraded.open();
-    expect(upgraded.verno).toBe(18);
+    expect(upgraded.verno).toBe(19);
     expect((await upgraded.tournaments.toArray()).map(item => [item.id, item.status_id, 'status' in item])).toEqual([
       ['t1', 1, false], ['t2', 1, false], ['t3', 3, false],
     ]);
@@ -145,7 +145,7 @@ describe('local database schema', () => {
 
     const upgraded = new TennisDatabase(databaseName);
     await upgraded.open();
-    expect(upgraded.verno).toBe(18);
+    expect(upgraded.verno).toBe(19);
     expect(await upgraded.matches.toArray()).toEqual([
       { id: 'm1', family_id: 'f1', last_set_type: 'super-tiebreak', games_to_win_set: 6 },
       { id: 'm2', family_id: 'f1', last_set_type: 'normal', games_to_win_set: 4 },

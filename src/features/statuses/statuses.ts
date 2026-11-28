@@ -1,4 +1,4 @@
-import type { MatchStatusId, Status, StatusId, TournamentStatusId } from '../../types';
+import type { MatchStatusId, SetStatusId, Status, StatusId, TournamentStatusId } from '../../types';
 
 /** Status ids. They mirror the rows of the `statuses` table (supabase/initial_schema.sql and the Dexie `statuses`
  *  store): never renumber them. */
@@ -17,14 +17,22 @@ export const STATUSES: readonly Status[] = [
 ];
 
 /** Grammatical gender of the entities that have a status: "il torneo è concluso", "la partita è conclusa". */
-export const STATUS_ENTITY_GENDER = { tournament: 'masculine', match: 'feminine' } as const;
+export const STATUS_ENTITY_GENDER = { tournament: 'masculine', match: 'feminine', set: 'masculine' } as const;
 export type StatusEntity = keyof typeof STATUS_ENTITY_GENDER;
 
+/** App-only wording of a status for one entity, leaving the statuses table unchanged: a set "In programma" is shown
+ *  as "Prossimo" (the next set to play). */
+const STATUS_LABEL_OVERRIDES: Partial<Record<StatusEntity, Partial<Record<StatusId, string>>>> = {
+  set: { [STATUS.upcoming]: 'Prossimo' },
+};
+
 /** Label of a status for an entity, agreeing with its gender: statusLabel(3, 'tournament') is "Concluso",
- *  statusLabel(3, 'match') is "Conclusa". */
+ *  statusLabel(3, 'match') is "Conclusa", statusLabel(1, 'set') is "Prossimo". */
 export function statusLabel(statusId: number, entity: StatusEntity): string {
   const status = STATUSES.find(item => item.id === statusId);
   if (!status) return '';
+  const override = STATUS_LABEL_OVERRIDES[entity]?.[status.id as StatusId];
+  if (override) return override;
   return STATUS_ENTITY_GENDER[entity] === 'feminine' ? status.label_feminine : status.label_masculine;
 }
 
@@ -37,6 +45,9 @@ export const TOURNAMENT_STATUS_IDS = STATUSES.filter(status => status.applies_to
   .map(status => status.id) as TournamentStatusId[];
 export const MATCH_STATUS_IDS = STATUSES.filter(status => status.applies_to_matches)
   .map(status => status.id) as MatchStatusId[];
+
+/** A set goes through all the statuses: In programma, In corso, Concluso. */
+export const SET_STATUS_IDS: readonly SetStatusId[] = [STATUS.upcoming, STATUS.in_progress, STATUS.completed];
 
 export const isTournamentStatusId = (value: unknown): value is TournamentStatusId =>
   (TOURNAMENT_STATUS_IDS as unknown[]).includes(value);

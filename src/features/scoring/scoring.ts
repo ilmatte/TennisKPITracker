@@ -1,5 +1,6 @@
-import type { Match, ScoredPoint, TennisSet } from '../../types';
+import type { Match, ScoredPoint, SetStatusId, TennisSet } from '../../types';
 import { POINT_TYPE, type PointTypeId } from './pointTypes';
+import { STATUS } from '../statuses/statuses';
 
 export type Side = 'player' | 'opponent';
 export type PointAction = 'free_error' | 'double_fault' | 'lost' | 'great_shot' | 'won' | 'ace';
@@ -175,6 +176,39 @@ export function isSetComplete(score: { player: number; opponent: number }, match
   if (isSuperTiebreakSet(match, setNumber)) return high >= 1;
   const { gamesToWin, tiebreakAt } = setFormat(match);
   return (high >= gamesToWin && high - low >= 2) || (high === tiebreakAt + 1 && low === tiebreakAt);
+}
+
+/** Status of a set (statuses id): Concluso once its score meets the match's rules, In corso once it has at least one
+ *  point, otherwise In programma. The single rule used to store sets.status_id and to show it. */
+export function setStatusId(
+  score: { player: number; opponent: number },
+  started: boolean,
+  match: Match,
+  setNumber: number,
+): SetStatusId {
+  if (isSetComplete(score, match, setNumber)) return STATUS.completed;
+  return started ? STATUS.in_progress : STATUS.upcoming;
+}
+
+/** Status of a set computed from the match's points (deleted points ignored). */
+export function deriveSetStatusId(points: ScoredPoint[], setNumber: number, match: Match): SetStatusId {
+  const started = points.some(point => !point.deleted && point.set_number === setNumber);
+  return setStatusId(countGames(points, setNumber, match), started, match, setNumber);
+}
+
+/** Sets shown in the live match screen, in order: the sets already played (concluded or started) and, while the match
+ *  is not over, only the first set not yet concluded (the one being played or the next one). Set 1 when nothing has
+ *  been played. Future sets of the format are never listed in advance. */
+export function visibleSetNumbers(points: ScoredPoint[], match: Match, matchOver: boolean): number[] {
+  const statuses = Array.from({ length: match.number_of_sets }, (_, index) =>
+    ({ number: index + 1, status: deriveSetStatusId(points, index + 1, match) }));
+  const visible = new Set(statuses.filter(set => set.status !== STATUS.upcoming).map(set => set.number));
+  if (!matchOver) {
+    const next = statuses.find(set => set.status !== STATUS.completed);
+    if (next) visible.add(next.number);
+  }
+  if (!visible.size) visible.add(1);
+  return [...visible].sort((a, b) => a - b);
 }
 
 /** Winner of the match once a player has won the sets needed (2 in best of 3, 3 in best of 5), otherwise null.

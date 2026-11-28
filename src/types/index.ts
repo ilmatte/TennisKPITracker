@@ -129,6 +129,8 @@ export type StatusId = 1 | 2 | 3;
 export type TournamentStatusId = StatusId;
 /** A match is never "In programma": it exists from the moment it starts. */
 export type MatchStatusId = 2 | 3;
+/** A set is "In programma" (shown as "Prossimo") until its first point, "In corso" while played, then "Concluso". */
+export type SetStatusId = StatusId;
 
 export interface Match {
   id: UUID;
@@ -175,6 +177,8 @@ export interface TennisSet {
   set_number: number;
   player_games: number;
   opponent_games: number;
+  /** FK to statuses.id, derived from the points of the set (setStatusId): In programma (1), In corso (2), Concluso (3). */
+  status_id: SetStatusId;
   created_at: string;
   updated_at: string;
   version: number;

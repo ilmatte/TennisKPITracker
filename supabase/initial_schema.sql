@@ -125,10 +125,11 @@ create table public.clubs (
   unique (family_id, id)
 );
 
--- Statuses of tournaments and matches. Reference data (not synced): ids are stable and mirrored by the app
+-- Statuses of tournaments, matches and sets. Reference data (not synced): ids are stable and mirrored by the app
 -- (src/features/statuses/statuses.ts) and by the Dexie statuses store: never renumber them. Each label has a masculine
 -- and a feminine form, so that it agrees with the entity ("torneo concluso", "partita conclusa"); applies_to_* say which
--- entities can take the status (a match is never upcoming).
+-- entities can take the status (a match is never upcoming). Sets take all three statuses; the app shows a set
+-- "In programma" as "Prossimo".
 create table public.statuses (
   id smallint primary key,
   code text not null unique,
@@ -224,6 +225,11 @@ create table public.sets (
   updated_at timestamptz not null default now(),
   version integer not null default 1 check (version > 0),
   deleted boolean not null default false,
+  -- In programma (1) until the first point, In corso (2) while played, Concluso (3) once won: computed by the app from
+  -- the points of the set (setStatusId in src/features/scoring/scoring.ts).
+  status_id smallint not null default 1
+    constraint sets_status_id_fkey references public.statuses(id)
+    constraint sets_status_id_check check (status_id in (1, 2, 3)),
   unique (family_id, id),
   unique (match_id, set_number),
   foreign key (family_id, match_id) references public.matches(family_id, id) on delete cascade

@@ -223,7 +223,7 @@ describe('sync engine', () => {
     };
     const tennisSet: TennisSet = {
       id: 'set-id', family_id: remoteFamilyId, match_id: match.id, set_number: 1,
-      player_games: 1, opponent_games: 0, created_at: now, updated_at: now, version: 1, deleted: false,
+      player_games: 1, opponent_games: 0, status_id: 1, created_at: now, updated_at: now, version: 1, deleted: false,
     };
     const game: Game = {
       id: 'game-id', family_id: remoteFamilyId, set_id: tennisSet.id, game_number: 1,
@@ -317,7 +317,7 @@ describe('sync engine', () => {
     };
     const tennisSet: TennisSet = {
       id: 'set-id', family_id: localFamilyId, match_id: match.id, set_number: 1,
-      player_games: 0, opponent_games: 0, created_at: now, updated_at: now, version: 1, deleted: false,
+      player_games: 0, opponent_games: 0, status_id: 1, created_at: now, updated_at: now, version: 1, deleted: false,
     };
     const game: Game = {
       id: 'game-id', family_id: localFamilyId, set_id: tennisSet.id, game_number: 1,

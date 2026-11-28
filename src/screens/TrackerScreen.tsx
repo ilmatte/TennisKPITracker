@@ -3,9 +3,9 @@ import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } fr
 import { useParams } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getMatchPoints } from '../db/database';
-import { STATUS } from '../features/statuses/statuses';
+import { STATUS, statusLabel } from '../features/statuses/statuses';
 import { nextPointNumber } from '../db/pointNumbers';
-import { configuredSetNavigation, deriveGameScore, deriveSetScore, getGameServer, getServer, isActionAvailable, matchWinner, serverOverrideKey, tiebreakServer, type ServerOverrides, type Side, isSetComplete, unavailableReason, isSuperTiebreakSet, nextGameNumber, pointsToGame, tiebreakTarget, resolvePointAction, sortedPoints, type PointAction } from '../features/scoring/scoring';
+import { deriveGameScore, deriveSetStatusId, setStatusId, visibleSetNumbers, deriveSetScore, getGameServer, getServer, isActionAvailable, matchWinner, serverOverrideKey, tiebreakServer, type ServerOverrides, type Side, isSetComplete, unavailableReason, isSuperTiebreakSet, nextGameNumber, pointsToGame, tiebreakTarget, resolvePointAction, sortedPoints, type PointAction } from '../features/scoring/scoring';
 import { countGameDescendants, countMatchDescendants, countSetDescendants, softDeleteGame, softDeleteMatch, softDeletePoint, softDeleteSet, updateGame, updateMatch, updatePoint, updateSet, type PointChanges } from '../db/sportsMutations';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import { isWinningPointType, POINT_TYPES } from '../features/scoring/pointTypes';
@@ -69,8 +69,12 @@ export function Tracker() {
   const swipeStartX = useRef<number | null>(null);
   const swipeHandled = useRef(false);
 
-  const setTabs = match ? configuredSetNavigation(match.number_of_sets, hierarchy.sets) : [];
-  const selectedSetNumber = match && setNumber > match.number_of_sets ? 1 : setNumber;
+  // Only the sets listed by visibleSetNumbers can be selected: when the selected one is no longer listed (e.g. the
+  // point that concluded the previous set was undone), the selection falls back to the last listed set.
+  const shownSetNumbers = match
+    ? visibleSetNumbers(points, match, matchWinner(points, match) !== null || match.status_id === STATUS.completed)
+    : [1];
+  const selectedSetNumber = shownSetNumbers.includes(setNumber) ? setNumber : shownSetNumbers[shownSetNumbers.length - 1];
   const currentGameNumber = match ? nextGameNumber(points, selectedSetNumber, match) : 1;
   // A finished set has no game in progress: nextGameNumber then points at its last game.
   const selectedSetFinished = match ? isSetComplete(deriveSetScore(points, selectedSetNumber, match), match, selectedSetNumber) : false;
@@ -134,7 +138,7 @@ export function Tracker() {
           deleted: false,
         } : {
           id: crypto.randomUUID(), family_id: currentMatch.family_id, match_id: currentMatch.id, set_number: selectedSetNumber,
-          player_games: 0, opponent_games: 0, created_at, updated_at: created_at, version: 1, deleted: false,
+          player_games: 0, opponent_games: 0, status_id: STATUS.upcoming, created_at, updated_at: created_at, version: 1, deleted: false,
         };
         if (tennisSet.family_id !== currentMatch.family_id) {
           throw new Error('Il set selezionato non appartiene alla famiglia attiva.');
@@ -199,6 +203,8 @@ export function Tracker() {
           ...tennisSet,
           player_games: updatedSetScore.player,
           opponent_games: updatedSetScore.opponent,
+          // The set now has at least one point: In corso, or Concluso when this point wins it.
+          status_id: setStatusId(updatedSetScore, true, currentMatch, selectedSetNumber),
           updated_at: created_at,
           version: existingSet ? existingSet.version + 1 : 1,
         };
@@ -364,6 +370,9 @@ export function Tracker() {
     .sort((a, b) => b - a)
     .map(number => ({ number, score: deriveSetScore(points, number, match), completed: completedSetNumbers.includes(number) }));
   const hasConcludedSets = completedSetNumbers.length > 0;
+  // Set buttons: the sets played so far and, while the match is open, only the first set not yet concluded.
+  const setTabs = shownSetNumbers
+    .map(set_number => ({ set_number, status_id: deriveSetStatusId(points, set_number, match) }));
   const gameScore = deriveGameScore(gamePoints, match.deuce_single_point, currentTiebreak);
   // Change of ends: before every even game of a set (after the odd ones), every 6 points of a tie-break, and at the
   // start of a set when the previous set ended with an odd number of games (a tie-break counts as one game).
@@ -486,9 +495,9 @@ export function Tracker() {
         {trackerError && <p className="family-feedback error" role="alert">{trackerError}</p>}
 
         <div className="cg-details">
-          {match.number_of_sets > 1 && <div className="cg-chip-row" aria-label="Seleziona set">{setTabs.map(({ set_number, exists }) =>
+          {match.number_of_sets > 1 && <div className="cg-chip-row" aria-label="Seleziona set">{setTabs.map(({ set_number, status_id }) =>
             <button key={set_number} className={`cg-chip${set_number === selectedSetNumber ? ' active' : ''}`} onClick={() => { setSetNumber(set_number); setSelectedGame(null); }}>
-              {isSuperTiebreakSet(match, set_number) ? 'Super tie-break' : `Set ${set_number}`}<span>{completedSetNumbers.includes(set_number) ? 'Concluso' : exists ? 'Registrato' : 'Da registrare'}</span>
+              {isSuperTiebreakSet(match, set_number) ? 'Super tie-break' : `Set ${set_number}`}<span>{statusLabel(status_id, 'set')}</span>
             </button>
           )}</div>}
           {/* A deciding super tie-break is the only game of its set: its set button already represents it. */}

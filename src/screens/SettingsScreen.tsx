@@ -5,6 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import { migrateLegacyPointPayload } from '../db/pointWinner';
 import { migrateLegacyStatus } from '../features/statuses/statuses';
+import { withDerivedSetStatuses } from '../features/scoring/setStatuses';
 import { migrateLegacyPlayerRanking } from '../features/players/fitpRankings';
 import { migrateLegacyMatch } from '../features/matches/legacyMatch';
 import { useAuth } from '../features/auth/AuthContext';
@@ -70,10 +71,11 @@ export function Settings() {
       // third_set_type / tiebreak_starts_at_363 columns (converted to the current ones).
       const matches = (data.matches ?? []).map(({ tournament: _removed, ...match }: Match & { tournament?: unknown }) =>
         migrateLegacyMatch(match));
-      const sets = data.sets ?? [];
       const games = data.games ?? [];
       // Version 2 backups use the legacy point fields (winner, server, double_fault, ...): convert them.
       const points = (data.points ?? []).map(point => migrateLegacyPointPayload(point));
+      // Backups written before sets had a status: status_id is recomputed from the points of each set.
+      const sets = withDerivedSetStatuses(matches, data.sets ?? [], games, points);
       const sameFamily = [...players, ...clubs, ...tournaments, ...matches, ...sets, ...games, ...points].every(record => record.family_id === activeFamily.id);
       const playerIds = new Set(players.map(player => player.id));
       const clubIds = new Set(clubs.map(club => club.id));

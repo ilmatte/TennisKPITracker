@@ -11,7 +11,7 @@ import type {
   Tournament,
   TournamentStatusId,
 } from '../types';
-import { deriveSetScore } from '../features/scoring/scoring';
+import { deriveSetScore, deriveSetStatusId } from '../features/scoring/scoring';
 import { TOURNAMENT_CATEGORIES } from '../features/tournaments/tournaments';
 import { STATUS, isMatchStatusId, isTournamentStatusId } from '../features/statuses/statuses';
 import { withStatusTiming } from '../features/matches/matchTime';
@@ -118,13 +118,16 @@ async function recalculate(match: Match, updated_at: string): Promise<void> {
     }
   }
 
+  // Score and status of every set follow its points: a set whose points are all deleted goes back to In programma.
   for (const set of sets) {
     const score = deriveSetScore(points, set.set_number, match);
-    if (score.player !== set.player_games || score.opponent !== set.opponent_games) {
+    const status_id = deriveSetStatusId(points, set.set_number, match);
+    if (score.player !== set.player_games || score.opponent !== set.opponent_games || status_id !== set.status_id) {
       await write(db.sets, 'sets', {
         ...updated(set, updated_at),
         player_games: score.player,
         opponent_games: score.opponent,
+        status_id,
       }, updated_at);
     }
   }

@@ -57,7 +57,7 @@ function match(id = 'match-1', family_id = 'family-1', player_id = 'player-1'): 
 function tennisSet(id: string, set_number = 1): TennisSet {
   return {
     id, family_id: 'family-1', match_id: 'match-1', set_number,
-    player_games: 1, opponent_games: 0, created_at: now, updated_at: now, version: 1, deleted: false,
+    player_games: 1, opponent_games: 0, status_id: 2, created_at: now, updated_at: now, version: 1, deleted: false,
   };
 }
 
@@ -231,6 +231,34 @@ describe('sport entity mutations', () => {
     expect(savedGame).toMatchObject({ game_number: 3, player_points: 4, opponent_points: 0, version: 2 });
     expect(await operations('set-1')).toMatchObject([{ operation: 'upsert', payload: { version: 2, set_number: 2 } }]);
     expect(await operations('game-1')).toMatchObject([{ operation: 'upsert', payload: { version: 2, game_number: 3 } }]);
+  });
+
+  it('recalculates the set status when points are deleted or changed', async () => {
+    await seedMatch(true);
+    for (const number of [1, 2, 3, 4]) await softDeletePoint('family-1', `point-${number}`);
+    // No point left: the set goes back to In programma (shown as "Prossimo").
+    expect(await db.sets.get('set-1')).toMatchObject({ player_games: 0, status_id: 1 });
+
+    // Games 1-4 won 4-0, except the last point of game 4, lost: the set is In corso at 3-0.
+    await db.games.bulkAdd([2, 3, 4].map(number => tennisGame(`game-${number}`, 'set-1', number)));
+    await db.points.bulkAdd([1, 2, 3, 4].flatMap(game => [1, 2, 3, 4].map(number => ({
+      // Game 1 keeps its deleted points 1-4: the new ones are numbered 5-8.
+      ...point(`point-${game}-${number}`, game === 1 ? number + 4 : number), game_id: `game-${game}`,
+      won: !(game === 4 && number === 4),
+    }))));
+    await updatePoint('family-1', 'point-4-1', {
+      won: true, serving: true, second_serve: false, point_type_id: 4, shot_count: 3,
+    });
+    expect(await db.sets.get('set-1')).toMatchObject({ player_games: 3, status_id: 2 });
+
+    // Changing the lost point to won wins game 4 and the set (4-0): Concluso.
+    await updatePoint('family-1', 'point-4-4', {
+      won: true, serving: true, second_serve: false, point_type_id: 4, shot_count: 3,
+    });
+    expect(await db.sets.get('set-1')).toMatchObject({ player_games: 4, status_id: 3 });
+    const latest = (await operations('set-1'))
+      .sort((left, right) => (right.payload as TennisSet).version - (left.payload as TennisSet).version)[0];
+    expect(latest).toMatchObject({ payload: { status_id: 3 } });
   });
 
   it('updates and soft-deletes games and points in configured sets four and five', async () => {
