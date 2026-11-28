@@ -16,13 +16,14 @@ import { playerFullName, playerShortName } from '../features/players/playerNames
 import { tournamentCategoryLabel } from '../features/tournaments/tournaments';
 import { MATCH_STATUS_IDS, statusLabel } from '../features/statuses/statuses';
 import type { Match } from '../types';
+import { compareMatchesNewestFirst } from '../features/matches/matchTime';
 
 export function Matches() {
   const { activeFamily } = useFamily();
   const matches = useLiveQuery(
     async () => activeFamily
       ? (await db.matches.where('family_id').equals(activeFamily.id).toArray())
-          .filter(match => !match.deleted).sort((a, b) => b.match_date.localeCompare(a.match_date))
+          .filter(match => !match.deleted).sort(compareMatchesNewestFirst)
       : [],
     [activeFamily?.id],
   ) ?? [];

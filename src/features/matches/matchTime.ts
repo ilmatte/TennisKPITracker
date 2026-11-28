@@ -62,3 +62,28 @@ export function withStatusTiming<T extends Match>(previous: Match, next: T, now:
   }
   return { ...next, duration_seconds: null };
 }
+
+/** When the match ended (ms since epoch): started_at + duration_seconds for a completed match, falling back to its
+ *  last update for completed matches without timing. Null for a match still being played. */
+export function matchEndedAtMs(match: Match): number | null {
+  if (match.status_id !== STATUS.completed) return null;
+  if (match.started_at && typeof match.duration_seconds === 'number') {
+    const start = Date.parse(match.started_at);
+    if (Number.isFinite(start)) return start + match.duration_seconds * 1000;
+  }
+  const updated = Date.parse(match.updated_at);
+  return Number.isFinite(updated) ? updated : null;
+}
+
+/** Reverse chronological order: most recent match_date first; on the same day, matches in progress first, then
+ *  completed ones by end time (latest first), then by creation (latest first). */
+export function compareMatchesNewestFirst(a: Match, b: Match): number {
+  const byDate = b.match_date.localeCompare(a.match_date);
+  if (byDate) return byDate;
+  const endA = matchEndedAtMs(a);
+  const endB = matchEndedAtMs(b);
+  if (endA === null && endB !== null) return -1;
+  if (endB === null && endA !== null) return 1;
+  if (endA !== null && endB !== null && endA !== endB) return endB - endA;
+  return b.created_at.localeCompare(a.created_at);
+}
