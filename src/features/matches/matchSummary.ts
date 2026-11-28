@@ -3,10 +3,12 @@ import { STATUS, statusLabel } from '../statuses/statuses';
 import { formatDuration, matchDurationSeconds } from './matchTime';
 import type { Match, ScoredPoint } from '../../types';
 
-export type MatchOutcome = 'won' | 'lost' | 'in-progress';
+export type MatchOutcome = 'won' | 'lost' | 'in-progress' | 'upcoming';
 export type MatchSummary = { match: Match; scoreText: string; outcome: MatchOutcome; duration: string | null };
 
-export const MATCH_OUTCOME_LABELS: Record<MatchOutcome, string> = { won: 'Vinta', lost: 'Persa', 'in-progress': statusLabel(STATUS.in_progress, 'match') };
+export const MATCH_OUTCOME_LABELS: Record<MatchOutcome, string> = {
+  won: 'Vinta', lost: 'Persa', 'in-progress': statusLabel(STATUS.in_progress, 'match'), upcoming: statusLabel(STATUS.upcoming, 'match'),
+};
 
 /** Score text ("6-4 6-3"), outcome and total duration (saved when the match is completed) of a match. */
 export function summarizeMatch(match: Match, points: ScoredPoint[]): MatchSummary {
@@ -19,7 +21,8 @@ export function summarizeMatch(match: Match, points: ScoredPoint[]): MatchSummar
     if (score.opponent > score.player) opponentSets += 1;
     if (score.player || score.opponent) labels.push(`${score.player}-${score.opponent}`);
   }
-  const outcome = match.status_id !== STATUS.completed ? 'in-progress' : playerSets > opponentSets ? 'won' : 'lost';
+  const outcome = match.status_id === STATUS.upcoming ? 'upcoming'
+    : match.status_id !== STATUS.completed ? 'in-progress' : playerSets > opponentSets ? 'won' : 'lost';
   const seconds = matchDurationSeconds(match, points);
   const duration = seconds !== null && seconds >= 60 ? formatDuration(seconds) : null;
   return { match, scoreText: labels.join(' '), outcome, duration };

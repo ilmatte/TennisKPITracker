@@ -216,4 +216,27 @@ describe('local database schema', () => {
     expect(await upgraded.matches.get('m1')).toEqual({ id: 'm1', family_id: 'f1', last_set_type: 'normal', games_to_win_set: 6 });
     upgraded.close();
   });
+
+  it('keeps the matches of a version 20 database unchanged: In corso or Conclusa, with their first server', async () => {
+    // Before upcoming matches existed every match was started: its status_id (2 or 3, completed automatically when it
+    // has a winner) and its first_server are already valid, so opening the database rewrites nothing.
+    const older = new TennisDatabase(databaseName);
+    await older.open();
+    const base = {
+      family_id: 'f1', match_date: '2026-01-01', player_id: 'p1', opponent: 'Bea', number_of_sets: 3, first_server: 'player',
+      created_at: 'x', updated_at: 'x', version: 4, deleted: false,
+    };
+    const stored = [
+      { ...base, id: 'm1', status_id: 3, result: '6-4 6-3', started_at: '2026-01-01T10:00:00.000Z', duration_seconds: 3600 },
+      { ...base, id: 'm2', status_id: 2, result: null, first_server: 'opponent' },
+    ];
+    await older.table('matches').bulkAdd(stored);
+    older.close();
+
+    const reopened = new TennisDatabase(databaseName);
+    await reopened.open();
+    expect(await reopened.table('matches').toArray()).toEqual(stored);
+    expect(await reopened.statuses.get(1)).toMatchObject({ code: 'upcoming', applies_to_matches: true });
+    reopened.close();
+  });
 });

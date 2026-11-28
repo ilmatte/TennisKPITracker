@@ -128,7 +128,7 @@ create table public.clubs (
 -- Statuses of tournaments, matches, sets and games. Reference data (not synced): ids are stable and mirrored by the app
 -- (src/features/statuses/statuses.ts) and by the Dexie statuses store: never renumber them. Each label has a masculine
 -- and a feminine form, so that it agrees with the entity ("torneo concluso", "partita conclusa"); applies_to_* say which
--- entities can take the status (a match is never upcoming). Sets and games take all three statuses; the app shows a
+-- entities can take the status (a match is upcoming when saved to be started later). Sets and games take all three statuses; the app shows a
 -- set or a game "In programma" as "Prossimo".
 create table public.statuses (
   id smallint primary key,
@@ -141,7 +141,7 @@ create table public.statuses (
 );
 
 insert into public.statuses (id, code, label_masculine, label_feminine, applies_to_tournaments, applies_to_matches, sort_order) values
-  (1, 'upcoming', 'In programma', 'In programma', true, false, 1),
+  (1, 'upcoming', 'In programma', 'In programma', true, true, 1),
   (2, 'in_progress', 'In corso', 'In corso', true, true, 2),
   (3, 'completed', 'Concluso', 'Conclusa', true, true, 3);
 
@@ -172,6 +172,8 @@ create table public.matches (
   id uuid primary key,
   family_id uuid not null references public.families(id) on delete cascade,
   match_date date not null,
+  -- Planned start time (optional), next to match_date.
+  match_time time,
   player_id uuid not null,
   -- Rankings when the match was created (historical snapshots, FK to fitp_rankings; null = not specified): the
   -- player's is copied from players.ranking_id, the opponent's is chosen in the app.
@@ -188,9 +190,11 @@ create table public.matches (
   games_to_win_set integer not null default 4 check (games_to_win_set in (4, 6)),
   short_set_tiebreak_at integer not null default 3 check (short_set_tiebreak_at in (3, 4)),
   deuce_single_point boolean not null default true,
-  first_server text not null check (first_server in ('player', 'opponent')),
+  -- Who serves first: null only while the match is upcoming (chosen when it is started), see matches_first_server_check.
+  first_server text check (first_server in ('player', 'opponent')),
   result text,
-  -- Match clock: when the first point was scored, and the total duration (seconds) frozen when the match is completed.
+  -- Match clock: when the match was started (or, for matches created before scheduling existed, its first point), and the
+  -- total duration (seconds) frozen when the match is completed.
   started_at timestamptz,
   duration_seconds integer check (duration_seconds >= 0),
   created_at timestamptz not null default now(),
@@ -199,10 +203,11 @@ create table public.matches (
   deleted boolean not null default false,
   -- Tournament of the match; null only for matches created before tournaments existed.
   tournament_id uuid,
-  -- In corso (2) or Conclusa (3): a match is never upcoming.
+  -- In programma (1), In corso (2) or Conclusa (3). A match leaves In programma only with a first server.
   status_id smallint not null
     constraint matches_status_id_fkey references public.statuses(id)
-    constraint matches_status_id_check check (status_id in (2, 3)),
+    constraint matches_status_id_check check (status_id in (1, 2, 3)),
+  constraint matches_first_server_check check (status_id = 1 or first_server is not null),
   unique (family_id, id),
   foreign key (family_id, player_id)
     references public.players(family_id, id)

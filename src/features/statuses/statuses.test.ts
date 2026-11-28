@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MATCH_STATUS_IDS,
+  STARTED_MATCH_STATUS_IDS,
   STATUS,
   STATUSES,
   TOURNAMENT_STATUS_IDS,
@@ -13,8 +14,9 @@ describe('statuses', () => {
   it('mirrors the reference rows with stable ids', () => {
     expect(STATUSES.map(status => [status.id, status.code])).toEqual([[1, 'upcoming'], [2, 'in_progress'], [3, 'completed']]);
     expect(TOURNAMENT_STATUS_IDS).toEqual([1, 2, 3]);
-    // A match exists from the moment it starts: never "In programma".
-    expect(MATCH_STATUS_IDS).toEqual([2, 3]);
+    // A match can be saved "In programma" and started later.
+    expect(MATCH_STATUS_IDS).toEqual([1, 2, 3]);
+    expect(STARTED_MATCH_STATUS_IDS).toEqual([2, 3]);
   });
 
   it('agrees the label with the gender of the entity', () => {
@@ -39,7 +41,7 @@ describe('migrateLegacyStatus', () => {
     expect(migrateLegacyStatus('tournament', { id: 't' })).toEqual({ id: 't', status_id: 1 });
   });
 
-  it('converts the text status of matches, which are never In programma', () => {
+  it('converts the text status of matches, which were always started before upcoming matches existed', () => {
     expect(migrateLegacyStatus('match', { id: 'm', status: 'completed' })).toEqual({ id: 'm', status_id: 3 });
     expect(migrateLegacyStatus('match', { id: 'm', status: 'in-progress' })).toEqual({ id: 'm', status_id: 2 });
     expect(migrateLegacyStatus('match', { id: 'm', status: 'upcoming' })).toEqual({ id: 'm', status_id: 2 });

@@ -13,8 +13,9 @@ import type {
 } from '../types';
 import { deriveGameStatusId, deriveSetScore, deriveSetStatusId } from '../features/scoring/scoring';
 import { TOURNAMENT_CATEGORIES } from '../features/tournaments/tournaments';
-import { STATUS, isMatchStatusId, isTournamentStatusId } from '../features/statuses/statuses';
+import { STATUS, isTournamentStatusId } from '../features/statuses/statuses';
 import { withStatusTiming } from '../features/matches/matchTime';
+import { assertMatchStatusChange } from '../features/matches/matchLifecycle';
 
 const timestamp = () => new Date().toISOString();
 
@@ -172,7 +173,7 @@ export type MatchChanges = Pick<Match,
   'tournament_id' | 'tournament_match_number' | 'number_of_sets' | 'last_set_type' |
   'super_tiebreak_target' | 'tiebreak_target' | 'games_to_win_set' | 'short_set_tiebreak_at' |
   'deuce_single_point' | 'first_server' | 'status_id' | 'result'
->;
+> & { match_time?: string | null };
 
 export async function updateMatch(
   familyId: string,
@@ -196,7 +197,7 @@ export async function updateMatch(
     if (changes.tiebreak_target < 1 || changes.super_tiebreak_target < 1) {
       throw new Error('I target dei tie-break devono essere maggiori di zero.');
     }
-    if (!isMatchStatusId(changes.status_id)) throw new Error('Stato della partita non valido.');
+    assertMatchStatusChange(current.status_id, changes.status_id, changes.first_server);
     const gamesToWinSet = changes.games_to_win_set;
     const shortSetTiebreakAt = changes.short_set_tiebreak_at ?? current.short_set_tiebreak_at ?? 3;
     if (gamesToWinSet !== 4 && gamesToWinSet !== 6) {
@@ -206,9 +207,16 @@ export async function updateMatch(
       throw new Error('Il tie-break dei set a 4 game deve iniziare sul 3-3 o sul 4-4.');
     }
     const now = timestamp();
+    // Leaving In programma starts the match clock now (unless it already had a start).
+    const startedAt = current.status_id === STATUS.upcoming && changes.status_id !== STATUS.upcoming
+      ? current.started_at ?? now
+      : current.started_at;
     const next: Match = withStatusTiming(current, {
       ...updated(current, now),
       ...changes,
+      // Editors that do not show the planned time leave it unchanged.
+      match_time: changes.match_time === undefined ? current.match_time ?? null : normalizeMatchTime(changes.match_time),
+      started_at: startedAt ?? null,
       games_to_win_set: gamesToWinSet,
       short_set_tiebreak_at: shortSetTiebreakAt,
       opponent_ranking_snapshot: await requireRankingId(changes.opponent_ranking_snapshot),
@@ -221,12 +229,20 @@ export async function updateMatch(
   });
 }
 
+/** Planned time as "HH:MM" (Supabase returns "HH:MM:SS"); null when empty or not a valid time. */
+export function normalizeMatchTime(value: string | null | undefined): string | null {
+  const match = /^(\d{2}):(\d{2})/.exec(value ?? '');
+  if (!match || Number(match[1]) > 23 || Number(match[2]) > 59) return null;
+  return `${match[1]}:${match[2]}`;
+}
+
 /** Fields of a new match chosen in the "Nuova partita" wizard. The player's ranking snapshot is taken from the player;
- *  the opponent's one is chosen in the wizard (FK to fitp_rankings, optional). */
+ *  the opponent's one is chosen in the wizard (FK to fitp_rankings, optional). status_id: In programma (saved to be
+ *  started later, first_server optional) or In corso (started now, first_server required); In corso when omitted. */
 export type NewMatchInput = Pick<Match,
   'match_date' | 'player_id' | 'opponent' | 'opponent_ranking_snapshot' | 'number_of_sets' | 'last_set_type' | 'super_tiebreak_target' |
   'tiebreak_target' | 'games_to_win_set' | 'short_set_tiebreak_at' | 'deuce_single_point' | 'first_server'
-> & { tournament_id: string };
+> & { tournament_id: string; match_time?: string | null; status_id?: typeof STATUS.upcoming | typeof STATUS.in_progress };
 
 export async function createMatch(familyId: string, input: NewMatchInput): Promise<Match> {
   return db.transaction('rw', [db.players, db.fitp_rankings, db.tournaments, db.matches, db.syncQueue], async () => {
@@ -241,17 +257,24 @@ export async function createMatch(familyId: string, input: NewMatchInput): Promi
     if (gamesToWinSet !== 4 && gamesToWinSet !== 6) {
       throw new Error('Il set deve essere impostato a 4 o 6 game.');
     }
+    const statusId = input.status_id ?? STATUS.in_progress;
+    if (statusId !== STATUS.upcoming && statusId !== STATUS.in_progress) throw new Error('Stato della partita non valido.');
+    assertMatchStatusChange(null, statusId, input.first_server);
     const created_at = timestamp();
     const match: Match = {
       ...input,
       id: crypto.randomUUID(),
       family_id: familyId,
       opponent,
+      match_time: normalizeMatchTime(input.match_time),
+      first_server: input.first_server ?? null,
+      // A match started now starts its clock now; an upcoming one when it is started (startMatch).
+      started_at: statusId === STATUS.in_progress ? created_at : null,
       player_ranking_snapshot: await rankingSnapshot(player),
       opponent_ranking_snapshot: await requireRankingId(input.opponent_ranking_snapshot),
       games_to_win_set: gamesToWinSet,
       short_set_tiebreak_at: input.short_set_tiebreak_at ?? 3,
-      status_id: STATUS.in_progress,
+      status_id: statusId,
       created_at,
       updated_at: created_at,
       version: 1,
@@ -260,6 +283,22 @@ export async function createMatch(familyId: string, input: NewMatchInput): Promi
     await db.matches.add(match);
     await db.syncQueue.add(queueOperation(familyId, 'matches', match, created_at));
     return match;
+  });
+}
+
+/** Starts an upcoming match: In corso, with its first server and started_at (the match clock runs from now). Rejected
+ *  without a first server or when the match is not In programma. */
+export async function startMatch(familyId: string, id: string, firstServer: Match['first_server']): Promise<Match> {
+  return db.transaction('rw', [db.matches, db.syncQueue], async () => {
+    const current = await requireActive(id => db.matches.get(id), id, familyId, 'Partita');
+    if (current.status_id !== STATUS.upcoming) throw new Error('La partita è già stata avviata.');
+    assertMatchStatusChange(current.status_id, STATUS.in_progress, firstServer);
+    const now = timestamp();
+    const next: Match = {
+      ...updated(current, now), first_server: firstServer, status_id: STATUS.in_progress, started_at: now, duration_seconds: null,
+    };
+    await write(db.matches, 'matches', next, now);
+    return next;
   });
 }
 

@@ -282,7 +282,8 @@ function nextSetFirstServerAfterTiebreak(tiebreakFirstServer: Side): Side {
  *  point-by-point order; for the next set, its first server receives and the other
  *  player serves first. Recorded or corrected game servers anchor later alternation. */
 export function getGameServer(match: Match, points: ScoredPoint[], setNumber: number, gameNumber: number, overrides: ServerOverrides = {}): Side {
-  let expected: Side = match.first_server;
+  // An upcoming match has no first server yet; a started one always has it (see matchLifecycle).
+  let expected: Side = match.first_server ?? 'player';
   for (let set = 1; set <= setNumber; set += 1) {
     const score = set < setNumber ? countGames(points, set, match) : null;
     const gamesInSet = score ? score.player + score.opponent : gameNumber - 1;

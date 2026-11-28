@@ -127,8 +127,9 @@ export interface Status {
 /** statuses.id: 1 upcoming (In programma), 2 in_progress (In corso), 3 completed (Concluso / Conclusa). */
 export type StatusId = 1 | 2 | 3;
 export type TournamentStatusId = StatusId;
-/** A match is never "In programma": it exists from the moment it starts. */
-export type MatchStatusId = 2 | 3;
+/** A match is "In programma" when saved to be started later, then "In corso" once started (with a first server), then
+ *  "Conclusa". */
+export type MatchStatusId = StatusId;
 /** A set is "In programma" (shown as "Prossimo") until its first point, "In corso" while played, then "Concluso". */
 export type SetStatusId = StatusId;
 /** A game is "In programma" (shown as "Prossimo") until its first point, "In corso" while played, then "Concluso". */
@@ -138,6 +139,8 @@ export interface Match {
   id: UUID;
   family_id: UUID;
   match_date: string;
+  /** Planned start time ("HH:MM"; Supabase may return "HH:MM:SS"), optional. */
+  match_time?: string | null;
   /** The player's name is read from the players table through player_id. */
   player_id: PlayerId;
   /** FK to fitp_rankings.id: the player's FITP ranking when the match was created. A historical snapshot, not changed
@@ -158,11 +161,13 @@ export interface Match {
   /** In four-game sets, start the tie-break at 3-3 or 4-4. */
   short_set_tiebreak_at?: 3 | 4;
   deuce_single_point: boolean;
-  first_server: 'player' | 'opponent';
-  /** FK to statuses.id: In corso (2) or Conclusa (3). */
+  /** Who serves first. Null only while the match is In programma: it is chosen, at the latest, when the match starts. */
+  first_server: 'player' | 'opponent' | null;
+  /** FK to statuses.id: In programma (1), In corso (2) or Conclusa (3). */
   status_id: MatchStatusId;
   result?: string | null;
-  /** When the first point was scored: the match clock runs from here. Null/missing before the first point. */
+  /** When the match was started (or, for matches created before it could be scheduled, its first point): the match
+   *  clock runs from here. Null/missing while the match is In programma. */
   started_at?: string | null;
   /** Total duration in seconds, frozen when the match is completed (now − started_at); null while it is played. */
   duration_seconds?: number | null;

@@ -2,22 +2,24 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
-import { createMatch } from '../db/sportsMutations';
+import { createMatch, updateMatch, type NewMatchInput } from '../db/sportsMutations';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import { playerAgeCategory } from '../features/players/ageCategories';
 import { fitpRankingCode } from '../features/players/fitpRankings';
 import { FitpRankingOptions } from './FitpRankingOptions';
 import { fitpRankingValue, useFitpRankings } from '../features/players/useFitpRankings';
-import { playerFullName } from '../features/players/playerNames';
+import { playerFullName, playerShortName } from '../features/players/playerNames';
+import { scheduleLabel } from '../features/matches/scheduledMatch';
 import {
   formatTournamentDate,
   localIsoDate,
   tournamentCategoryLabel,
 } from '../features/tournaments/tournaments';
-import { statusClassName, statusLabel } from '../features/statuses/statuses';
+import { STATUS, statusClassName, statusLabel } from '../features/statuses/statuses';
 import { loadTournamentRows, type TournamentRow } from '../features/tournaments/tournamentRows';
 import { CreationScreen, DateBox, PlusIcon, SelectBox } from './CreationScreen';
 import { NewTournament } from './NewTournamentScreen';
+import { StartMatchSheet } from './StartMatchSheet';
 import type { Match } from '../types';
 
 type Step = 1 | 2 | 3;
@@ -37,15 +39,37 @@ const TrophyIcon = () => <svg width="22" height="22" viewBox="0 0 48 48" aria-hi
   <rect x="21" y="28" width="6" height="8" fill="#F5B82E" /><rect x="13" y="36" width="22" height="7" rx="3" fill="#C8F03A" />
 </svg>;
 
-/** "Nuova partita" wizard: 1. tournament (pick one or create it), 2. who plays, 3. match rules. */
-export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: string; onClose: () => void }) {
+const CalendarIcon = ({ color = '#C8F03A', check = false }: { color?: string; check?: boolean }) =>
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3.5" y="5" width="17" height="15.5" rx="3" /><path d={`M3.5 10h17M8 3v4M16 3v4${check ? 'M9 15l2 2 4-4' : ''}`} />
+  </svg>;
+const PlayIcon = ({ color = '#0B2A5B' }: { color?: string }) =>
+  <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill={color} stroke={color} strokeWidth="2" strokeLinejoin="round" /></svg>;
+
+/** Help text under "Chi serve per primo", following the choice. */
+function serveHint(server: Match['first_server'], playerName: string, opponent: string): string {
+  if (server === 'player') return `Serve ${playerName} il primo game. Potrai cambiarlo fino all'avvio.`;
+  if (server === 'opponent') return `Serve ${opponent} il primo game. Potrai cambiarlo fino all'avvio.`;
+  return 'Lo indicherai quando avvii la partita, ad esempio dopo il sorteggio in campo.';
+}
+
+/** "Nuova partita" wizard: 1. tournament (pick one or create it), 2. who plays, 3. match rules and, optionally, who
+ *  serves first. The match is either started now (In corso) or saved In programma, to be started later from Partite.
+ *  With `match`, the same wizard edits an upcoming match ("Modifica dettagli"): every field can change, status stays
+ *  In programma. */
+export function NewMatch({ initialPlayerId, match: editing, onClose }: {
+  initialPlayerId?: string;
+  /** Upcoming match to edit. */
+  match?: Match;
+  onClose: () => void;
+}) {
   const { activeFamily } = useFamily();
   const navigate = useNavigate();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState<Step>(1);
 
   // Step 1: tournament
-  const [chosenTournamentId, setChosenTournamentId] = useState<string | null>(null);
+  const [chosenTournamentId, setChosenTournamentId] = useState<string | null>(editing?.tournament_id ?? null);
   const [creatingTournament, setCreatingTournament] = useState(false);
   const tournaments = useLiveQuery(
     async () => activeFamily ? loadTournamentRows(activeFamily.id) : [] as TournamentRow[],
@@ -62,29 +86,33 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
       : [],
     [activeFamily?.id],
   ) ?? [];
-  const [matchDate, setMatchDate] = useState(localIsoDate);
-  const [playerId, setPlayerId] = useState(initialPlayerId ?? '');
-  const [opponent, setOpponent] = useState('');
+  const [matchDate, setMatchDate] = useState(() => editing?.match_date ?? localIsoDate());
+  const [matchTime, setMatchTime] = useState(() => editing?.match_time?.slice(0, 5) ?? '');
+  const [playerId, setPlayerId] = useState(editing?.player_id ?? initialPlayerId ?? '');
+  const [opponent, setOpponent] = useState(editing?.opponent ?? '');
   const selectedPlayer = players.find(player => player.id === playerId);
   const playerCategory = selectedPlayer ? playerAgeCategory(selectedPlayer, Number(matchDate.slice(0, 4))) : null;
   // FITP rankings registry. The player's current ranking is frozen in the match when it is created, together with the
   // opponent's ranking chosen here.
   const rankings = useFitpRankings();
   const playerRanking = fitpRankingCode(selectedPlayer?.ranking_id, rankings);
-  const [opponentRankingId, setOpponentRankingId] = useState<number | null>(null);
+  const [opponentRankingId, setOpponentRankingId] = useState<number | null>(editing?.opponent_ranking_snapshot ?? null);
 
   // Step 3: match rules
-  const [sets, setSets] = useState<3 | 5>(3);
-  const [lastSetType, setLastSetType] = useState<Match['last_set_type']>('super-tiebreak');
-  const [firstServer, setFirstServer] = useState<Match['first_server']>('player');
-  const [deuce, setDeuce] = useState(true);
-  const [gamesToWinSet, setGamesToWinSet] = useState<4 | 6>(4);
-  const [shortSetTiebreakAt, setShortSetTiebreakAt] = useState<3 | 4>(3);
-  const [tiebreakTarget, setTiebreakTarget] = useState<7 | 10>(7);
-  const [superTiebreakTarget, setSuperTiebreakTarget] = useState<7 | 10>(10);
+  const [sets, setSets] = useState<3 | 5>(editing?.number_of_sets ?? 3);
+  const [lastSetType, setLastSetType] = useState<Match['last_set_type']>(editing?.last_set_type ?? 'super-tiebreak');
+  // Who serves first is optional: null is "Decidi dopo" (chosen when the match is started).
+  const [firstServer, setFirstServer] = useState<Match['first_server']>(editing?.first_server ?? null);
+  const [deuce, setDeuce] = useState(editing?.deuce_single_point ?? true);
+  const [gamesToWinSet, setGamesToWinSet] = useState<4 | 6>(editing?.games_to_win_set ?? 4);
+  const [shortSetTiebreakAt, setShortSetTiebreakAt] = useState<3 | 4>(editing?.short_set_tiebreak_at ?? 3);
+  const [tiebreakTarget, setTiebreakTarget] = useState<7 | 10>(editing?.tiebreak_target === 10 ? 10 : 7);
+  const [superTiebreakTarget, setSuperTiebreakTarget] = useState<7 | 10>(editing?.super_tiebreak_target === 7 ? 7 : 10);
 
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // "Avvia subito" without a server opens the "Chi serve per primo?" sheet: nothing is saved until it is confirmed.
+  const [startSheetOpen, setStartSheetOpen] = useState(false);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
@@ -100,13 +128,19 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
     else setStep((step - 1) as Step);
   }
 
-  async function start() {
-    if (!activeFamily || !selectedRow || !selectedPlayer) return;
+  const playerName = playerFullName(selectedPlayer);
+  const opponentName = opponent.trim() || 'Avversario';
+
+  /** Saves the match: started now (`server` given) or In programma. Started matches open the tracker, upcoming ones go
+   *  back to the Partite list, where they are listed under In programma. */
+  async function save(mode: 'start' | 'schedule', server: Match['first_server'] = firstServer) {
+    if (!activeFamily || !selectedRow || !selectedPlayer || saving) return;
     setSaving(true);
-    try {
-      const match = await createMatch(activeFamily.id, {
+    setError(null);
+    const fields: NewMatchInput = {
         tournament_id: selectedRow.tournament.id,
         match_date: matchDate,
+        match_time: matchTime || null,
         player_id: selectedPlayer.id,
         opponent,
         opponent_ranking_snapshot: opponentRankingId,
@@ -117,10 +151,24 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
         games_to_win_set: gamesToWinSet,
         short_set_tiebreak_at: shortSetTiebreakAt,
         deuce_single_point: deuce,
-        first_server: firstServer,
-      });
+        first_server: server,
+      };
+    try {
+      if (editing) {
+        const current = await db.matches.get(editing.id);
+        if (!current) throw new Error('Partita non trovata nello spazio attivo.');
+        await updateMatch(activeFamily.id, editing.id, {
+          ...fields,
+          tournament_match_number: current.tournament_match_number ?? null,
+          status_id: STATUS.upcoming,
+          result: current.result ?? null,
+        });
+        onClose();
+        return;
+      }
+      const match = await createMatch(activeFamily.id, { ...fields, status_id: mode === 'start' ? STATUS.in_progress : STATUS.upcoming });
       onClose();
-      navigate(`/match/${match.id}`);
+      navigate(mode === 'start' ? `/match/${match.id}` : '/matches');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Impossibile salvare la partita.');
       setSaving(false);
@@ -130,8 +178,7 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
   function next() {
     if (!canAdvance) return;
     setError(null);
-    if (step === 3) void start();
-    else setStep((step + 1) as Step);
+    setStep((step + 1) as Step);
   }
 
   const stepIndicator = <div className="cw-steps">
@@ -140,7 +187,7 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
   </div>;
 
   return <>
-    <CreationScreen title="Nuova partita" onBack={back} header={stepIndicator} scrollRef={scrollRef}>
+    <CreationScreen title={editing ? 'Modifica partita' : 'Nuova partita'} onBack={back} header={stepIndicator} scrollRef={scrollRef}>
       {step === 1 && <div className="cw-step cw-step-tight">
         <div className="cw-step-title">In quale torneo si gioca?</div>
         {tournaments.length > 0
@@ -167,9 +214,15 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
           <div className="cw-step-title">Chi gioca?</div>
           {selectedRow && <div className="cw-summary-chip" title={selectedRow.tournament.name}><span>{selectedRow.tournament.name}</span></div>}
         </div>
-        <div className="cw-field">
-          <label htmlFor="data">Data partita</label>
-          <DateBox id="data" value={matchDate} onChange={setMatchDate} />
+        <div className="cw-row">
+          <div className="cw-field cw-field-date">
+            <label htmlFor="data">Data partita</label>
+            <DateBox id="data" value={matchDate} onChange={setMatchDate} />
+          </div>
+          <div className="cw-field cw-field-time">
+            <label htmlFor="ora">Ora (facoltativa)</label>
+            <input id="ora" className="cw-input" type="time" value={matchTime} onChange={event => setMatchTime(event.target.value)} />
+          </div>
         </div>
         <div className="cw-field">
           <label htmlFor="giocatore">Giocatore</label>
@@ -197,6 +250,13 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
 
       {step === 3 && <div className="cw-step">
         <div className="cw-step-title">Regole della partita</div>
+        <div className="cw-match-summary">
+          <span className="cw-card-icon"><CalendarIcon /></span>
+          <span className="cw-card-text">
+            <strong>{playerShortName(selectedPlayer)} vs {opponentName}</strong>
+            <small>{[scheduleLabel({ match_date: matchDate, match_time: matchTime }), selectedRow?.tournament.name].filter(Boolean).join(' · ')}</small>
+          </span>
+        </div>
         <div className="cw-row">
           <div className="cw-field">
             <label htmlFor="set">Set</label>
@@ -218,47 +278,76 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
               <option value={4}>4 game</option><option value={6}>6 game</option>
             </SelectBox>
           </div>
-          {gamesToWinSet === 4 && <div className="cw-field">
-            <label htmlFor="tbsul">Tie-break sul</label>
-            <SelectBox id="tbsul" value={shortSetTiebreakAt} onChange={value => setShortSetTiebreakAt(Number(value) as 3 | 4)}>
-              <option value={3}>3-3</option><option value={4}>4-4</option>
-            </SelectBox>
-          </div>}
-        </div>
-        <div className="cw-row">
           <div className="cw-field">
             <label htmlFor="tbpunti">Punti tie-break</label>
             <SelectBox id="tbpunti" value={tiebreakTarget} onChange={value => setTiebreakTarget(Number(value) as 7 | 10)}>
               <option value={7}>7 punti</option><option value={10}>10 punti</option>
             </SelectBox>
           </div>
+        </div>
+        <div className="cw-row">
           <div className="cw-field">
             <label htmlFor="stbpunti">Punti super tie-break</label>
             <SelectBox id="stbpunti" value={superTiebreakTarget} onChange={value => setSuperTiebreakTarget(Number(value) as 7 | 10)}>
               <option value={7}>7 punti</option><option value={10}>10 punti</option>
             </SelectBox>
           </div>
-        </div>
-        <div className="cw-inline">
-          <label className="cw-label" htmlFor="serve">Chi serve per primo</label>
-          <SelectBox id="serve" value={firstServer} onChange={value => setFirstServer(value as Match['first_server'])}>
-            <ServerOptions playerName={playerFullName(selectedPlayer)} opponent={opponent} />
-          </SelectBox>
+          <div className="cw-field" aria-hidden="true" />
         </div>
         <label className="cw-check" htmlFor="secco">Punto secco al 40-40
           <input id="secco" type="checkbox" checked={deuce} onChange={event => setDeuce(event.target.checked)} />
         </label>
+        {/* Four-game sets: tie-break at 3-3 when on, at 4-4 when off. */}
+        {gamesToWinSet === 4 && <label className="cw-check" htmlFor="tb33">Tie-break da 3-3
+          <input id="tb33" type="checkbox" checked={shortSetTiebreakAt === 3} onChange={event => setShortSetTiebreakAt(event.target.checked ? 3 : 4)} />
+        </label>}
+        <div className="cw-serve" role="group" aria-labelledby="serve-label">
+          <div className="cw-serve-heading">
+            <svg width="22" height="22" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="21" fill="#C8F03A" stroke="#0B2A5B" strokeWidth="3" /><path d="M10 6c12 10 12 26 0 36M38 6c-12 10-12 26 0 36" fill="none" stroke="#0B2A5B" strokeWidth="3" /></svg>
+            <span id="serve-label">Chi serve per primo</span>
+            <span className="cw-optional">Facoltativo</span>
+          </div>
+          <div className="cw-segmented">
+            {([['player', playerShortName(selectedPlayer)], ['opponent', opponentName], [null, 'Decidi dopo']] as const).map(([value, label]) =>
+              <button key={label + String(value)} type="button" aria-pressed={firstServer === value} onClick={() => setFirstServer(value)}>{label}</button>)}
+          </div>
+          <p className="cw-serve-hint" aria-live="polite">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#17488F" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 7.5v.5" /></svg>
+            <span>{serveHint(firstServer, playerName, opponentName)}</span>
+          </p>
+        </div>
       </div>}
 
       {error && <p className="cw-error" role="alert">{error}</p>}
-      <div className="cw-actions">
+      {step < 3 && <div className="cw-actions">
         {step > 1 && <button type="button" className="cw-secondary" onClick={back}>Indietro</button>}
         <button type="button" className="cw-primary" disabled={!canAdvance} onClick={next}>
-          {step === 3 && <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="#0B2A5B" stroke="#0B2A5B" strokeWidth="2" strokeLinejoin="round" /></svg>}
-          {step === 3 ? 'Avvia partita' : 'Avanti'}
-          {step < 3 && <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>}
+          Avanti
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
         </button>
-      </div>
+      </div>}
+      {/* Step 3 has no "Indietro" button: the header arrow goes back. */}
+      {step === 3 && editing && <div className="cw-actions cw-actions-stacked">
+        <button type="button" className="cw-primary" disabled={!canAdvance} onClick={() => void save('schedule')}>Salva modifiche</button>
+      </div>}
+      {step === 3 && !editing && firstServer === null && <div className="cw-actions cw-actions-stacked">
+        <button type="button" className="cw-primary" disabled={!canAdvance} onClick={() => void save('schedule')}>
+          <CalendarIcon color="#0B2A5B" check />Salva in programma
+        </button>
+        <button type="button" className="cw-outline" disabled={!canAdvance} onClick={() => { setError(null); setStartSheetOpen(true); }}>
+          <PlayIcon color="#17488F" />Avvia subito
+        </button>
+        <p className="cw-actions-note">Verrà salvata come <span className="cw-upcoming-badge">In programma</span> in Partite</p>
+      </div>}
+      {step === 3 && !editing && firstServer !== null && <div className="cw-actions cw-actions-stacked">
+        <button type="button" className="cw-primary" disabled={!canAdvance} onClick={() => void save('start')}>
+          <PlayIcon />Avvia partita
+        </button>
+        <button type="button" className="cw-outline" disabled={!canAdvance} onClick={() => void save('schedule')}>
+          <CalendarIcon color="#17488F" check />Salva in programma
+        </button>
+        <p className="cw-actions-note">Puoi anche salvarla e avviarla più tardi</p>
+      </div>}
     </CreationScreen>
     {creatingTournament && <NewTournament stacked onClose={() => setCreatingTournament(false)}
       onSaved={tournament => {
@@ -267,5 +356,8 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
         setCreatingTournament(false);
         setStep(1);
       }} />}
+    {startSheetOpen && <StartMatchSheet playerName={playerName} opponent={opponentName} initialServer={null}
+      busy={saving} error={error} onCancel={() => setStartSheetOpen(false)}
+      onConfirm={server => void save('start', server)} />}
   </>;
 }

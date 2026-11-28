@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getMatchPoints } from '../db/database';
 import { MATCH_OUTCOME_LABELS, formatMatchDate, summarizeMatch, type MatchSummary } from '../features/matches/matchSummary';
-import type { MatchChanges } from '../db/sportsMutations';
+import { startMatch, type MatchChanges } from '../db/sportsMutations';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import tennisBallIcon from '../assets/icone/trasparente/512/pallina3d.png';
 import { NewMatch, ServerOptions } from './NewMatchWizard';
@@ -14,9 +14,17 @@ import { BrandBar } from './BrandBar';
 import { MatchesTabs } from './MatchesTabs';
 import { playerFullName, playerShortName } from '../features/players/playerNames';
 import { tournamentCategoryLabel } from '../features/tournaments/tournaments';
-import { MATCH_STATUS_IDS, statusLabel } from '../features/statuses/statuses';
+import { STARTED_MATCH_STATUS_IDS, statusLabel } from '../features/statuses/statuses';
 import type { Match } from '../types';
 import { compareMatchesNewestFirst } from '../features/matches/matchTime';
+import { compareUpcomingMatches, dateBoxParts, matchTimeLabel, shortDayLabel } from '../features/matches/scheduledMatch';
+import { isUpcomingMatch } from '../features/matches/matchLifecycle';
+import { StartMatchSheet } from './StartMatchSheet';
+
+type Filter = 'all' | 'upcoming' | 'won' | 'lost';
+const EMPTY_FILTER_TEXT: Record<Exclude<Filter, 'all'>, string> = {
+  upcoming: 'Nessuna partita in programma', won: 'Nessuna partita vinta', lost: 'Nessuna partita persa',
+};
 
 export function Matches() {
   const { activeFamily } = useFamily();
@@ -32,7 +40,11 @@ export function Matches() {
     return Promise.all(matches.map(async match => summarizeMatch(match, await getMatchPoints(activeFamily.id, match.id))));
   }, [activeFamily?.id, matches.map(match => `${match.id}:${match.status_id}:${match.version}`).join(',')]) ?? [];
   const [newOpen, setNewOpen] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'won' | 'lost'>('all');
+  const [filter, setFilter] = useState<Filter>('all');
+  // Upcoming match being started from its card ("Avvia"): the "Chi serve per primo?" sheet is open for it.
+  const [starting, setStarting] = useState<Match | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+  const [startBusy, setStartBusy] = useState(false);
   const navigate = useNavigate();
   // Every player of the family, deleted ones included, so that older matches still show their player's name.
   const allPlayers = useLiveQuery(
@@ -41,6 +53,12 @@ export function Matches() {
   ) ?? [];
   const players = allPlayers.filter(player => !player.deleted);
   const playersById = new Map(allPlayers.map(player => [player.id, player]));
+  // Tournaments (deleted ones included) for the details of upcoming match cards.
+  const tournaments = useLiveQuery(
+    async () => activeFamily ? db.tournaments.where('family_id').equals(activeFamily.id).toArray() : [],
+    [activeFamily?.id],
+  ) ?? [];
+  const tournamentsById = new Map(tournaments.map(tournament => [tournament.id, tournament]));
 
   function openNewMatch() {
     if (!players.length) {
@@ -50,35 +68,97 @@ export function Matches() {
     setNewOpen(true);
   }
 
-  const visible = summaries.filter(summary => filter === 'all' || summary.outcome === filter);
-  const filters = [['all', 'Tutte'], ['won', 'Vinte'], ['lost', 'Perse']] as const;
+  // Two sections: In programma (soonest first) on top, then Giocate (started or concluded, newest first).
+  const upcoming = filter === 'all' || filter === 'upcoming'
+    ? matches.filter(isUpcomingMatch).sort(compareUpcomingMatches)
+    : [];
+  const played = filter === 'upcoming' ? []
+    : summaries.filter(summary => summary.outcome !== 'upcoming' && (filter === 'all' || summary.outcome === filter));
+  const filters = [['all', 'Tutte'], ['upcoming', 'In programma'], ['won', 'Vinte'], ['lost', 'Perse']] as const;
+
+  async function confirmStart(server: NonNullable<Match['first_server']>) {
+    if (!activeFamily || !starting) return;
+    setStartBusy(true);
+    setStartError(null);
+    try {
+      await startMatch(activeFamily.id, starting.id, server);
+      navigate(`/match/${starting.id}`);
+    } catch (cause) {
+      setStartError(cause instanceof Error ? cause.message : 'Impossibile avviare la partita.');
+      setStartBusy(false);
+    }
+  }
 
   return <div className="mg-page">
     <svg className="mg-waves" width="390" height="140" viewBox="0 0 390 140" aria-hidden="true"><path d="M120 120C220 110 320 80 390 20V60C330 100 220 135 120 135z" fill="#2F8F3E" opacity=".55" /><path d="M200 128C280 120 340 95 390 60V84C340 112 280 134 200 136z" fill="#C8F03A" opacity=".35" /></svg>
     <header className="mg-header">
       <BrandBar />
       <MatchesTabs active="matches" />
-      <div className="mg-filters" role="group" aria-label="Filtra partite">
-        {filters.map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}
+      <div className="mg-filters">
+        <div className="mg-filter-chips" role="group" aria-label="Filtra partite">
+          {filters.map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}
+        </div>
         <button className="mg-new" onClick={openNewMatch} aria-label="Nuova partita" title="Nuova partita">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
         </button>
       </div>
     </header>
     <section className="mg-panel">
-      {visible.map(({ match, scoreText, outcome, duration }) => <button key={match.id} className="mg-row" onClick={() => navigate(`/match/${match.id}`)}>
-        <img src={tennisBallIcon} alt="" />
-        <span className="mg-info">
-          <strong>{playerShortName(playersById.get(match.player_id))} vs {match.opponent}</strong>
-          <small>{formatMatchDate(match.match_date)}{duration && ` • ${duration}`}</small>
-        </span>
-        <span className="mg-score">{scoreText || '—'}</span>
-        <span className={`mg-badge ${outcome}`}>{MATCH_OUTCOME_LABELS[outcome]}</span>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
-      </button>)}
+      {upcoming.length > 0 && <section aria-labelledby="mg-upcoming-title">
+        <div className="mg-section-head"><h2 id="mg-upcoming-title">In programma</h2><span>{upcoming.length}</span></div>
+        {upcoming.map(match => {
+          const { month, day } = dateBoxParts(match.match_date);
+          const player = playersById.get(match.player_id);
+          const title = `${playerShortName(player)} vs ${match.opponent}`;
+          const tournament = tournamentsById.get(match.tournament_id ?? '');
+          const details = [shortDayLabel(match.match_date).split(' ')[0], matchTimeLabel(match.match_time), tournament?.name]
+            .filter(Boolean).join(' • ');
+          const server = match.first_server === 'player' ? playerFullName(player)
+            : match.first_server === 'opponent' ? match.opponent : null;
+          // The whole card opens the detail; "Avvia" opens the "Chi serve per primo?" sheet instead.
+          return <article key={match.id} className="mg-upcoming" onClick={() => navigate(`/match/${match.id}`)}>
+            <button type="button" className="mg-upcoming-open" aria-label={`${title}, ${details}, in programma: apri il dettaglio`}>
+              <span className="mg-datebox" aria-hidden="true"><span>{month}</span><strong>{day}</strong></span>
+              <span className="mg-info" aria-hidden="true"><strong>{title}</strong><small>{details}</small></span>
+              <span className="mg-upcoming-badge" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                In programma
+              </span>
+            </button>
+            <div className="mg-upcoming-foot">
+              <span className="mg-upcoming-serve">
+                <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="21" fill="#C8F03A" stroke="#0B2A5B" strokeWidth="3" /><path d="M10 6c12 10 12 26 0 36M38 6c-12 10-12 26 0 36" fill="none" stroke="#0B2A5B" strokeWidth="3" /></svg>
+                Servizio: {server ?? 'da decidere'}
+              </span>
+              <button type="button" className="mg-start" aria-label={`Avvia ${title}`}
+                onClick={event => { event.stopPropagation(); setStartError(null); setStartBusy(false); setStarting(match); }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="#0B2A5B" stroke="#0B2A5B" strokeWidth="2" strokeLinejoin="round" /></svg>
+                Avvia
+              </button>
+            </div>
+          </article>;
+        })}
+      </section>}
+      {played.length > 0 && <section aria-labelledby="mg-played-title">
+        {/* The heading separates the two sections; with no upcoming match the list looks as before. */}
+        {upcoming.length > 0 && <div className="mg-section-head"><h2 id="mg-played-title">Giocate</h2></div>}
+        {played.map(({ match, scoreText, outcome, duration }) => <button key={match.id} className="mg-row" onClick={() => navigate(`/match/${match.id}`)}>
+          <img src={tennisBallIcon} alt="" />
+          <span className="mg-info">
+            <strong>{playerShortName(playersById.get(match.player_id))} vs {match.opponent}</strong>
+            <small>{formatMatchDate(match.match_date)}{duration && ` • ${duration}`}</small>
+          </span>
+          <span className="mg-score">{scoreText || '—'}</span>
+          <span className={`mg-badge ${outcome}`}>{MATCH_OUTCOME_LABELS[outcome]}</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+        </button>)}
+      </section>}
       {!matches.length && <div className="mg-empty"><strong>Nessuna partita</strong><span>Crea la prima partita per iniziare il tracking.</span></div>}
-      {matches.length > 0 && !visible.length && <div className="mg-empty"><strong>{filter === 'won' ? 'Nessuna partita vinta' : 'Nessuna partita persa'}</strong></div>}
+      {matches.length > 0 && !upcoming.length && !played.length && filter !== 'all' && <div className="mg-empty"><strong>{EMPTY_FILTER_TEXT[filter]}</strong></div>}
     </section>
+    {starting && <StartMatchSheet playerName={playerFullName(playersById.get(starting.player_id))} opponent={starting.opponent}
+      initialServer={starting.first_server} busy={startBusy} error={startError}
+      onCancel={() => setStarting(null)} onConfirm={server => void confirmStart(server)} />}
     {newOpen && <NewMatch onClose={() => setNewOpen(false)} />}
   </div>;
 }
@@ -143,10 +223,11 @@ export function MatchEditor({ match, error, onClose, onSave }: {
     </div>
     <div className="form-grid">
       <label>Target tie-break<select value={draft.tiebreak_target} onChange={event => field('tiebreak_target', Number(event.target.value))}><option value={7}>7 punti</option><option value={10}>10 punti</option></select></label>
-      <label>Primo servizio<select value={draft.first_server} onChange={event => field('first_server', event.target.value as Match['first_server'])}><ServerOptions playerName={editorPlayerName} opponent={draft.opponent} /></select></label>
+      <label>Primo servizio<select value={draft.first_server ?? 'player'} onChange={event => field('first_server', event.target.value as Match['first_server'])}><ServerOptions playerName={editorPlayerName} opponent={draft.opponent} /></select></label>
     </div>
     <label>Stato<select value={draft.status_id} onChange={event => field('status_id', Number(event.target.value) as Match['status_id'])}>
-      {MATCH_STATUS_IDS.map(statusId => <option key={statusId} value={statusId}>{statusLabel(statusId, 'match')}</option>)}
+      {/* This editor is opened from a started match: it cannot go back to In programma. */}
+      {STARTED_MATCH_STATUS_IDS.map(statusId => <option key={statusId} value={statusId}>{statusLabel(statusId, 'match')}</option>)}
     </select></label>
     <label>Risultato<input value={draft.result ?? ''} onChange={event => field('result', event.target.value || null)} /></label>
     <label className="toggle-row"><span>Punto secco al 40-40</span><input type="checkbox" checked={draft.deuce_single_point} onChange={event => field('deuce_single_point', event.target.checked)} /></label>
@@ -170,7 +251,7 @@ export function MatchEditor({ match, error, onClose, onSave }: {
         games_to_win_set: draft.games_to_win_set,
         short_set_tiebreak_at: draft.short_set_tiebreak_at ?? 3,
         deuce_single_point: draft.deuce_single_point,
-        first_server: draft.first_server,
+        first_server: draft.first_server ?? 'player',
         status_id: draft.status_id,
         result: draft.result,
       })}>Salva modifiche</button>

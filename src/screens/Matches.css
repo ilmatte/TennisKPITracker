@@ -14,6 +14,10 @@ a.mg-tab{padding-top:8px;font-size:22px;line-height:1.1;font-weight:700;color:rg
 a.mg-tab:focus-visible{outline:3px solid #C8F03A;outline-offset:2px;border-radius:4px}
 .mg-new-tournament{position:absolute;right:20px;top:84px;height:40px;padding:0 16px 0 12px;border:0;border-radius:20px;background:#C8F03A;color:#0B2A5B;font-size:14.5px;font-weight:800;display:flex;align-items:center;gap:6px;box-shadow:0 6px 16px rgba(139,190,20,.35)}
 .mg-filters{position:absolute;left:20px;right:20px;top:138px;display:flex;align-items:center;gap:10px}
+/* Four filters do not fit a phone width: they scroll sideways, the "+" button stays in place. */
+.mg-filter-chips{flex:1;min-width:0;display:flex;align-items:center;gap:8px;overflow-x:auto;scrollbar-width:none;margin:-4px 0;padding:4px 0}
+.mg-filter-chips::-webkit-scrollbar{display:none}
+.mg-filter-chips button{flex:none}
 .mg-filters button{height:44px;padding:0 22px;border-radius:22px;font-size:16px;background:rgba(255,255,255,.1);color:#fff;font-weight:700;border:1px solid rgba(255,255,255,.14)}
 .mg-filters button.active{background:#C8F03A;color:#0B2A5B;font-weight:800;border:0}
 .mg-filters .mg-new{width:44px;flex:none;margin-left:auto;padding:0;display:flex;align-items:center;justify-content:center;background:#C8F03A;color:#0B2A5B;border:0}
@@ -30,6 +34,23 @@ a.mg-tab:focus-visible{outline:3px solid #C8F03A;outline-offset:2px;border-radiu
 .mg-badge.won{background:#D3F2DC;color:#1B7F3B}
 .mg-badge.lost{background:#FFE0E3;color:#C2333A}
 .mg-badge.in-progress{width:74px;background:#E3ECFA;color:#244C86;font-size:12.5px}
+
+/* Sections "In programma" and "Giocate" */
+.mg-section-head{display:flex;align-items:center;justify-content:space-between;padding:10px 4px 8px}
+.mg-section-head h2{margin:0;font-size:13px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#3E4F6B}
+.mg-section-head span{font-size:12.5px;font-weight:700;color:#5C6B85}
+/* Upcoming match card */
+.mg-upcoming{display:flex;flex-direction:column;gap:10px;margin-bottom:8px;padding:12px 12px 12px 14px;border-radius:18px;border:1.5px solid #C9D6EC;background:#fff;box-shadow:0 4px 14px rgba(11,42,91,.08);cursor:pointer}
+.mg-upcoming-open{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:0;border:0;background:transparent;color:#0B2A5B;text-align:left}
+.mg-datebox{width:44px;height:48px;flex:none;border-radius:12px;background:#0B2A5B;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}
+.mg-datebox span{font-size:10.5px;font-weight:800;letter-spacing:.04em;color:#C8F03A}
+.mg-datebox strong{margin-top:2px;font-size:19px;font-weight:800}
+.mg-upcoming-badge{height:26px;padding:0 10px;flex:none;border-radius:13px;background:#DCE6F7;color:#17488F;font-size:12px;font-weight:800;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.mg-badge.upcoming,.mt-result.upcoming{background:#DCE6F7;color:#17488F}
+.mg-upcoming-foot{display:flex;align-items:center;gap:10px;padding-top:10px;border-top:1px solid #E3E8F2}
+.mg-upcoming-serve{flex:1;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden;font-size:12.5px;font-weight:600;color:#3E4F6B;white-space:nowrap;text-overflow:ellipsis}
+.mg-upcoming-serve svg{flex:none}
+.mg-start{height:44px;flex:none;padding:0 18px;border:0;border-radius:22px;background:#C8F03A;color:#0B2A5B;font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px}
 .mg-row svg{flex:none}
 .mg-empty{display:flex;flex-direction:column;gap:4px;padding:28px 8px;text-align:center}
 .mg-empty strong{font-size:15px;font-weight:800}
@@ -65,4 +86,4 @@ button.mt-badge{border:0;cursor:pointer}
 .mt-result.lost{background:#FFE0E3;color:#C2333A}
 .mt-result.in-progress{background:#E3ECFA;color:#244C86}
 
-@media(max-width:380px){.mg-row{gap:9px}.mg-filters{gap:8px}.mg-filters button{padding:0 16px}.mg-filters .mg-new{padding:0}}
+@media(max-width:380px){.mg-row{gap:9px}.mg-filters{gap:8px}.mg-filters button{padding:0 16px}.mg-filters .mg-new{padding:0}.mg-upcoming-badge{display:none}}

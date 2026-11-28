@@ -23,6 +23,7 @@ import trophyIcon from '../assets/icone/currentgame/vinto-scuro.svg';
 import { MatchClock } from '../features/matches/MatchClock';
 import { matchDurationSeconds, matchStartedAt, withStatusTiming } from '../features/matches/matchTime';
 import { MatchEditor } from './MatchesScreen';
+import { UpcomingMatch } from './UpcomingMatchScreen';
 import { stamp, mutationError, queueOperation } from './shared';
 import type { Game, Match, Point, ScoredPoint, TennisSet } from '../types';
 export function Tracker() {
@@ -117,6 +118,8 @@ export function Tracker() {
   }, [completedSets.map(set => set.set_number).join(','), match?.id, match?.number_of_sets, matchHasWinner]);
 
   if (!match || !activeFamily) return <div className="page"><div className="empty-state">Partita non trovata</div></div>;
+  // A match In programma shows its detail, with "Avvia partita"; once started, this same route shows the tracker.
+  if (match.status_id === STATUS.upcoming) return <UpcomingMatch match={match} player={matchPlayer} />;
   // A finished match accepts no more points: outcome buttons, shot counter and first/second ball selector are disabled.
   const matchOver = matchHasWinner || match.status_id === STATUS.completed;
   const activeMatch = match;

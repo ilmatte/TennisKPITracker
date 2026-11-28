@@ -82,6 +82,25 @@
 .cw-chips button{height:40px;padding:0 16px;border:1.5px solid #D9E0EE;border-radius:20px;background:#fff;color:#0B2A5B;font-size:14.5px;font-weight:800}
 .cw-chips button.selected{border-color:#0B2A5B;background:#0B2A5B;color:#C8F03A}
 
+/* Step 2: date and optional time side by side */
+.cw-row>.cw-field.cw-field-date{flex:1.5}
+.cw-row>.cw-field.cw-field-time{flex:1}
+.cw-field-time .cw-input{-webkit-appearance:none;appearance:none;display:flex;align-items:center}
+
+/* Step 3: summary of the match, "Chi serve per primo" card with a segmented control */
+.cw-match-summary{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:18px;background:#E6ECF7}
+.cw-match-summary .cw-card-icon{width:40px;height:40px}
+.cw-match-summary strong{display:block;font-size:15px;font-weight:800;color:#0B2A5B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cw-match-summary small{display:block;margin-top:2px;font-size:12.5px;font-weight:600;color:#3E4F6B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cw-serve{display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:18px;background:#fff;border:1.5px solid #D9E0EE}
+.cw-serve-heading{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:800;color:#0B2A5B}
+.cw-optional{margin-left:auto;height:22px;padding:0 9px;border-radius:11px;background:#EEF3FB;color:#3E4F6B;font-size:11.5px;font-weight:800;display:flex;align-items:center}
+.cw-segmented{display:flex;gap:4px;padding:4px;border-radius:16px;background:#EEF3FB}
+.cw-segmented button{flex:1;min-width:0;height:44px;padding:0 6px;border:0;border-radius:12px;background:transparent;color:#0B2A5B;font-size:14.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cw-segmented button[aria-pressed="true"]{background:#0B2A5B;color:#C8F03A;box-shadow:0 2px 6px rgba(11,42,91,.25)}
+.cw-serve-hint{display:flex;align-items:flex-start;gap:8px;margin:0;font-size:12.5px;line-height:1.4;font-weight:600;color:#3E4F6B}
+.cw-serve-hint svg{flex:none;margin-top:1px}
+
 /* Footer actions */
 .cw-actions{display:flex;gap:12px;margin-top:auto;padding-top:20px}
 .cw-secondary{height:58px;padding:0 24px;border-radius:29px;border:1.5px solid #17488F;background:#fff;color:#17488F;font-size:17px;font-weight:800}
@@ -89,6 +108,11 @@
 .cw-primary:disabled{opacity:.5;cursor:not-allowed}
 .cw-actions.cw-actions-stacked{flex-direction:column}
 .cw-actions-stacked .cw-primary{flex:none;width:100%}
+.cw-actions-stacked{gap:10px}
+.cw-outline{box-sizing:border-box;height:52px;border-radius:26px;border:1.5px solid #17488F;background:#fff;color:#17488F;font-size:16px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px}
+.cw-outline:disabled{opacity:.5;cursor:not-allowed}
+.cw-actions-note{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px;margin:0;font-size:12.5px;font-weight:600;color:#3E4F6B;text-align:center}
+.cw-upcoming-badge{height:22px;padding:0 9px;border-radius:11px;background:#DCE6F7;color:#17488F;font-size:11.5px;font-weight:800;display:inline-flex;align-items:center;white-space:nowrap}
 .cw-delete{height:48px;border:0;background:transparent;color:#D3343A;font-size:15px;font-weight:700}
 
 /* Desktop: no bottom navigation bar, so no extra space is needed. */

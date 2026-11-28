@@ -1,0 +1,53 @@
+/* Upcoming matches: the "Chi serve per primo?" bottom sheet and the detail of a match In programma.
+   Values from the design references in src/screens/design/partita-in-programma (AvvioPartita.dc.html). */
+
+/* Bottom sheet (modal dialog) */
+.sm-backdrop{position:fixed;inset:0;z-index:110;display:flex;align-items:flex-end;justify-content:center;background:rgba(2,22,45,.55);font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:#0B2A5B}
+.sm-sheet{width:100%;max-width:560px;box-sizing:border-box;padding:10px 20px calc(28px + env(safe-area-inset-bottom));border-radius:28px 28px 0 0;background:#fff;display:flex;flex-direction:column;gap:16px;box-shadow:0 -10px 30px rgba(2,22,45,.3);animation:sm-rise .2s ease-out}
+@keyframes sm-rise{from{transform:translateY(40px);opacity:.4}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion: reduce){.sm-sheet{animation:none}}
+.sm-sheet button{font-family:inherit;cursor:pointer}
+.sm-sheet button:focus-visible{outline:3px solid #C8F03A;outline-offset:2px}
+.sm-grabber{width:44px;height:5px;border-radius:3px;background:#D9E0EE;align-self:center}
+.sm-heading{display:flex;align-items:flex-start;gap:12px}
+.sm-heading>div{flex:1;min-width:0}
+.sm-heading h2{margin:0;font-size:21px;font-weight:800}
+.sm-heading p{margin:4px 0 0;font-size:13.5px;line-height:1.4;font-weight:500;color:#3E4F6B}
+.sm-close{width:44px;height:44px;flex:none;padding:0;border:0;border-radius:22px;background:#EEF3FB;display:flex;align-items:center;justify-content:center}
+.sm-options{display:flex;gap:12px}
+.sm-option{flex:1;min-width:0;height:156px;box-sizing:border-box;padding:14px 8px;border-radius:20px;border:2px solid #D9E0EE;background:#fff;color:#0B2A5B;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
+.sm-option.selected{border-color:#0B2A5B;background:#EEF3FB}
+.sm-avatar{width:52px;height:52px;border-radius:26px;background:#E6ECF7;color:#0B2A5B;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800}
+.sm-option.selected .sm-avatar{background:#0B2A5B;color:#C8F03A}
+.sm-name{max-width:100%;overflow:hidden;font-size:16px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+.sm-serving{height:26px;display:flex;align-items:center;gap:5px;font-size:12px;font-weight:800;color:#1B5E20;visibility:hidden}
+.sm-option.selected .sm-serving{visibility:visible}
+.sm-start{height:58px;border:0;border-radius:29px;background:#C8F03A;color:#0B2A5B;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 8px 20px rgba(139,190,20,.35)}
+.sm-start:disabled{background:#E6ECF7;color:#5C6B85;box-shadow:none;cursor:not-allowed}
+
+/* Detail of an upcoming match */
+.um-page{min-height:100vh;background:#F4F7FC;color:#0B2A5B;font-family:'Plus Jakarta Sans',system-ui,sans-serif}
+.um-page button{font-family:inherit;cursor:pointer}
+.um-page button:focus-visible{outline:3px solid #C8F03A;outline-offset:2px}
+.um-header{position:relative;height:250px;background:linear-gradient(180deg,#02203d 0%,#011d38 100%);color:#fff}
+.um-back{position:absolute;left:16px;top:18px;width:44px;height:44px;padding:0;border:0;border-radius:22px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center}
+.um-header h1{position:absolute;left:68px;right:68px;top:18px;margin:0;height:44px;line-height:44px;text-align:center;font-size:20px;font-weight:700}
+.um-players{position:absolute;left:20px;right:20px;top:82px;display:flex;align-items:center;justify-content:space-between}
+.um-player{flex:1;min-width:0;text-align:center}
+.um-avatar{width:56px;height:56px;margin:0 auto;box-sizing:border-box;border-radius:28px;background:#C8F03A;color:#0B2A5B;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800}
+.um-avatar.opponent{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);color:#fff}
+.um-player strong{display:block;margin-top:8px;overflow:hidden;font-size:16px;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+.um-player small{display:block;font-size:12.5px;font-weight:600;color:rgba(255,255,255,.75)}
+.um-vs{padding:0 6px;font-size:16px;font-weight:800;color:rgba(255,255,255,.6)}
+.um-status{position:absolute;left:0;right:0;top:196px;display:flex;justify-content:center}
+.um-status span{height:30px;padding:0 14px;border-radius:15px;background:#DCE6F7;color:#17488F;font-size:13px;font-weight:800;display:flex;align-items:center}
+.um-panel{position:relative;margin-top:-24px;min-height:calc(100vh - 226px);box-sizing:border-box;padding:24px 20px calc(28px + 78px + env(safe-area-inset-bottom));border-radius:28px 28px 0 0;background:#F4F7FC;display:flex;flex-direction:column;gap:12px;max-width:560px;margin-left:auto;margin-right:auto}
+.um-summary{margin:0;padding:4px 16px;border:1.5px solid #D9E0EE;border-radius:18px;background:#fff}
+.um-summary div{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:46px;border-bottom:1px solid #E3E8F2}
+.um-summary div:last-child{border-bottom:0}
+.um-summary dt{font-size:13.5px;font-weight:600;color:#5C6B85}
+.um-summary dd{margin:0;font-size:14.5px;font-weight:800;text-align:right}
+.um-summary dd.undecided{color:#17488F}
+.um-start{margin-top:auto;height:58px;border:0;border-radius:29px;background:#C8F03A;color:#0B2A5B;font-size:18px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 8px 20px rgba(139,190,20,.35)}
+.um-edit{height:48px;box-sizing:border-box;border-radius:24px;border:1.5px solid #17488F;background:#fff;color:#17488F;font-size:15.5px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px}
+@media (min-width: 900px){.um-panel{padding-bottom:28px;min-height:auto}}

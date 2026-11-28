@@ -11,7 +11,7 @@ export const STATUS = {
 /** Rows of the `statuses` reference table, shared by tournaments and matches. Each label has a masculine and a feminine
  *  form (equal when the Italian word does not change), chosen by the grammatical gender of the entity. */
 export const STATUSES: readonly Status[] = [
-  { id: STATUS.upcoming, code: 'upcoming', label_masculine: 'In programma', label_feminine: 'In programma', applies_to_tournaments: true, applies_to_matches: false, sort_order: 1 },
+  { id: STATUS.upcoming, code: 'upcoming', label_masculine: 'In programma', label_feminine: 'In programma', applies_to_tournaments: true, applies_to_matches: true, sort_order: 1 },
   { id: STATUS.in_progress, code: 'in_progress', label_masculine: 'In corso', label_feminine: 'In corso', applies_to_tournaments: true, applies_to_matches: true, sort_order: 2 },
   { id: STATUS.completed, code: 'completed', label_masculine: 'Concluso', label_feminine: 'Conclusa', applies_to_tournaments: true, applies_to_matches: true, sort_order: 3 },
 ];
@@ -46,6 +46,8 @@ export const TOURNAMENT_STATUS_IDS = STATUSES.filter(status => status.applies_to
   .map(status => status.id) as TournamentStatusId[];
 export const MATCH_STATUS_IDS = STATUSES.filter(status => status.applies_to_matches)
   .map(status => status.id) as MatchStatusId[];
+/** Statuses of a match that has started: once In corso it can only be Conclusa or reopened, never In programma again. */
+export const STARTED_MATCH_STATUS_IDS = MATCH_STATUS_IDS.filter(statusId => statusId !== STATUS.upcoming);
 
 /** A set goes through all the statuses: In programma, In corso, Concluso. */
 export const SET_STATUS_IDS: readonly SetStatusId[] = [STATUS.upcoming, STATUS.in_progress, STATUS.completed];
@@ -62,7 +64,7 @@ const LEGACY_STATUS: Record<string, StatusId> = { upcoming: STATUS.upcoming, 'in
 /** Converts a match or tournament payload written before the statuses table (text `status`) to `status_id`. Used when
  *  upgrading the local database, restoring JSON backups and applying downloaded records; other payloads, and those
  *  already converted, are returned unchanged. A missing or unknown status becomes the entity's initial status
- *  (In programma for tournaments, In corso for matches). */
+ *  (In programma for tournaments, In corso for matches, which were always started when text statuses were used). */
 export function migrateLegacyStatus<T>(entity: StatusEntity, payload: T): T {
   if (!payload || typeof payload !== 'object') return payload;
   const record = payload as Record<string, unknown>;
@@ -72,7 +74,8 @@ export function migrateLegacyStatus<T>(entity: StatusEntity, payload: T): T {
   const legacy = typeof status === 'string' ? LEGACY_STATUS[status] : undefined;
   const fallback = entity === 'match' ? STATUS.in_progress : STATUS.upcoming;
   const converted = valid ? record.status_id
-    : entity === 'match' ? (isMatchStatusId(legacy) ? legacy : fallback)
+    // Text statuses predate upcoming matches: a match written with one had always been started.
+    : entity === 'match' ? (legacy === STATUS.completed ? legacy : fallback)
       : legacy ?? fallback;
   return { ...rest, status_id: converted } as T;
 }

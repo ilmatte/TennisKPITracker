@@ -78,7 +78,7 @@ describe('tournaments SQL', () => {
 describe('statuses SQL', () => {
   it('defines one statuses reference table, with masculine and feminine labels, used by tournaments and matches', () => {
     for (const row of [
-      "(1, 'upcoming', 'In programma', 'In programma', true, false, 1)",
+      "(1, 'upcoming', 'In programma', 'In programma', true, true, 1)",
       "(2, 'in_progress', 'In corso', 'In corso', true, true, 2)",
       "(3, 'completed', 'Concluso', 'Conclusa', true, true, 3)",
     ]) expect(schema).toContain(row);
@@ -86,7 +86,11 @@ describe('statuses SQL', () => {
     expect(schema).toMatch(/grant select on table public\.statuses to authenticated/i);
     expect(schema).toMatch(/create policy "authenticated users can read statuses"/i);
     expect(schema).toMatch(/status_id smallint not null default 1\s+constraint tournaments_status_id_fkey references public\.statuses\(id\)/i);
-    expect(schema).toMatch(/status_id smallint not null\s+constraint matches_status_id_fkey references public\.statuses\(id\)\s+constraint matches_status_id_check check \(status_id in \(2, 3\)\)/i);
+    expect(schema).toMatch(/status_id smallint not null\s+constraint matches_status_id_fkey references public\.statuses\(id\)\s+constraint matches_status_id_check check \(status_id in \(1, 2, 3\)\)/i);
+    // A match leaves In programma only with a first server, nullable until then; the planned time is optional.
+    expect(schema).toMatch(/^\s*first_server text check \(first_server in \('player', 'opponent'\)\),/m);
+    expect(schema).toMatch(/constraint matches_first_server_check check \(status_id = 1 or first_server is not null\)/i);
+    expect(schema).toMatch(/^\s*match_time time,/m);
     // No text status column is left.
     expect(schema).not.toMatch(/^\s*status text/m);
   });

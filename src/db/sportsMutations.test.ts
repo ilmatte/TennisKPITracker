@@ -16,6 +16,7 @@ import {
   softDeletePlayer,
   softDeletePoint,
   softDeleteSet,
+  startMatch,
   updateGame,
   updateMatch,
   updatePlayer,
@@ -602,6 +603,8 @@ describe('match creation', () => {
       games_to_win_set: 6, status_id: 2, version: 1, deleted: false,
     });
     expect(created).not.toHaveProperty('tournament');
+    // Started now: the match clock runs from its creation.
+    expect(created.started_at).toBe(created.created_at);
     expect(await db.matches.get(created.id)).toEqual(created);
     expect(await operations(created.id)).toMatchObject([{ entity_type: 'matches', payload: { tournament_id: tournament.id } }]);
   });
@@ -643,5 +646,79 @@ describe('match creation', () => {
     await expect(updateMatch('family-1', created.id, { ...changes, tournament_id: foreign.id } as MatchChanges)).rejects.toThrow('Torneo non trovato');
     expect(await updateMatch('family-1', created.id, { ...changes, tournament_id: second.id } as MatchChanges))
       .toMatchObject({ tournament_id: second.id, version: 2 });
+  });
+
+  it('saves an upcoming match with or without a first server and an optional planned time', async () => {
+    await db.families.add(family('family-1'));
+    await db.players.add(player('player-1'));
+    const tournament = await seedTournament();
+    const later = await createMatch('family-1', input({ tournament_id: tournament.id, status_id: 1, first_server: null, match_time: '10:00' }));
+    expect(later).toMatchObject({ status_id: 1, first_server: null, match_time: '10:00', started_at: null });
+    const chosen = await createMatch('family-1', input({ tournament_id: tournament.id, status_id: 1, first_server: 'player', match_time: '' }));
+    expect(chosen).toMatchObject({ status_id: 1, first_server: 'player', match_time: null, started_at: null });
+    expect(await operations(later.id)).toMatchObject([{ entity_type: 'matches', payload: { status_id: 1, first_server: null } }]);
+  });
+
+  it('never creates a match in progress without a first server', async () => {
+    await db.families.add(family('family-1'));
+    await db.players.add(player('player-1'));
+    const tournament = await seedTournament();
+    await expect(createMatch('family-1', input({ tournament_id: tournament.id, first_server: null })))
+      .rejects.toThrow('chi serve per primo');
+    await expect(createMatch('family-1', input({ tournament_id: tournament.id, status_id: 3 as never })))
+      .rejects.toThrow('Stato della partita non valido.');
+    expect(await db.matches.count()).toBe(0);
+  });
+});
+
+describe('match start', () => {
+  async function upcoming(first_server: Match['first_server'] = null) {
+    await db.families.add(family('family-1'));
+    await db.players.add(player('player-1'));
+    await db.matches.add({ ...match(), status_id: 1, first_server, match_time: '09:30', started_at: null });
+    return db.matches.get('match-1') as Promise<Match>;
+  }
+
+  it('starts an upcoming match: In corso, first server and started_at, queued for sync', async () => {
+    await upcoming();
+    const started = await startMatch('family-1', 'match-1', 'opponent');
+    expect(started).toMatchObject({ status_id: 2, first_server: 'opponent', version: 2, match_time: '09:30' });
+    expect(started.started_at).toBe(started.updated_at);
+    expect(await db.matches.get('match-1')).toEqual(started);
+    expect(await operations('match-1')).toMatchObject([{ entity_type: 'matches', payload: { status_id: 2, first_server: 'opponent' } }]);
+  });
+
+  it('can change the first server chosen in the wizard when starting', async () => {
+    await upcoming('player');
+    expect(await startMatch('family-1', 'match-1', 'opponent')).toMatchObject({ first_server: 'opponent', status_id: 2 });
+  });
+
+  it('refuses to start without a first server, and a match already started', async () => {
+    await upcoming();
+    await expect(startMatch('family-1', 'match-1', null)).rejects.toThrow('chi serve per primo');
+    expect(await db.matches.get('match-1')).toMatchObject({ status_id: 1, version: 1 });
+    expect(await operations('match-1')).toEqual([]);
+    await startMatch('family-1', 'match-1', 'player');
+    await expect(startMatch('family-1', 'match-1', 'player')).rejects.toThrow('già stata avviata');
+  });
+
+  it('refuses to start a match of another family', async () => {
+    await upcoming();
+    await db.families.add(family('family-2'));
+    await expect(startMatch('family-2', 'match-1', 'player')).rejects.toThrow('Partita non trovato');
+  });
+
+  it('applies the same rules to updates: no In corso without a server, no way back to In programma', async () => {
+    const current = await upcoming();
+    const { id, family_id, player_ranking_snapshot, created_at, updated_at, version, deleted, ...changes } = current;
+    void [id, family_id, player_ranking_snapshot, created_at, updated_at, version, deleted];
+    // Every wizard field can be edited while upcoming, the first server staying undecided.
+    expect(await updateMatch('family-1', 'match-1', { ...changes, opponent: 'Cleo', match_time: '11:15' } as MatchChanges))
+      .toMatchObject({ status_id: 1, opponent: 'Cleo', match_time: '11:15', first_server: null, started_at: null });
+    await expect(updateMatch('family-1', 'match-1', { ...changes, status_id: 2 } as MatchChanges)).rejects.toThrow('chi serve per primo');
+    const started = await updateMatch('family-1', 'match-1', { ...changes, status_id: 2, first_server: 'player' } as MatchChanges);
+    expect(started.started_at).toBe(started.updated_at);
+    await expect(updateMatch('family-1', 'match-1', { ...changes, status_id: 1, first_server: 'player' } as MatchChanges))
+      .rejects.toThrow('non può tornare in programma');
   });
 });

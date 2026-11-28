@@ -220,6 +220,8 @@ describe('automatic local workspace', () => {
     await user.click(screen.getByRole('button', { name: /Avanti/ }));
     // Step 3: rules.
     await user.selectOptions(screen.getByLabelText('Game per vincere il set'), '6');
+    // "Decidi dopo" is the default: choosing the server shows "Avvia partita".
+    await user.click(screen.getByRole('button', { name: 'Lovelace' }));
     await user.click(screen.getByRole('button', { name: 'Avvia partita' }));
     await waitFor(async () => expect(await db.matches.count()).toBe(1));
     const savedMatch = await db.matches.toCollection().first();
