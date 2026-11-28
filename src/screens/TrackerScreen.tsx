@@ -107,13 +107,14 @@ export function Tracker() {
     }
   }, [match?.id, match?.status_id, matchHasWinner]);
   useEffect(() => {
-    if (!match) return;
+    // A finished match has no next set to move to (it would show a non-existent deciding set and its changeover).
+    if (!match || matchHasWinner) return;
     const latestCompleted = Math.max(0, ...completedSets.map(set => set.set_number));
     if (latestCompleted > 0 && (setNumber === 1 || completedSets.some(set => set.set_number === setNumber))) {
       setSetNumber(Math.min(match.number_of_sets, latestCompleted + 1));
       setSelectedGame(null);
     }
-  }, [completedSets.map(set => set.set_number).join(','), match?.id, match?.number_of_sets]);
+  }, [completedSets.map(set => set.set_number).join(','), match?.id, match?.number_of_sets, matchHasWinner]);
 
   if (!match || !activeFamily) return <div className="page"><div className="empty-state">Partita non trovata</div></div>;
   // A finished match accepts no more points: outcome buttons, shot counter and first/second ball selector are disabled.
@@ -387,7 +388,7 @@ export function Tracker() {
     && (previousSetScore.player + previousSetScore.opponent) % 2 === 1;
   const tiebreakChange = currentTiebreak !== null && gamePoints.length > 0 && gamePoints.length % 6 === 0;
   const oddGameChange = currentTiebreak === null && gameNumber > 1 && gameNumber % 2 === 0 && gamePoints.length === 0;
-  const courtChangeDue = selectedGame === null && !gameComplete && (startOfSetChange || tiebreakChange || oddGameChange);
+  const courtChangeDue = !matchOver && selectedGame === null && !gameComplete && (startOfSetChange || tiebreakChange || oddGameChange);
   const changeoverKey = courtChangeDue ? `${match.id}:${selectedSetNumber}:${gameNumber}:${gamePoints.length}` : null;
   const changeoverReason = startOfSetChange ? 'inizio set' : tiebreakChange ? `tie-break · ${gamePoints.length} punti` : 'game dispari';
   // Match time in the top bar: runs from the first point, frozen at the total duration once the match is completed.
