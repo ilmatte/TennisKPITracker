@@ -1,4 +1,4 @@
-import type { MatchStatusId, SetStatusId, Status, StatusId, TournamentStatusId } from '../../types';
+import type { GameStatusId, MatchStatusId, SetStatusId, Status, StatusId, TournamentStatusId } from '../../types';
 
 /** Status ids. They mirror the rows of the `statuses` table (supabase/initial_schema.sql and the Dexie `statuses`
  *  store): never renumber them. */
@@ -17,13 +17,14 @@ export const STATUSES: readonly Status[] = [
 ];
 
 /** Grammatical gender of the entities that have a status: "il torneo è concluso", "la partita è conclusa". */
-export const STATUS_ENTITY_GENDER = { tournament: 'masculine', match: 'feminine', set: 'masculine' } as const;
+export const STATUS_ENTITY_GENDER = { tournament: 'masculine', match: 'feminine', set: 'masculine', game: 'masculine' } as const;
 export type StatusEntity = keyof typeof STATUS_ENTITY_GENDER;
 
-/** App-only wording of a status for one entity, leaving the statuses table unchanged: a set "In programma" is shown
- *  as "Prossimo" (the next set to play). */
+/** App-only wording of a status for one entity, leaving the statuses table unchanged: a set or a game "In programma"
+ *  is shown as "Prossimo" (the next one to play). */
 const STATUS_LABEL_OVERRIDES: Partial<Record<StatusEntity, Partial<Record<StatusId, string>>>> = {
   set: { [STATUS.upcoming]: 'Prossimo' },
+  game: { [STATUS.upcoming]: 'Prossimo' },
 };
 
 /** Label of a status for an entity, agreeing with its gender: statusLabel(3, 'tournament') is "Concluso",
@@ -48,6 +49,8 @@ export const MATCH_STATUS_IDS = STATUSES.filter(status => status.applies_to_matc
 
 /** A set goes through all the statuses: In programma, In corso, Concluso. */
 export const SET_STATUS_IDS: readonly SetStatusId[] = [STATUS.upcoming, STATUS.in_progress, STATUS.completed];
+/** A game goes through all the statuses too. */
+export const GAME_STATUS_IDS: readonly GameStatusId[] = [STATUS.upcoming, STATUS.in_progress, STATUS.completed];
 
 export const isTournamentStatusId = (value: unknown): value is TournamentStatusId =>
   (TOURNAMENT_STATUS_IDS as unknown[]).includes(value);

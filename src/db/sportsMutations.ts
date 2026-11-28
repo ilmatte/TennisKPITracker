@@ -11,7 +11,7 @@ import type {
   Tournament,
   TournamentStatusId,
 } from '../types';
-import { deriveSetScore, deriveSetStatusId } from '../features/scoring/scoring';
+import { deriveGameStatusId, deriveSetScore, deriveSetStatusId } from '../features/scoring/scoring';
 import { TOURNAMENT_CATEGORIES } from '../features/tournaments/tournaments';
 import { STATUS, isMatchStatusId, isTournamentStatusId } from '../features/statuses/statuses';
 import { withStatusTiming } from '../features/matches/matchTime';
@@ -106,14 +106,19 @@ async function recalculate(match: Match, updated_at: string): Promise<void> {
   const games = await db.games.where('family_id').equals(match.family_id)
     .filter(game => setIds.has(game.set_id) && !game.deleted).toArray();
 
+  // Points and status of every game follow its points: a game whose points are all deleted goes back to In programma,
+  // a concluded game reopened by a changed point goes back to In corso.
+  const setNumberById = new Map(sets.map(set => [set.id, set.set_number]));
   for (const game of games) {
     const gamePoints = points.filter(point => point.game_id === game.id && !point.deleted);
     const next: Game = {
       ...game,
       player_points: gamePoints.filter(point => point.won).length,
       opponent_points: gamePoints.filter(point => !point.won).length,
+      status_id: deriveGameStatusId(points, match, setNumberById.get(game.set_id) ?? 0, game.game_number),
     };
-    if (next.player_points !== game.player_points || next.opponent_points !== game.opponent_points) {
+    if (next.player_points !== game.player_points || next.opponent_points !== game.opponent_points ||
+      next.status_id !== game.status_id) {
       await write(db.games, 'games', updated(next, updated_at), updated_at);
     }
   }

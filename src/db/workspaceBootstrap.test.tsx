@@ -152,7 +152,7 @@ describe('automatic local workspace', () => {
     };
     const game: Game = {
       id: 'existing-game-id', family_id: match.family_id, set_id: set.id, game_number: 1,
-      player_points: 0, opponent_points: 0, created_at: now, updated_at: now, version: 1, deleted: false,
+      player_points: 0, opponent_points: 0, status_id: 1, created_at: now, updated_at: now, version: 1, deleted: false,
     };
     const point: Point = {
       id: 'existing-point-id', family_id: match.family_id, game_id: game.id, point_number: 1,
@@ -237,7 +237,7 @@ describe('automatic local workspace', () => {
     };
     const game: Game = {
       id: crypto.randomUUID(), family_id: savedMatch!.family_id, set_id: set.id,
-      game_number: 1, player_points: 1, opponent_points: 0,
+      game_number: 1, player_points: 1, opponent_points: 0, status_id: 1,
       created_at: now, updated_at: now, version: 1, deleted: false,
     };
     const point: Point = {

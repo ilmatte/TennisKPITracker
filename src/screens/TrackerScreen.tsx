@@ -5,7 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getMatchPoints } from '../db/database';
 import { STATUS, statusLabel } from '../features/statuses/statuses';
 import { nextPointNumber } from '../db/pointNumbers';
-import { deriveGameScore, deriveSetStatusId, setStatusId, visibleSetNumbers, deriveSetScore, getGameServer, getServer, isActionAvailable, matchWinner, serverOverrideKey, tiebreakServer, type ServerOverrides, type Side, isSetComplete, unavailableReason, isSuperTiebreakSet, nextGameNumber, pointsToGame, tiebreakTarget, resolvePointAction, sortedPoints, type PointAction } from '../features/scoring/scoring';
+import { deriveGameScore, deriveGameStatusId, deriveSetStatusId, gameStatusId, setStatusId, visibleGameNumbers, visibleSetNumbers, deriveSetScore, getGameServer, getServer, isActionAvailable, matchWinner, serverOverrideKey, tiebreakServer, type ServerOverrides, type Side, isSetComplete, unavailableReason, isSuperTiebreakSet, nextGameNumber, pointsToGame, tiebreakTarget, resolvePointAction, sortedPoints, type PointAction } from '../features/scoring/scoring';
 import { countGameDescendants, countMatchDescendants, countSetDescendants, softDeleteGame, softDeleteMatch, softDeletePoint, softDeleteSet, updateGame, updateMatch, updatePoint, updateSet, type PointChanges } from '../db/sportsMutations';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import { isWinningPointType, POINT_TYPES } from '../features/scoring/pointTypes';
@@ -78,7 +78,13 @@ export function Tracker() {
   const currentGameNumber = match ? nextGameNumber(points, selectedSetNumber, match) : 1;
   // A finished set has no game in progress: nextGameNumber then points at its last game.
   const selectedSetFinished = match ? isSetComplete(deriveSetScore(points, selectedSetNumber, match), match, selectedSetNumber) : false;
-  const gameNumber = selectedGame ?? currentGameNumber;
+  // Game buttons: the games played in the selected set and, while the set is open, only the first game not concluded.
+  // A selected game no longer listed (e.g. its points were deleted) falls back to the game being played.
+  const shownGameNumbers = match
+    ? visibleGameNumbers(points, match, selectedSetNumber,
+      selectedSetFinished || matchWinner(points, match) !== null || match.status_id === STATUS.completed)
+    : [1];
+  const gameNumber = selectedGame !== null && shownGameNumbers.includes(selectedGame) ? selectedGame : currentGameNumber;
   const currentSet = hierarchy.sets.find(set => set.set_number === selectedSetNumber);
   const currentGame = hierarchy.games.find(game => game.set_id === currentSet?.id && game.game_number === gameNumber);
   const gamePoints = sortedPoints(points, selectedSetNumber, gameNumber);
@@ -87,9 +93,6 @@ export function Tracker() {
   const currentServer = match ? getServer(match, points, selectedSetNumber, gameNumber, serverOverrides) : 'player';
   const gameServer = match ? getGameServer(match, points, selectedSetNumber, gameNumber, serverOverrides) : 'player';
   const setScore = match ? deriveSetScore(points, selectedSetNumber, match) : { player: 0, opponent: 0 };
-  const recordedGameNumbers = hierarchy.games.filter(game => game.set_id === currentSet?.id).map(game => game.game_number);
-  recordedGameNumbers.push(...points.filter(point => point.set_number === selectedSetNumber).map(point => point.game_number));
-  const lastGameNumber = Math.max(currentGameNumber, ...recordedGameNumbers);
 
   const completedSets = match
     ? hierarchy.sets.filter(set => isSetComplete(deriveSetScore(points, set.set_number, match), match, set.set_number))
@@ -151,7 +154,7 @@ export function Tracker() {
           deleted: false,
         } : {
           id: crypto.randomUUID(), family_id: currentMatch.family_id, set_id: tennisSet.id, game_number: gameNumber,
-          player_points: 0, opponent_points: 0, created_at, updated_at: created_at, version: 1, deleted: false,
+          player_points: 0, opponent_points: 0, status_id: STATUS.upcoming, created_at, updated_at: created_at, version: 1, deleted: false,
         };
         if (tennisGame.family_id !== currentMatch.family_id) {
           throw new Error('Il game selezionato non appartiene alla famiglia attiva.');
@@ -196,6 +199,9 @@ export function Tracker() {
           ...tennisGame,
           player_points: updatedGamePoints.filter(existing => existing.won).length,
           opponent_points: updatedGamePoints.filter(existing => !existing.won).length,
+          // The game now has at least one point: In corso, or Concluso when this point wins it.
+          status_id: gameStatusId(updatedGamePoints, currentMatch.deuce_single_point,
+            tiebreakTarget(updatedPoints, currentMatch, selectedSetNumber, gameNumber)),
           updated_at: created_at,
           version: existingGame ? existingGame.version + 1 : 1,
         };
@@ -502,14 +508,16 @@ export function Tracker() {
           )}</div>}
           {/* A deciding super tie-break is the only game of its set: its set button already represents it. */}
           {!isSuperTiebreakSet(match, selectedSetNumber) && <div className="cg-chip-row" aria-label="Seleziona game">
-            {Array.from({ length: lastGameNumber }, (_, index) => index + 1).map(number => {
+            {shownGameNumbers.map(number => {
               const selectedPoints = sortedPoints(points, selectedSetNumber, number);
               const target = tiebreakTarget(points, match, selectedSetNumber, number);
               const result = pointsToGame(selectedPoints, 'player', match.deuce_single_point, target);
-              const label = result ? `${result.player}-${result.opponent}` : 'in corso';
+              const statusId = deriveGameStatusId(points, match, selectedSetNumber, number);
+              // A concluded game keeps its result next to the status ("Concluso · 1-0" for the side that won it).
+              const label = result ? `${statusLabel(statusId, 'game')} · ${result.player}-${result.opponent}` : statusLabel(statusId, 'game');
               const isCurrent = number === currentGameNumber && !selectedSetFinished;
               return <button key={number} className={`cg-chip${number === gameNumber ? ' active' : ''}${isCurrent ? ' current' : ''}`} onClick={() => selectGame(number)}>
-                {target ? tiebreakLabel : `Game ${number}`}<span>{isCurrent ? 'Corrente' : label}</span>
+                {target ? tiebreakLabel : `Game ${number}`}<span>{label}</span>
               </button>;
             })}
           </div>}

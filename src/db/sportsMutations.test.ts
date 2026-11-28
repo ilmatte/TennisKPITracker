@@ -64,7 +64,7 @@ function tennisSet(id: string, set_number = 1): TennisSet {
 function tennisGame(id: string, set_id = 'set-1', game_number = 1): Game {
   return {
     id, family_id: 'family-1', set_id, game_number,
-    player_points: 4, opponent_points: 0, created_at: now, updated_at: now, version: 1, deleted: false,
+    player_points: 4, opponent_points: 0, status_id: 3, created_at: now, updated_at: now, version: 1, deleted: false,
   };
 }
 
@@ -233,11 +233,12 @@ describe('sport entity mutations', () => {
     expect(await operations('game-1')).toMatchObject([{ operation: 'upsert', payload: { version: 2, game_number: 3 } }]);
   });
 
-  it('recalculates the set status when points are deleted or changed', async () => {
+  it('recalculates the set and game statuses when points are deleted or changed', async () => {
     await seedMatch(true);
     for (const number of [1, 2, 3, 4]) await softDeletePoint('family-1', `point-${number}`);
     // No point left: the set goes back to In programma (shown as "Prossimo").
     expect(await db.sets.get('set-1')).toMatchObject({ player_games: 0, status_id: 1 });
+    expect(await db.games.get('game-1')).toMatchObject({ player_points: 0, status_id: 1 });
 
     // Games 1-4 won 4-0, except the last point of game 4, lost: the set is In corso at 3-0.
     await db.games.bulkAdd([2, 3, 4].map(number => tennisGame(`game-${number}`, 'set-1', number)));
@@ -250,12 +251,14 @@ describe('sport entity mutations', () => {
       won: true, serving: true, second_serve: false, point_type_id: 4, shot_count: 3,
     });
     expect(await db.sets.get('set-1')).toMatchObject({ player_games: 3, status_id: 2 });
+    expect(await db.games.get('game-4')).toMatchObject({ player_points: 3, opponent_points: 1, status_id: 2 });
 
     // Changing the lost point to won wins game 4 and the set (4-0): Concluso.
     await updatePoint('family-1', 'point-4-4', {
       won: true, serving: true, second_serve: false, point_type_id: 4, shot_count: 3,
     });
     expect(await db.sets.get('set-1')).toMatchObject({ player_games: 4, status_id: 3 });
+    expect(await db.games.get('game-4')).toMatchObject({ player_points: 4, status_id: 3 });
     const latest = (await operations('set-1'))
       .sort((left, right) => (right.payload as TennisSet).version - (left.payload as TennisSet).version)[0];
     expect(latest).toMatchObject({ payload: { status_id: 3 } });

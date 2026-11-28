@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { Game, Match, Point, ScoredPoint, TennisSet } from '../../types';
+import type { Game, GameStatusId, Match, Point, ScoredPoint, TennisSet } from '../../types';
 import { STATUS, statusLabel } from '../statuses/statuses';
-import { deriveSetStatusId, matchWinner, visibleSetNumbers } from './scoring';
-import { withDerivedSetStatuses } from './setStatuses';
+import { deriveGameScore, deriveGameStatusId, deriveSetScore, deriveSetStatusId, isSetComplete, matchWinner, visibleGameNumbers, visibleSetNumbers } from './scoring';
+import { withDerivedGameStatuses, withDerivedSetStatuses } from './setStatuses';
 
 const match = (overrides: Partial<Match> = {}): Match => ({
   id: 'm1', family_id: 'f1', match_date: '2026-11-17', player_id: 'p1', player_ranking_snapshot: 7, opponent: 'Andrea',
@@ -86,11 +86,99 @@ describe('set status and visible sets', () => {
       created_at: '', updated_at: '', version: 1, deleted: false } as const;
     const sets: TennisSet[] = [{ ...base, id: 's1', set_number: 1 }, { ...base, id: 's2', set_number: 2 }, { ...base, id: 's3', set_number: 3 }];
     const games: Game[] = [1, 2, 3, 4].map(n => ({ id: `g-1-${n}`, family_id: 'f1', set_id: 's1', game_number: n,
-      player_points: 4, opponent_points: 0, created_at: '', updated_at: '', version: 1, deleted: false }))
-      .concat([{ id: 'g-2-1', family_id: 'f1', set_id: 's2', game_number: 1, player_points: 1, opponent_points: 0,
+      player_points: 4, opponent_points: 0, status_id: STATUS.completed as GameStatusId, created_at: '', updated_at: '', version: 1, deleted: false }))
+      .concat([{ id: 'g-2-1', family_id: 'f1', set_id: 's2', game_number: 1, player_points: 1, opponent_points: 0, status_id: STATUS.in_progress,
         created_at: '', updated_at: '', version: 1, deleted: false }]);
     const points: Point[] = [...wonGames(1, 4), point(2, 1, 1)].map(({ set_number: _s, game_number: _g, ...stored }) => stored);
     expect(withDerivedSetStatuses([match()], sets, games, points).map(set => set.status_id))
+      .toEqual([STATUS.completed, STATUS.in_progress, STATUS.upcoming]);
+  });
+});
+
+/** A game of `count` points all won (or all lost) by my player. */
+const game = (set_number: number, game_number: number, count: number, won = true): ScoredPoint[] =>
+  Array.from({ length: count }, (_, index) => point(set_number, game_number, index + 1, won));
+
+/** What the live match screen lists for a set: game numbers with the status label shown for each. */
+function shownGames(points: ScoredPoint[], setNumber = 1, format: Match = match()) {
+  const closed = isSetComplete(deriveSetScore(points, setNumber, format), format, setNumber) || matchWinner(points, format) !== null;
+  return visibleGameNumbers(points, format, setNumber, closed)
+    .map(number => [number, statusLabel(deriveGameStatusId(points, format, setNumber, number), 'game')]);
+}
+
+describe('game status and visible games', () => {
+  it('shows "Prossimo" for a game "In programma"', () => {
+    expect(statusLabel(STATUS.upcoming, 'game')).toBe('Prossimo');
+    expect(statusLabel(STATUS.in_progress, 'game')).toBe('In corso');
+    expect(statusLabel(STATUS.completed, 'game')).toBe('Concluso');
+  });
+
+  it('1. set just started: only game 1, "Prossimo"', () => {
+    expect(shownGames([])).toEqual([[1, 'Prossimo']]);
+  });
+
+  it('2. first point recorded: game 1 "In corso"', () => {
+    expect(shownGames([point(1, 1, 1)])).toEqual([[1, 'In corso']]);
+  });
+
+  it('3. first game concluded: game 1 "Concluso" and game 2 "Prossimo"', () => {
+    expect(shownGames(game(1, 1, 4))).toEqual([[1, 'Concluso'], [2, 'Prossimo']]);
+  });
+
+  it('4. second game started: game 1 concluded, game 2 "In corso"', () => {
+    expect(shownGames([...game(1, 1, 4), point(1, 2, 1)])).toEqual([[1, 'Concluso'], [2, 'In corso']]);
+  });
+
+  it('5. second game concluded: games 1 and 2 concluded, game 3 "Prossimo"', () => {
+    expect(shownGames([...game(1, 1, 4), ...game(1, 2, 4, false)]))
+      .toEqual([[1, 'Concluso'], [2, 'Concluso'], [3, 'Prossimo']]);
+  });
+
+  it('6. set concluded: all and only the games played', () => {
+    expect(shownGames(wonGames(1, 4))).toEqual([[1, 'Concluso'], [2, 'Concluso'], [3, 'Concluso'], [4, 'Concluso']]);
+  });
+
+  it('7. a game whose points are all deleted goes back to "Prossimo"', () => {
+    const deleted = [...game(1, 1, 4), point(1, 2, 1, true, true), point(1, 2, 2, true, true)];
+    expect(deriveGameStatusId(deleted, match(), 1, 2)).toBe(STATUS.upcoming);
+    expect(shownGames(deleted)).toEqual([[1, 'Concluso'], [2, 'Prossimo']]);
+  });
+
+  it('8. a concluded game reopened by a changed point goes back to "In corso"', () => {
+    const reopened = [point(1, 1, 1), point(1, 1, 2), point(1, 1, 3), point(1, 1, 4, false)];
+    expect(deriveGameStatusId(reopened, match(), 1, 1)).toBe(STATUS.in_progress);
+    expect(shownGames(reopened)).toEqual([[1, 'In corso']]);
+  });
+
+  it('9a. tie-break at 3-3: in progress until the target with two points of margin, then the set is over', () => {
+    // Games 1-6 shared 3-3, game 7 is the tie-break to 7.
+    const tied = [1, 2, 3, 4, 5, 6].flatMap(number => game(1, number, 4, number % 2 === 1));
+    const tiebreakStarted = [...tied, ...game(1, 7, 4)];
+    expect(deriveGameStatusId(tiebreakStarted, match(), 1, 7)).toBe(STATUS.in_progress);
+    expect(shownGames(tiebreakStarted).at(-1)).toEqual([7, 'In corso']);
+    const tiebreakWon = [...tied, ...game(1, 7, 7)];
+    expect(deriveGameStatusId(tiebreakWon, match(), 1, 7)).toBe(STATUS.completed);
+    expect(shownGames(tiebreakWon).map(([number]) => number)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it('9b. deciding super tie-break: a single game to 10', () => {
+    const format = match({ last_set_type: 'super-tiebreak' });
+    const oneSetAll = [...wonGames(1, 4), ...[1, 2, 3, 4].flatMap(number => game(2, number, 4, false))];
+    expect(shownGames(oneSetAll, 3, format)).toEqual([[1, 'Prossimo']]);
+    const started = [...oneSetAll, ...game(3, 1, 7)];
+    expect(deriveGameStatusId(started, format, 3, 1)).toBe(STATUS.in_progress);
+    expect(deriveGameScore(game(3, 1, 7), true, 10)).toEqual({ player: 7, opponent: 0 });
+    const won = [...oneSetAll, ...game(3, 1, 10)];
+    expect(shownGames(won, 3, format)).toEqual([[1, 'Concluso']]);
+  });
+
+  it('recomputes the status of stored games from their points (local upgrade, backups)', () => {
+    const set: TennisSet = { id: 's1', family_id: 'f1', match_id: 'm1', set_number: 1, player_games: 1, opponent_games: 0,
+      status_id: STATUS.in_progress, created_at: '', updated_at: '', version: 1, deleted: false };
+    const games: Game[] = [1, 2, 3].map(number => ({ id: `g-1-${number}`, family_id: 'f1', set_id: 's1', game_number: number,
+      player_points: 0, opponent_points: 0, status_id: STATUS.upcoming as GameStatusId, created_at: '', updated_at: '', version: 1, deleted: false }));
+    const points: Point[] = [...game(1, 1, 4), point(1, 2, 1)].map(({ set_number: _s, game_number: _g, ...stored }) => stored);
+    expect(withDerivedGameStatuses([match()], [set], games, points).map(stored => stored.status_id))
       .toEqual([STATUS.completed, STATUS.in_progress, STATUS.upcoming]);
   });
 });

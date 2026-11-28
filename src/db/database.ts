@@ -4,7 +4,7 @@ import { POINT_TYPES } from '../features/scoring/pointTypes';
 import { PLAYER_AGE_CATEGORIES } from '../features/players/ageCategories';
 import { FITP_RANKINGS, migrateLegacyPlayerRanking } from '../features/players/fitpRankings';
 import { STATUS, STATUSES, migrateLegacyStatus } from '../features/statuses/statuses';
-import { withDerivedSetStatuses } from '../features/scoring/setStatuses';
+import { withDerivedGameStatuses, withDerivedSetStatuses } from '../features/scoring/setStatuses';
 import type {
   Club,
   Family,
@@ -125,6 +125,18 @@ export class TennisDatabase extends Dexie {
       const statusById = new Map(withDerivedSetStatuses(matches, sets, games, points).map(set => [set.id, set.status_id]));
       await transaction.table('sets').toCollection().modify((set: TennisSet) => {
         set.status_id = statusById.get(set.id) ?? set.status_id ?? STATUS.upcoming;
+      });
+    });
+    // v20: games.status_id (FK to statuses: In programma, In corso, Concluso), computed from the points of each game.
+    // Not indexed. Mirrors supabase/initial_schema.sql.
+    this.version(20).stores({}).upgrade(async transaction => {
+      const [matches, sets, games, points] = await Promise.all([
+        transaction.table('matches').toArray(), transaction.table('sets').toArray(),
+        transaction.table('games').toArray(), transaction.table('points').toArray(),
+      ]);
+      const statusById = new Map(withDerivedGameStatuses(matches, sets, games, points).map(game => [game.id, game.status_id]));
+      await transaction.table('games').toCollection().modify((game: Game) => {
+        game.status_id = statusById.get(game.id) ?? game.status_id ?? STATUS.upcoming;
       });
     });
     // Reference tables are written every time the database opens, whatever version the device came from.

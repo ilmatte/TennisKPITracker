@@ -131,6 +131,8 @@ export type TournamentStatusId = StatusId;
 export type MatchStatusId = 2 | 3;
 /** A set is "In programma" (shown as "Prossimo") until its first point, "In corso" while played, then "Concluso". */
 export type SetStatusId = StatusId;
+/** A game is "In programma" (shown as "Prossimo") until its first point, "In corso" while played, then "Concluso". */
+export type GameStatusId = StatusId;
 
 export interface Match {
   id: UUID;
@@ -192,6 +194,8 @@ export interface Game {
   game_number: number;
   player_points: number;
   opponent_points: number;
+  /** FK to statuses.id, derived from the points of the game (gameStatusId): In programma (1), In corso (2), Concluso (3). */
+  status_id: GameStatusId;
   created_at: string;
   updated_at: string;
   version: number;

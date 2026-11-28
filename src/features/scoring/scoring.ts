@@ -1,4 +1,4 @@
-import type { Match, ScoredPoint, SetStatusId, TennisSet } from '../../types';
+import type { GameStatusId, Match, ScoredPoint, SetStatusId, TennisSet } from '../../types';
 import { POINT_TYPE, type PointTypeId } from './pointTypes';
 import { STATUS } from '../statuses/statuses';
 
@@ -207,6 +207,33 @@ export function visibleSetNumbers(points: ScoredPoint[], match: Match, matchOver
     const next = statuses.find(set => set.status !== STATUS.completed);
     if (next) visible.add(next.number);
   }
+  if (!visible.size) visible.add(1);
+  return [...visible].sort((a, b) => a - b);
+}
+
+/** Status of a game (statuses id) from its points: Concluso once pointsToGame assigns it (a tie-break or super
+ *  tie-break with its target), In corso once it has at least one point, otherwise In programma. The single rule used
+ *  to store games.status_id and to show it. */
+export function gameStatusId(gamePoints: ScoredPoint[], deuceSinglePoint: boolean, target: number | null): GameStatusId {
+  const live = activePoints(gamePoints);
+  if (pointsToGame(live, 'player', deuceSinglePoint, target)) return STATUS.completed;
+  return live.length ? STATUS.in_progress : STATUS.upcoming;
+}
+
+/** Status of a game of the match computed from the match's points (deleted points ignored). */
+export function deriveGameStatusId(points: ScoredPoint[], match: Match, setNumber: number, gameNumber: number): GameStatusId {
+  return gameStatusId(sortedPoints(points, setNumber, gameNumber), match.deuce_single_point,
+    tiebreakTarget(points, match, setNumber, gameNumber));
+}
+
+/** Games shown for a set in the live match screen, in order: the games already played (concluded or started) and,
+ *  while the set is open, only the first game not yet concluded (the one being played or the next one). Game 1 when
+ *  nothing has been played. `closed`: the set is concluded or the match is over, so no next game is listed. */
+export function visibleGameNumbers(points: ScoredPoint[], match: Match, setNumber: number, closed: boolean): number[] {
+  const played = [...new Set(points.filter(point => !point.deleted && point.set_number === setNumber)
+    .map(point => point.game_number))];
+  const visible = new Set(played);
+  if (!closed) visible.add(nextGameNumber(points, setNumber, match));
   if (!visible.size) visible.add(1);
   return [...visible].sort((a, b) => a - b);
 }
