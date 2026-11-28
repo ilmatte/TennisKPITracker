@@ -82,8 +82,7 @@ export function fitpRankingCode(rankingId: number | null | undefined, rankings: 
 }
 
 /** Id of the registry ranking a free-text ranking typed before the registry existed refers to, or null when it matches
- *  none. Spaces are ignored, case and decimal comma tolerated; "NC", "N.C." and "4NC" mean 4.NC. The same rules are
- *  applied by the Supabase migration (supabase/migrations/20261128_fitp_rankings.sql). */
+ *  none. Spaces are ignored, case and decimal comma tolerated; "NC", "N.C." and "4NC" mean 4.NC. */
 export function legacyFitpRankingId(text: unknown, rankings: readonly FitpRanking[] = FITP_RANKINGS): number | null {
   if (typeof text !== 'string') return null;
   let code = text.replace(/\s+/g, '').replace(/,/g, '.').toUpperCase();
