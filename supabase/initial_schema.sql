@@ -832,6 +832,7 @@ declare
   current_row jsonb;
   source_payload jsonb;
   update_columns text;
+  insert_columns text;
   updated_row jsonb;
   new_revision bigint;
   failed_constraint text;
@@ -902,10 +903,21 @@ begin
         'updated_at', pg_catalog.clock_timestamp()
       );
 
+    -- Only the columns present in the payload are written: a payload produced by an older app version or downloaded
+    -- from an old sync snapshot may lack columns added later; on insert they get their default, on update they keep
+    -- their current value (instead of being overwritten with null, which breaks the not null constraints).
     if current_row is null then
+      select pg_catalog.string_agg(pg_catalog.format('%I', attribute.attname), ', ' order by attribute.attnum)
+      into insert_columns
+      from pg_catalog.pg_attribute attribute
+      where attribute.attrelid = pg_catalog.to_regclass('public.' || target_table)
+        and attribute.attnum > 0
+        and not attribute.attisdropped
+        and source_payload ? attribute.attname::text;
+
       execute pg_catalog.format(
-        'insert into public.%I as inserted select (pg_catalog.jsonb_populate_record(null::public.%I, $1)).* returning pg_catalog.to_jsonb(inserted)',
-        target_table, target_table
+        'insert into public.%I as inserted (%s) select %s from pg_catalog.jsonb_populate_record(null::public.%I, $1) as incoming returning pg_catalog.to_jsonb(inserted)',
+        target_table, insert_columns, insert_columns, target_table
       ) into updated_row using source_payload;
     else
       select pg_catalog.string_agg(
@@ -917,7 +929,8 @@ begin
       where attribute.attrelid = pg_catalog.to_regclass('public.' || target_table)
         and attribute.attnum > 0
         and not attribute.attisdropped
-        and attribute.attname not in ('id', 'family_id', 'created_at');
+        and attribute.attname not in ('id', 'family_id', 'created_at')
+        and source_payload ? attribute.attname::text;
 
       execute pg_catalog.format(
         'update public.%I as target set %s from pg_catalog.jsonb_populate_record(null::public.%I, $1) as incoming where target.id = $2 and target.family_id = $3 returning pg_catalog.to_jsonb(target)',
