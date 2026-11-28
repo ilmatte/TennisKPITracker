@@ -44,7 +44,7 @@ describe('Classifica FITP in the player editor', () => {
       last_set_type: 'super-tiebreak', super_tiebreak_target: 10, tiebreak_target: 7, games_to_win_set: 4,
       short_set_tiebreak_at: 3, deuce_single_point: true, first_server: 'player',
     });
-    expect(match.player_ranking_snapshot).toBe('4.1');
+    expect(match.player_ranking_snapshot).toBe(7);
     const user = userEvent.setup();
     renderApp('/players');
 
@@ -68,7 +68,7 @@ describe('Classifica FITP in the player editor', () => {
     expect(await screen.findByText(/FITP 3\.4/)).toBeTruthy();
     expect(await db.players.get('p1')).toMatchObject({ ranking_id: 9, version: 2 });
     // The match keeps the ranking the player had when it was registered.
-    expect(await db.matches.get(match.id)).toMatchObject({ player_ranking_snapshot: '4.1' });
+    expect(await db.matches.get(match.id)).toMatchObject({ player_ranking_snapshot: 7 });
   });
 
   it('creates a player as non classificato', async () => {

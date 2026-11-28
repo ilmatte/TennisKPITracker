@@ -8,6 +8,8 @@ import type { MatchChanges } from '../db/sportsMutations';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import tennisBallIcon from '../assets/icone/trasparente/512/pallina3d.png';
 import { NewMatch, ServerOptions } from './NewMatchWizard';
+import { FitpRankingOptions } from './FitpRankingOptions';
+import { fitpRankingValue, useFitpRankings } from '../features/players/useFitpRankings';
 import { BrandBar } from './BrandBar';
 import { MatchesTabs } from './MatchesTabs';
 import { playerFullName, playerShortName } from '../features/players/playerNames';
@@ -95,6 +97,7 @@ export function MatchEditor({ match, error, onClose, onSave }: {
     tiebreak_target: match.tiebreak_target === 7 ? 7 : 10,
     super_tiebreak_target: match.super_tiebreak_target === 7 ? 7 : 10,
   }));
+  const rankings = useFitpRankings();
   const field = <K extends keyof Match>(key: K, value: Match[K]) => setDraft(current => ({ ...current, [key]: value }));
   // The match's own player, even if it has since been deleted.
   const matchPlayer = useLiveQuery(() => db.players.get(match.player_id), [match.player_id]);
@@ -117,7 +120,10 @@ export function MatchEditor({ match, error, onClose, onSave }: {
     <p className="snapshot-preview"><small>Lo snapshot viene aggiornato solo per la partita selezionata.</small></p>
     <div className="form-grid">
       <label>Avversario<input value={draft.opponent} onChange={event => field('opponent', event.target.value)} /></label>
-      <label>Classifica avversario<input value={draft.opponent_ranking ?? ''} onChange={event => field('opponent_ranking', event.target.value || null)} /></label>
+      <label>Classifica avversario<select value={draft.opponent_ranking_snapshot ?? ''}
+        onChange={event => field('opponent_ranking_snapshot', fitpRankingValue(event.target.value))}>
+        <FitpRankingOptions rankings={rankings} value={draft.opponent_ranking_snapshot ?? null} />
+      </select></label>
     </div>
     <label>Torneo<select value={draft.tournament_id ?? ''} onChange={event => field('tournament_id', event.target.value || null)}>
       {/* Matches created before tournaments existed have none. */}
@@ -153,7 +159,7 @@ export function MatchEditor({ match, error, onClose, onSave }: {
         match_date: draft.match_date,
         player_id: draft.player_id,
         opponent: draft.opponent.trim(),
-        opponent_ranking: draft.opponent_ranking,
+        opponent_ranking_snapshot: draft.opponent_ranking_snapshot ?? null,
         tournament_id: draft.tournament_id ?? null,
         tournament_match_number: draft.tournament_match_number,
         number_of_sets: draft.number_of_sets,

@@ -95,7 +95,7 @@ on conflict (id) do update set
   sort_order = excluded.sort_order, is_active = excluded.is_active, season = excluded.season;
 
 -- ranking_id: the player's current FITP ranking (null = not specified). The ranking each match was played with is
--- frozen in matches.player_ranking_snapshot (the ranking code), so later updates do not change past matches.
+-- frozen in matches.player_ranking_snapshot (FK to fitp_rankings), so later updates do not change past matches.
 create table public.players (
   id uuid primary key,
   family_id uuid not null references public.families(id) on delete cascade,
@@ -172,9 +172,13 @@ create table public.matches (
   family_id uuid not null references public.families(id) on delete cascade,
   match_date date not null,
   player_id uuid not null,
-  player_ranking_snapshot text not null default '',
+  -- Rankings when the match was created (historical snapshots, FK to fitp_rankings; null = not specified): the
+  -- player's is copied from players.ranking_id, the opponent's is chosen in the app.
+  player_ranking_snapshot smallint
+    constraint matches_player_ranking_snapshot_fkey references public.fitp_rankings(id),
   opponent text not null,
-  opponent_ranking text,
+  opponent_ranking_snapshot smallint
+    constraint matches_opponent_ranking_snapshot_fkey references public.fitp_rankings(id),
   tournament_match_number integer,
   number_of_sets integer not null check (number_of_sets in (3, 5)),
   last_set_type text not null check (last_set_type in ('normal', 'super-tiebreak')),

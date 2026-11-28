@@ -27,10 +27,9 @@ async function requireRankingId(rankingId: number | null | undefined): Promise<n
   return rankingId;
 }
 
-/** Code of the player's current ranking, frozen in a new match as player_ranking_snapshot. */
-async function rankingSnapshot(player: Player): Promise<string> {
-  if (player.ranking_id === null || player.ranking_id === undefined) return '';
-  return (await db.fitp_rankings.get(player.ranking_id))?.code ?? '';
+/** The player's current ranking, frozen in a match as player_ranking_snapshot (FK to fitp_rankings). */
+async function rankingSnapshot(player: Player): Promise<number | null> {
+  return requireRankingId(player.ranking_id);
 }
 
 function queueOperation<T extends { id: string }>(
@@ -160,7 +159,7 @@ export async function updatePlayer(
 }
 
 export type MatchChanges = Pick<Match,
-  'match_date' | 'player_id' | 'opponent' | 'opponent_ranking' |
+  'match_date' | 'player_id' | 'opponent' | 'opponent_ranking_snapshot' |
   'tournament_id' | 'tournament_match_number' | 'number_of_sets' | 'last_set_type' |
   'super_tiebreak_target' | 'tiebreak_target' | 'games_to_win_set' | 'short_set_tiebreak_at' |
   'deuce_single_point' | 'first_server' | 'status_id' | 'result'
@@ -202,6 +201,7 @@ export async function updateMatch(
       ...changes,
       games_to_win_set: gamesToWinSet,
       short_set_tiebreak_at: shortSetTiebreakAt,
+      opponent_ranking_snapshot: await requireRankingId(changes.opponent_ranking_snapshot),
       // Only a different player gets a new snapshot; otherwise the historical ranking is kept.
       ...(player ? { player_ranking_snapshot: await rankingSnapshot(player) } : {}),
     };
@@ -211,9 +211,10 @@ export async function updateMatch(
   });
 }
 
-/** Fields of a new match chosen in the "Nuova partita" wizard. The ranking snapshot is taken from the player. */
+/** Fields of a new match chosen in the "Nuova partita" wizard. The player's ranking snapshot is taken from the player;
+ *  the opponent's one is chosen in the wizard (FK to fitp_rankings, optional). */
 export type NewMatchInput = Pick<Match,
-  'match_date' | 'player_id' | 'opponent' | 'number_of_sets' | 'last_set_type' | 'super_tiebreak_target' |
+  'match_date' | 'player_id' | 'opponent' | 'opponent_ranking_snapshot' | 'number_of_sets' | 'last_set_type' | 'super_tiebreak_target' |
   'tiebreak_target' | 'games_to_win_set' | 'short_set_tiebreak_at' | 'deuce_single_point' | 'first_server'
 > & { tournament_id: string };
 
@@ -237,6 +238,7 @@ export async function createMatch(familyId: string, input: NewMatchInput): Promi
       family_id: familyId,
       opponent,
       player_ranking_snapshot: await rankingSnapshot(player),
+      opponent_ranking_snapshot: await requireRankingId(input.opponent_ranking_snapshot),
       games_to_win_set: gamesToWinSet,
       short_set_tiebreak_at: input.short_set_tiebreak_at ?? 3,
       status_id: STATUS.in_progress,

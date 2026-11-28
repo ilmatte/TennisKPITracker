@@ -105,12 +105,15 @@ export class TennisDatabase extends Dexie {
     this.version(15).stores({}).upgrade(migrateLegacyMatchStores);
     this.version(16).stores({}).upgrade(migrateLegacyMatchStores);
     // v17: the fitp_rankings reference table; the free-text players.ranking becomes ranking_id (FK to fitp_rankings).
-    // Mirrors supabase/initial_schema.sql. Texts that match no registry code become null. Matches are not touched:
-    // player_ranking_snapshot keeps the ranking each match was played with.
+    // Mirrors supabase/initial_schema.sql. Texts that match no registry code become null.
     this.version(17).stores({
       fitp_rankings: 'id, &[season+code], category_group, sort_order',
       players: 'id, family_id, first_name, last_name, ranking_id, updated_at, deleted',
     }).upgrade(migrateLegacyPlayerStores);
+    // v18: matches.player_ranking_snapshot (ranking code) becomes an FK to fitp_rankings, and the free-text
+    // opponent_ranking becomes opponent_ranking_snapshot (FK too). Same idempotent conversion as v15/v16, which now
+    // includes the rankings; codes that match no registry row become null. Neither column is indexed.
+    this.version(18).stores({}).upgrade(migrateLegacyMatchStores);
     // Reference tables are written every time the database opens, whatever version the device came from.
     this.on('ready', database => seedReferenceTables(database as TennisDatabase));
   }

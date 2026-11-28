@@ -6,6 +6,8 @@ import { createMatch } from '../db/sportsMutations';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import { playerAgeCategory } from '../features/players/ageCategories';
 import { fitpRankingCode } from '../features/players/fitpRankings';
+import { FitpRankingOptions } from './FitpRankingOptions';
+import { fitpRankingValue, useFitpRankings } from '../features/players/useFitpRankings';
 import { playerFullName } from '../features/players/playerNames';
 import {
   formatTournamentDate,
@@ -65,11 +67,11 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
   const [opponent, setOpponent] = useState('');
   const selectedPlayer = players.find(player => player.id === playerId);
   const playerCategory = selectedPlayer ? playerAgeCategory(selectedPlayer, Number(matchDate.slice(0, 4))) : null;
-  // Current ranking code, read from the fitp_rankings registry: it is frozen in the match when it is created.
-  const playerRanking = useLiveQuery(
-    async () => selectedPlayer?.ranking_id == null ? '' : fitpRankingCode(selectedPlayer.ranking_id, await db.fitp_rankings.toArray()),
-    [selectedPlayer?.ranking_id],
-  ) ?? '';
+  // FITP rankings registry. The player's current ranking is frozen in the match when it is created, together with the
+  // opponent's ranking chosen here.
+  const rankings = useFitpRankings();
+  const playerRanking = fitpRankingCode(selectedPlayer?.ranking_id, rankings);
+  const [opponentRankingId, setOpponentRankingId] = useState<number | null>(null);
 
   // Step 3: match rules
   const [sets, setSets] = useState<3 | 5>(3);
@@ -107,6 +109,7 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
         match_date: matchDate,
         player_id: selectedPlayer.id,
         opponent,
+        opponent_ranking_snapshot: opponentRankingId,
         number_of_sets: sets,
         last_set_type: lastSetType,
         super_tiebreak_target: superTiebreakTarget,
@@ -183,6 +186,12 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
         <div className="cw-field">
           <label htmlFor="avversario">Avversario</label>
           <input id="avversario" className="cw-input" type="text" placeholder="Nome avversario" value={opponent} onChange={event => setOpponent(event.target.value)} />
+        </div>
+        <div className="cw-field">
+          <label htmlFor="classifica-avversario">Classifica avversario</label>
+          <SelectBox id="classifica-avversario" value={opponentRankingId ?? ''} onChange={value => setOpponentRankingId(fitpRankingValue(value))}>
+            <FitpRankingOptions rankings={rankings} value={opponentRankingId} />
+          </SelectBox>
         </div>
       </div>}
 

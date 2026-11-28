@@ -6,7 +6,7 @@ import { POINT_TYPE } from './pointTypes';
 
 const match = (overrides: Partial<Match> = {}): Match => ({
   id: 'm1', family_id: 'f1', match_date: '2026-11-17', player_id: 'alessandro',
-  player_ranking_snapshot: '4.1', opponent: 'Andrea',
+  player_ranking_snapshot: 7, opponent: 'Andrea',
   number_of_sets: 3, last_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
   games_to_win_set: 4, deuce_single_point: true, first_server: 'player',
   status_id: 2, created_at: '2026-11-17', updated_at: '2026-11-17', version: 1, deleted: false,
@@ -250,9 +250,9 @@ describe('KPI core', () => {
     expect(servicePlusOne(points,'player')).toMatchObject({won:2,total:4,percentage:50});
   });
   it('keeps historical match snapshot independent of profile updates', () => {
-    const historical=match({match_date:'2026-11-17',player_ranking_snapshot:'4.1'});
-    const profile={ranking:'3.5'};
-    expect(historical.player_ranking_snapshot).toBe('4.1');
-    expect(profile.ranking).not.toBe(historical.player_ranking_snapshot);
+    const historical=match({match_date:'2026-11-17',player_ranking_snapshot:7});
+    const profile={ranking_id:8};
+    expect(historical.player_ranking_snapshot).toBe(7);
+    expect(profile.ranking_id).not.toBe(historical.player_ranking_snapshot);
   });
 });

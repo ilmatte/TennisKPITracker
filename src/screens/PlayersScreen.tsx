@@ -13,7 +13,9 @@ import settingsBackground from '../assets/background-settings.png';
 import { stamp } from './shared';
 import { BrandBar } from './BrandBar';
 import { currentSportingYear, playerAgeCategory } from '../features/players/ageCategories';
-import { fitpRankingCode, fitpRankingOptionLabel, groupFitpRankings } from '../features/players/fitpRankings';
+import { fitpRankingCode } from '../features/players/fitpRankings';
+import { FitpRankingOptions } from './FitpRankingOptions';
+import { fitpRankingValue, useFitpRankings } from '../features/players/useFitpRankings';
 import type { FitpRanking, Player } from '../types';
 
 /** Where the player editor was opened from: decides where "Salva" goes next. */
@@ -54,8 +56,7 @@ export function Players() {
     }
     return stats;
   }, [activeFamily?.id]) ?? new Map<string, { played: number; completed: number; won: number }>();
-  // FITP rankings registry (fitp_rankings reference table), from the lowest ranking to the highest.
-  const rankings = useLiveQuery(() => db.fitp_rankings.orderBy('sort_order').toArray(), []) ?? [];
+  const rankings = useFitpRankings();
   const [editing, setEditing] = useState<Player | null>(null);
   const [origin, setOrigin] = useState<EditorOrigin>('players');
   const [error, setError] = useState<string | null>(null);
@@ -213,8 +214,10 @@ function PlayerModal({ player, rankings, error, onClose, onSave, onDelete }: {
           Categoria {sportingYear}: <strong>{ageCategory ? ageCategory.name : 'nessuna (meno di 10 anni)'}</strong>
         </p>}
         <label>Classifica FITP
-          <FitpRankingSelect rankings={rankings} value={draft.ranking_id}
-            onChange={rankingId => setDraft({ ...draft, ranking_id: rankingId })} />
+          <select className="player-editor-select" value={draft.ranking_id ?? ''}
+            onChange={event => setDraft({ ...draft, ranking_id: fitpRankingValue(event.target.value) })}>
+            <FitpRankingOptions rankings={rankings} value={draft.ranking_id} />
+          </select>
         </label>
       </div>
       {error && <p className="family-feedback error" role="alert">{error}</p>}
@@ -227,20 +230,4 @@ function PlayerModal({ player, rankings, error, onClose, onSave, onDelete }: {
       </div>
     </div>
   </section></div>;
-}
-
-/** Drop-down of the FITP rankings registry, grouped by category (Quarta, Terza, Seconda) and ordered from the lowest
- *  ranking to the highest. Each option starts with the official code, so typing it on the focused menu selects it. */
-function FitpRankingSelect({ rankings, value, onChange }: {
-  rankings: readonly FitpRanking[];
-  value: number | null;
-  onChange: (rankingId: number | null) => void;
-}) {
-  return <select className="player-editor-select" value={value ?? ''}
-    onChange={event => onChange(event.target.value ? Number(event.target.value) : null)}>
-    <option value="">Non indicata</option>
-    {groupFitpRankings(rankings, value).map(group => <optgroup key={group.group} label={group.label}>
-      {group.rankings.map(item => <option key={item.id} value={item.id}>{fitpRankingOptionLabel(item)}</option>)}
-    </optgroup>)}
-  </select>;
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import schema from '../../supabase/initial_schema.sql?raw';
 import fitpMigration from '../../supabase/migrations/20261128_fitp_rankings.sql?raw';
+import snapshotsMigration from '../../supabase/migrations/20261128_match_ranking_snapshots.sql?raw';
 import { FITP_RANKINGS } from '../features/players/fitpRankings';
 
 function functionBody(sql: string, name: string): string {
@@ -110,10 +111,17 @@ describe('FITP rankings SQL', () => {
     expect(schema).toMatch(/unique \(season, code\),\s+unique \(season, sort_order\)/i);
     expect(schema).toMatch(/grant select on table public\.fitp_rankings to authenticated/i);
     expect(schema).toMatch(/create policy "authenticated users can read fitp rankings"/i);
-    // The free-text ranking column is gone; the match snapshot stays.
+    // The free-text ranking column is gone.
     expect(schema).not.toMatch(/^\s*ranking text/m);
-    expect(schema).toMatch(/player_ranking_snapshot text not null default ''/i);
     expect(fitpMigration).toMatch(/alter table public\.players drop column if exists ranking;/i);
-    expect(fitpMigration).not.toMatch(/update public\.matches/i);
+  });
+
+  it('stores the player and opponent ranking snapshots of matches as foreign keys to the registry', () => {
+    expect(schema).toMatch(/player_ranking_snapshot smallint\s+constraint matches_player_ranking_snapshot_fkey references public\.fitp_rankings\(id\)/i);
+    expect(schema).toMatch(/opponent_ranking_snapshot smallint\s+constraint matches_opponent_ranking_snapshot_fkey references public\.fitp_rankings\(id\)/i);
+    expect(schema).not.toMatch(/^\s*(player_ranking_snapshot|opponent_ranking) text/m);
+    expect(snapshotsMigration).toMatch(/alter column player_ranking_snapshot type smallint using pg_temp\.legacy_fitp_ranking_id\(player_ranking_snapshot\)/i);
+    expect(snapshotsMigration).toMatch(/alter table public\.matches drop column opponent_ranking;/i);
+    expect(snapshotsMigration).toMatch(/set constraints all immediate;/i);
   });
 });

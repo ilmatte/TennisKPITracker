@@ -9,7 +9,7 @@
 --   tolerated, 'NC' / 'N.C.' / '4NC' -> 4.NC. Texts that match no ranking become null (shown as "Non indicata").
 -- * Converts the player copies kept for synchronization (sync_changes, sync_entity_snapshots), so that devices
 --   downloading them later receive ranking_id too.
--- * matches.player_ranking_snapshot is NOT touched: it keeps the ranking each match was played with.
+-- * matches.player_ranking_snapshot is NOT touched here: 20261128_match_ranking_snapshots.sql converts it.
 --
 -- Deploy the app version with the rankings registry right after running it: older app versions send the text ranking,
 -- which the database ignores (the player is saved without ranking). Idempotent: it can be run again.

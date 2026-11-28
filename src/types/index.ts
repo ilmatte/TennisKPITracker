@@ -136,11 +136,12 @@ export interface Match {
   match_date: string;
   /** The player's name is read from the players table through player_id. */
   player_id: PlayerId;
-  /** Code of the player's FITP ranking (fitp_rankings.code) when the match was created: a historical snapshot, not
-   *  changed by later updates of the player's ranking. '' when the player had no ranking. */
-  player_ranking_snapshot: string;
+  /** FK to fitp_rankings.id: the player's FITP ranking when the match was created. A historical snapshot, not changed
+   *  by later updates of the player's ranking; null when the player had no ranking. */
+  player_ranking_snapshot: number | null;
   opponent: string;
-  opponent_ranking?: string | null;
+  /** FK to fitp_rankings.id: the opponent's FITP ranking, chosen when the match is created; null when not specified. */
+  opponent_ranking_snapshot?: number | null;
   /** FK to tournaments.id. Null only for matches created before tournaments existed. */
   tournament_id?: UUID | null;
   tournament_match_number?: number | null;

@@ -216,7 +216,7 @@ describe('sync engine', () => {
     remote.seed('players', { ...localPlayer(), family_id: remoteFamilyId, version: 3 });
     const match: Match = {
       id: 'match-id', family_id: remoteFamilyId, match_date: '2026-03-01', player_id: 'player-id',
-      player_ranking_snapshot: '4.1', opponent: 'Bea',
+      player_ranking_snapshot: 7, opponent: 'Bea',
       number_of_sets: 3, last_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
       games_to_win_set: 4, deuce_single_point: true, first_server: 'player',
       status_id: 2, created_at: now, updated_at: now, version: 2, deleted: false,
@@ -276,7 +276,8 @@ describe('sync engine', () => {
     const match = await db.matches.get('match-id');
     expect(tournament).toMatchObject({ status_id: 3 });
     expect(tournament).not.toHaveProperty('status');
-    expect(match).toMatchObject({ status_id: 2, last_set_type: 'normal', games_to_win_set: 6 });
+    // The text ranking code of the old schema becomes the fitp_rankings id (4.1 is 7).
+    expect(match).toMatchObject({ status_id: 2, last_set_type: 'normal', games_to_win_set: 6, player_ranking_snapshot: 7 });
     expect(match).not.toHaveProperty('status');
     expect(match).not.toHaveProperty('third_set_type');
     expect(match).not.toHaveProperty('tiebreak_starts_at_363');
@@ -309,7 +310,7 @@ describe('sync engine', () => {
     };
     const match: Match = {
       id: 'match-id', family_id: localFamilyId, match_date: '2026-03-01', player_id: player.id,
-      tournament_id: tournament.id, player_ranking_snapshot: '4.1', opponent: 'Bea',
+      tournament_id: tournament.id, player_ranking_snapshot: 7, opponent: 'Bea',
       number_of_sets: 3, last_set_type: 'normal', super_tiebreak_target: 10, tiebreak_target: 7,
       games_to_win_set: 4, deuce_single_point: true, first_server: 'player',
       status_id: 2, created_at: now, updated_at: now, version: 1, deleted: false,

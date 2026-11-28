@@ -130,7 +130,7 @@ describe('automatic local workspace', () => {
       family_id: 'workspace-later',
       match_date: '2026-01-01',
       player_id: player.id,
-      player_ranking_snapshot: '',
+      player_ranking_snapshot: null,
      
       opponent: 'Opponent',
       number_of_sets: 3,

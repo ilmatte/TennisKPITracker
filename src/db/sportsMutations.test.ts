@@ -45,8 +45,8 @@ function player(id: string, family_id = 'family-1'): Player {
 function match(id = 'match-1', family_id = 'family-1', player_id = 'player-1'): Match {
   return {
     id, family_id, match_date: '2026-01-01', player_id,
-    player_ranking_snapshot: '4.1',
-    opponent: 'Bea', opponent_ranking: '3.5', tournament_id: null,
+    player_ranking_snapshot: 7,
+    opponent: 'Bea', opponent_ranking_snapshot: 8, tournament_id: null,
     tournament_match_number: 4, number_of_sets: 3, last_set_type: 'normal',
     super_tiebreak_target: 10, tiebreak_target: 7, games_to_win_set: 4,
     deuce_single_point: false, first_server: 'player', status_id: 2, result: null,
@@ -173,7 +173,7 @@ describe('sport entity mutations', () => {
 
     expect(saved).toMatchObject({ version: 2, updated_at: expect.not.stringMatching(now) });
     expect(await db.matches.get('match-1')).toMatchObject({
-      player_ranking_snapshot: '4.1',
+      player_ranking_snapshot: 7,
     });
     expect(await operations('player-1')).toMatchObject([
       { operation: 'upsert', payload: { version: 2, ranking_id: 12 } },
@@ -190,7 +190,7 @@ describe('sport entity mutations', () => {
     expect(await updatePlayer('family-1', 'player-1', {
       first_name: 'Ada', last_name: 'Lovelace', birth_date: null, ranking_id: null,
     })).toMatchObject({ ranking_id: null, version: 2 });
-    expect(await db.matches.get('match-1')).toMatchObject({ player_ranking_snapshot: '4.1' });
+    expect(await db.matches.get('match-1')).toMatchObject({ player_ranking_snapshot: 7 });
   });
 
   it('updates a match, snapshots a newly associated player and rejects foreign-family players', async () => {
@@ -198,7 +198,7 @@ describe('sport entity mutations', () => {
     // Born in 2010: 15 on 1 January 2026, so Under 16 in the sporting year of the match.
     await db.players.put({ ...player('player-2'), first_name: 'Bea', last_name: 'Player', ranking_id: 13, birth_date: '2010-06-01' });
     const changes: MatchChanges = {
-      match_date: '2026-02-02', player_id: 'player-2', opponent: 'Cam', opponent_ranking: '2.1',
+      match_date: '2026-02-02', player_id: 'player-2', opponent: 'Cam', opponent_ranking_snapshot: 20,
       tournament_id: null, tournament_match_number: 8, number_of_sets: 5,
       last_set_type: 'super-tiebreak', super_tiebreak_target: 12, tiebreak_target: 10,
       games_to_win_set: 6, deuce_single_point: true, first_server: 'opponent',
@@ -207,7 +207,7 @@ describe('sport entity mutations', () => {
     const saved = await updateMatch('family-1', 'match-1', changes);
     expect(saved).toMatchObject({
       ...changes, version: 2,
-      player_ranking_snapshot: '2.8',
+      player_ranking_snapshot: 13,
     });
     expect(saved.updated_at).not.toBe(now);
     const reopenedMatch = await db.matches.get('match-1');
@@ -567,12 +567,25 @@ describe('match creation', () => {
     const tournament = await seedTournament();
     const created = await createMatch('family-1', input({ tournament_id: tournament.id }));
     expect(created).toMatchObject({
-      family_id: 'family-1', tournament_id: tournament.id, opponent: 'Bea', player_ranking_snapshot: '4.1',
+      family_id: 'family-1', tournament_id: tournament.id, opponent: 'Bea', player_ranking_snapshot: 7,
       games_to_win_set: 6, status_id: 2, version: 1, deleted: false,
     });
     expect(created).not.toHaveProperty('tournament');
     expect(await db.matches.get(created.id)).toEqual(created);
     expect(await operations(created.id)).toMatchObject([{ entity_type: 'matches', payload: { tournament_id: tournament.id } }]);
+  });
+
+  it('saves the opponent ranking chosen from the registry as a snapshot and rejects unknown rankings', async () => {
+    await db.families.add(family('family-1'));
+    await db.players.add(player('player-1'));
+    const tournament = await seedTournament();
+    const created = await createMatch('family-1', input({ tournament_id: tournament.id, opponent_ranking_snapshot: 8 }));
+    expect(created).toMatchObject({ player_ranking_snapshot: 7, opponent_ranking_snapshot: 8 });
+    expect(await operations(created.id)).toMatchObject([{ payload: { player_ranking_snapshot: 7, opponent_ranking_snapshot: 8 } }]);
+    expect(await createMatch('family-1', input({ tournament_id: tournament.id }))).toMatchObject({ opponent_ranking_snapshot: null });
+    await expect(createMatch('family-1', input({ tournament_id: tournament.id, opponent_ranking_snapshot: 999 })))
+      .rejects.toThrow('Classifica FITP non valida.');
+    expect(await db.matches.count()).toBe(2);
   });
 
   it('rejects a missing or foreign tournament, a foreign player and an empty opponent', async () => {
