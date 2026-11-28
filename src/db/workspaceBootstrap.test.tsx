@@ -119,7 +119,7 @@ describe('automatic local workspace', () => {
       first_name: 'Ada',
       last_name: 'Lovelace',
       birth_date: null,
-      ranking: '',
+      ranking_id: null,
       created_at: now,
       updated_at: now,
       version: 1,
@@ -130,7 +130,7 @@ describe('automatic local workspace', () => {
       family_id: 'workspace-later',
       match_date: '2026-01-01',
       player_id: player.id,
-      player_ranking_snapshot: player.ranking,
+      player_ranking_snapshot: '',
      
       opponent: 'Opponent',
       number_of_sets: 3,

@@ -17,6 +17,22 @@ import { STATUS, isMatchStatusId, isTournamentStatusId } from '../features/statu
 
 const timestamp = () => new Date().toISOString();
 
+/** Ranking of a player, normalized: null when not specified. A value must be a row of the fitp_rankings reference table
+ *  (same integrity as the Supabase players_ranking_id_fkey). Call inside a transaction that includes db.fitp_rankings. */
+async function requireRankingId(rankingId: number | null | undefined): Promise<number | null> {
+  if (rankingId === null || rankingId === undefined) return null;
+  if (!Number.isInteger(rankingId) || !(await db.fitp_rankings.get(rankingId))) {
+    throw new Error('Classifica FITP non valida.');
+  }
+  return rankingId;
+}
+
+/** Code of the player's current ranking, frozen in a new match as player_ranking_snapshot. */
+async function rankingSnapshot(player: Player): Promise<string> {
+  if (player.ranking_id === null || player.ranking_id === undefined) return '';
+  return (await db.fitp_rankings.get(player.ranking_id))?.code ?? '';
+}
+
 function queueOperation<T extends { id: string }>(
   family_id: string,
   entity_type: SyncOperation['entity_type'],
@@ -115,7 +131,7 @@ async function recalculate(match: Match, updated_at: string): Promise<void> {
 }
 
 export async function createPlayer(player: Player, userId: string | null): Promise<void> {
-  await db.transaction('rw', [db.families, db.family_members, db.players, db.syncQueue], async () => {
+  await db.transaction('rw', [db.families, db.family_members, db.players, db.fitp_rankings, db.syncQueue], async () => {
     const family = await db.families.get(player.family_id);
     if (!family) throw new Error('La famiglia indicata non esiste.');
 
@@ -123,7 +139,7 @@ export async function createPlayer(player: Player, userId: string | null): Promi
       (userId !== null && Boolean(await db.family_members.get([family.id, userId])));
     if (!authorized) throw new Error('Non sei autorizzato a creare giocatori in questa famiglia.');
 
-    const created = { ...player, version: 1, deleted: false };
+    const created = { ...player, ranking_id: await requireRankingId(player.ranking_id), version: 1, deleted: false };
     await db.players.add(created);
     await db.syncQueue.add(queueOperation(created.family_id, 'players', created, created.created_at));
   });
@@ -132,11 +148,12 @@ export async function createPlayer(player: Player, userId: string | null): Promi
 export async function updatePlayer(
   familyId: string,
   id: string,
-  changes: Pick<Player, 'first_name' | 'last_name' | 'birth_date' | 'ranking'>,
+  changes: Pick<Player, 'first_name' | 'last_name' | 'birth_date' | 'ranking_id'>,
 ): Promise<Player> {
-  return db.transaction('rw', [db.players, db.syncQueue], async () => {
+  // Matches already registered keep their player_ranking_snapshot: only the player's current ranking changes.
+  return db.transaction('rw', [db.players, db.fitp_rankings, db.syncQueue], async () => {
     const current = await requireActive(id => db.players.get(id), id, familyId, 'Giocatore');
-    const next = { ...updated(current, timestamp()), ...changes };
+    const next = { ...updated(current, timestamp()), ...changes, ranking_id: await requireRankingId(changes.ranking_id) };
     await write(db.players, 'players', next, next.updated_at);
     return next;
   });
@@ -154,7 +171,7 @@ export async function updateMatch(
   id: string,
   changes: MatchChanges,
 ): Promise<Match> {
-  return db.transaction('rw', [db.players, db.tournaments, db.matches, db.sets, db.games, db.points, db.syncQueue], async () => {
+  return db.transaction('rw', [db.players, db.fitp_rankings, db.tournaments, db.matches, db.sets, db.games, db.points, db.syncQueue], async () => {
     const current = await requireActive(id => db.matches.get(id), id, familyId, 'Partita');
     const player = changes.player_id === current.player_id
       ? undefined
@@ -185,7 +202,8 @@ export async function updateMatch(
       ...changes,
       games_to_win_set: gamesToWinSet,
       short_set_tiebreak_at: shortSetTiebreakAt,
-      ...(player ? { player_ranking_snapshot: player.ranking } : {}),
+      // Only a different player gets a new snapshot; otherwise the historical ranking is kept.
+      ...(player ? { player_ranking_snapshot: await rankingSnapshot(player) } : {}),
     };
     await write(db.matches, 'matches', next, next.updated_at);
     await recalculate(next, next.updated_at);
@@ -200,7 +218,7 @@ export type NewMatchInput = Pick<Match,
 > & { tournament_id: string };
 
 export async function createMatch(familyId: string, input: NewMatchInput): Promise<Match> {
-  return db.transaction('rw', [db.players, db.tournaments, db.matches, db.syncQueue], async () => {
+  return db.transaction('rw', [db.players, db.fitp_rankings, db.tournaments, db.matches, db.syncQueue], async () => {
     const player = await requireActive(id => db.players.get(id), input.player_id, familyId, 'Giocatore');
     await requireActive(id => db.tournaments.get(id), input.tournament_id, familyId, 'Torneo');
     const opponent = input.opponent.trim();
@@ -218,7 +236,7 @@ export async function createMatch(familyId: string, input: NewMatchInput): Promi
       id: crypto.randomUUID(),
       family_id: familyId,
       opponent,
-      player_ranking_snapshot: player.ranking,
+      player_ranking_snapshot: await rankingSnapshot(player),
       games_to_win_set: gamesToWinSet,
       short_set_tiebreak_at: input.short_set_tiebreak_at ?? 3,
       status_id: STATUS.in_progress,

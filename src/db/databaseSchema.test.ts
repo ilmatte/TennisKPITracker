@@ -5,6 +5,7 @@ import { db, TennisDatabase } from './database';
 import { POINT_TYPES } from '../features/scoring/pointTypes';
 import { PLAYER_AGE_CATEGORIES } from '../features/players/ageCategories';
 import { STATUSES } from '../features/statuses/statuses';
+import { FITP_RANKINGS } from '../features/players/fitpRankings';
 
 const databaseName = 'TennisKPITrackerSchemaTest';
 
@@ -17,14 +18,15 @@ describe('local database schema', () => {
   it('creates every store aligned with the Supabase tables and seeds the reference tables', async () => {
     const fresh = new TennisDatabase(databaseName);
     await fresh.open();
-    expect(fresh.verno).toBe(16);
+    expect(fresh.verno).toBe(17);
     expect(fresh.tables.map(table => table.name).sort()).toEqual([
-      'clubs', 'families', 'family_invitations', 'family_members', 'games', 'matches', 'player_age_categories', 'players',
+      'clubs', 'families', 'family_invitations', 'family_members', 'fitp_rankings', 'games', 'matches', 'player_age_categories', 'players',
       'point_types', 'points', 'sets', 'statuses', 'syncConflicts', 'syncMetadata', 'syncQueue', 'tournaments',
     ]);
     expect(await fresh.table('point_types').toArray()).toEqual([...POINT_TYPES]);
     expect(await fresh.table('player_age_categories').toArray()).toEqual([...PLAYER_AGE_CATEGORIES]);
     expect(await fresh.table('statuses').toArray()).toEqual([...STATUSES]);
+    expect(await fresh.fitp_rankings.orderBy('sort_order').toArray()).toEqual([...FITP_RANKINGS]);
     const pointIndexes = fresh.points.schema.indexes.map(index => index.name);
     expect(pointIndexes).toContain('point_type_id');
     expect(pointIndexes).toContain('[game_id+point_number]');
@@ -49,10 +51,12 @@ describe('local database schema', () => {
 
     const reopened = new TennisDatabase(databaseName);
     await reopened.open();
-    expect(reopened.verno).toBe(16);
+    expect(reopened.verno).toBe(17);
     expect(await reopened.table('point_types').toArray()).toEqual([...POINT_TYPES]);
     expect(await reopened.table('player_age_categories').toArray()).toEqual([...PLAYER_AGE_CATEGORIES]);
-    expect(await reopened.table('players').get('p1')).toEqual(player);
+    // The free-text ranking typed before the registry existed becomes ranking_id (4.1 is id 7).
+    const { ranking: _legacy, ...converted } = player;
+    expect(await reopened.table('players').get('p1')).toEqual({ ...converted, ranking_id: 7 });
     expect(reopened.players.schema.indexes.map(index => index.name)).not.toContain('category');
     reopened.close();
   });
@@ -83,7 +87,7 @@ describe('local database schema', () => {
 
     const upgraded = new TennisDatabase(databaseName);
     await upgraded.open();
-    expect(upgraded.verno).toBe(16);
+    expect(upgraded.verno).toBe(17);
     expect(await upgraded.table('clubs').get('c1')).toEqual(club);
     // The free-text tournament is removed; matches created before tournaments have no tournament_id. The text status
     // becomes status_id (v14).
@@ -110,7 +114,7 @@ describe('local database schema', () => {
 
     const upgraded = new TennisDatabase(databaseName);
     await upgraded.open();
-    expect(upgraded.verno).toBe(16);
+    expect(upgraded.verno).toBe(17);
     expect((await upgraded.tournaments.toArray()).map(item => [item.id, item.status_id, 'status' in item])).toEqual([
       ['t1', 1, false], ['t2', 1, false], ['t3', 3, false],
     ]);
@@ -141,14 +145,55 @@ describe('local database schema', () => {
 
     const upgraded = new TennisDatabase(databaseName);
     await upgraded.open();
-    expect(upgraded.verno).toBe(16);
+    expect(upgraded.verno).toBe(17);
     expect(await upgraded.matches.toArray()).toEqual([
       { id: 'm1', family_id: 'f1', last_set_type: 'super-tiebreak', games_to_win_set: 6 },
       { id: 'm2', family_id: 'f1', last_set_type: 'normal', games_to_win_set: 4 },
     ]);
     expect((await upgraded.syncQueue.get('q1'))?.payload).toEqual({ id: 'm1', last_set_type: 'normal', games_to_win_set: 4 });
-    expect((await upgraded.syncQueue.get('q2'))?.payload).toEqual({ id: 'p1', third_set_type: 'kept' });
+    // Player payloads are not touched by the match conversion; v17 only gives them ranking_id (none here).
+    expect((await upgraded.syncQueue.get('q2'))?.payload).toEqual({ id: 'p1', third_set_type: 'kept', ranking_id: null });
     expect(await upgraded.syncConflicts.get('c1')).toMatchObject({ local_payload: { last_set_type: 'normal' }, remote_payload: null });
+    upgraded.close();
+  });
+
+  it('upgrades a version 16 database converting the free-text player ranking and leaving match snapshots unchanged', async () => {
+    const older = new Dexie(databaseName);
+    older.version(16).stores({
+      players: 'id, family_id, first_name, last_name, ranking, updated_at, deleted',
+      matches: 'id, family_id, match_date, player_id, status_id, tournament_id, updated_at, deleted',
+      syncQueue: 'id, operation_id, family_id, entity_type, entity_id, created_at, attempts',
+      syncConflicts: 'id, family_id, entity_type, entity_id, status, created_at',
+    });
+    await older.open();
+    await older.table('players').bulkAdd([
+      { id: 'p1', family_id: 'f1', ranking: '3.4' },
+      { id: 'p2', family_id: 'f1', ranking: 'nc' },
+      { id: 'p3', family_id: 'f1', ranking: '' },
+      { id: 'p4', family_id: 'f1', ranking: 'sconosciuta' },
+    ]);
+    await older.table('matches').add({ id: 'm1', family_id: 'f1', player_id: 'p1', player_ranking_snapshot: '4.1' });
+    await older.table('syncQueue').add({ id: 'q1', family_id: 'f1', entity_type: 'players', entity_id: 'p1', payload: { id: 'p1', ranking: '3.4' } });
+    await older.table('syncConflicts').add({
+      id: 'c1', family_id: 'f1', entity_type: 'players', entity_id: 'p2',
+      local_payload: { id: 'p2', ranking: 'NC' }, remote_payload: { id: 'p2', ranking: '4.6' },
+    });
+    older.close();
+
+    const upgraded = new TennisDatabase(databaseName);
+    await upgraded.open();
+    expect(await upgraded.players.toArray()).toEqual([
+      { id: 'p1', family_id: 'f1', ranking_id: 9 },
+      { id: 'p2', family_id: 'f1', ranking_id: 1 },
+      { id: 'p3', family_id: 'f1', ranking_id: null },
+      { id: 'p4', family_id: 'f1', ranking_id: null },
+    ]);
+    expect(upgraded.players.schema.indexes.map(index => index.name)).toContain('ranking_id');
+    expect(await upgraded.matches.get('m1')).toMatchObject({ player_ranking_snapshot: '4.1' });
+    expect((await upgraded.syncQueue.get('q1'))?.payload).toEqual({ id: 'p1', ranking_id: 9 });
+    expect(await upgraded.syncConflicts.get('c1')).toMatchObject({
+      local_payload: { id: 'p2', ranking_id: 1 }, remote_payload: { id: 'p2', ranking_id: 2 },
+    });
     upgraded.close();
   });
 

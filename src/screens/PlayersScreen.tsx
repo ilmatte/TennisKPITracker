@@ -13,7 +13,8 @@ import settingsBackground from '../assets/background-settings.png';
 import { stamp } from './shared';
 import { BrandBar } from './BrandBar';
 import { currentSportingYear, playerAgeCategory } from '../features/players/ageCategories';
-import type { Player } from '../types';
+import { fitpRankingCode, fitpRankingOptionLabel, groupFitpRankings } from '../features/players/fitpRankings';
+import type { FitpRanking, Player } from '../types';
 
 /** Where the player editor was opened from: decides where "Salva" goes next. */
 type EditorOrigin = 'new-match' | 'players';
@@ -53,6 +54,8 @@ export function Players() {
     }
     return stats;
   }, [activeFamily?.id]) ?? new Map<string, { played: number; completed: number; won: number }>();
+  // FITP rankings registry (fitp_rankings reference table), from the lowest ranking to the highest.
+  const rankings = useLiveQuery(() => db.fitp_rankings.orderBy('sort_order').toArray(), []) ?? [];
   const [editing, setEditing] = useState<Player | null>(null);
   const [origin, setOrigin] = useState<EditorOrigin>('players');
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +64,7 @@ export function Players() {
     const now = stamp();
     return {
       id: crypto.randomUUID(), family_id: familyId, first_name: '', last_name: '',
-      birth_date: null, ranking: '', created_at: now, updated_at: now, version: 0, deleted: false,
+      birth_date: null, ranking_id: null, created_at: now, updated_at: now, version: 0, deleted: false,
     };
   }
 
@@ -88,7 +91,7 @@ export function Players() {
           first_name: player.first_name,
           last_name: player.last_name,
           birth_date: player.birth_date,
-          ranking: player.ranking,
+          ranking_id: player.ranking_id,
         });
       } else {
         await createPlayer({ ...player, version: 1 }, user?.id ?? null);
@@ -141,7 +144,8 @@ export function Players() {
     {players.length > 0 && players.length <= 2
       ? <div className="pl-big-list">{players.map(player => {
         const stats = playerStats.get(player.id) ?? { played: 0, completed: 0, won: 0 };
-        const details = [playerAgeCategory(player)?.name, player.ranking && `FITP ${player.ranking}`].filter(Boolean).join(' • ');
+        const rankingCode = fitpRankingCode(player.ranking_id, rankings);
+        const details = [playerAgeCategory(player)?.name, rankingCode && `FITP ${rankingCode}`].filter(Boolean).join(' • ');
         return <button className="pl-big-card" key={player.id} onClick={() => edit(player)}>
           <span className="pl-big-head">
             <span className="pl-avatar big">{player.first_name[0]}{player.last_name[0]}</span>
@@ -172,13 +176,14 @@ export function Players() {
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0B2A5B" strokeWidth="2.8" strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
       Aggiungi giocatore
     </button>
-    {editing && <PlayerModal player={editing} error={error} onClose={() => setEditing(null)} onSave={save}
+    {editing && <PlayerModal player={editing} rankings={rankings} error={error} onClose={() => setEditing(null)} onSave={save}
       onDelete={editing.version > 0 ? () => void remove(editing) : undefined} />}
   </div>;
 }
 
-function PlayerModal({ player, error, onClose, onSave, onDelete }: {
+function PlayerModal({ player, rankings, error, onClose, onSave, onDelete }: {
   player: Player;
+  rankings: readonly FitpRanking[];
   error: string | null;
   onClose: () => void;
   onSave: (player: Player) => void;
@@ -207,7 +212,10 @@ function PlayerModal({ player, error, onClose, onSave, onDelete }: {
         {draft.birth_date && <p className="player-editor-category" role="status">
           Categoria {sportingYear}: <strong>{ageCategory ? ageCategory.name : 'nessuna (meno di 10 anni)'}</strong>
         </p>}
-        <label>Classifica FITP<input value={draft.ranking} onChange={event => setDraft({ ...draft, ranking: event.target.value })} /></label>
+        <label>Classifica FITP
+          <FitpRankingSelect rankings={rankings} value={draft.ranking_id}
+            onChange={rankingId => setDraft({ ...draft, ranking_id: rankingId })} />
+        </label>
       </div>
       {error && <p className="family-feedback error" role="alert">{error}</p>}
       <div className="player-editor-actions">
@@ -219,4 +227,20 @@ function PlayerModal({ player, error, onClose, onSave, onDelete }: {
       </div>
     </div>
   </section></div>;
+}
+
+/** Drop-down of the FITP rankings registry, grouped by category (Quarta, Terza, Seconda) and ordered from the lowest
+ *  ranking to the highest. Each option starts with the official code, so typing it on the focused menu selects it. */
+function FitpRankingSelect({ rankings, value, onChange }: {
+  rankings: readonly FitpRanking[];
+  value: number | null;
+  onChange: (rankingId: number | null) => void;
+}) {
+  return <select className="player-editor-select" value={value ?? ''}
+    onChange={event => onChange(event.target.value ? Number(event.target.value) : null)}>
+    <option value="">Non indicata</option>
+    {groupFitpRankings(rankings, value).map(group => <optgroup key={group.group} label={group.label}>
+      {group.rankings.map(item => <option key={item.id} value={item.id}>{fitpRankingOptionLabel(item)}</option>)}
+    </optgroup>)}
+  </select>;
 }

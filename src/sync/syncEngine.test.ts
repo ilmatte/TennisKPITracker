@@ -180,7 +180,7 @@ function mapping(overrides: Partial<SyncMapping> = {}): SyncMapping {
 function localPlayer(id = 'player-id', version = 1): Player {
   return {
     id, family_id: localFamilyId, first_name: 'Ada', last_name: 'Lovelace', birth_date: null,
-    ranking: '4.1', created_at: now, updated_at: now, version, deleted: false,
+    ranking_id: 7, created_at: now, updated_at: now, version, deleted: false,
   };
 }
 
@@ -280,6 +280,20 @@ describe('sync engine', () => {
     expect(match).not.toHaveProperty('status');
     expect(match).not.toHaveProperty('third_set_type');
     expect(match).not.toHaveProperty('tiebreak_starts_at_363');
+  });
+
+  it('converts the free-text ranking of players saved on the server before the FITP rankings registry', async () => {
+    const remote = new FakeSyncRepository();
+    const { ranking_id: _current, ...legacyPlayer } = localPlayer();
+    remote.seed('players', { ...legacyPlayer, family_id: remoteFamilyId, version: 1, ranking: '3,4' });
+    const state = mapping();
+    await saveSyncMapping(state);
+
+    await runSync(remote, state, remote.revision);
+
+    const player = await db.players.get('player-id');
+    expect(player).toMatchObject({ ranking_id: 9 });
+    expect(player).not.toHaveProperty('ranking');
   });
 
   it('uploads the latest queued records parent-first and transmits tombstones as upserts', async () => {

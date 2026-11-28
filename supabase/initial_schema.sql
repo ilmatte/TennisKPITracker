@@ -52,13 +52,58 @@ create table public.family_invitations (
   check (expires_at > created_at)
 );
 
+-- FITP individual rankings (Quarta, Terza and Seconda categoria; Prima categoria and professionals not included yet).
+-- Reference data (not synced): ids are stable and mirrored by the app (src/features/players/fitpRankings.ts) and by the
+-- Dexie fitp_rankings store: never renumber them. Source: Tabella 1 of the FITP "Metodo per la compilazione delle
+-- classifiche federali" 2026 and 2027. sort_order goes from the lowest ranking (4.NC) to the highest (2.1). A future
+-- change of the classification adds rows (new ids) for its season and deactivates the old ones.
+create table public.fitp_rankings (
+  id smallint primary key,
+  code text not null,
+  name text not null,
+  category_group text not null check (category_group in ('fourth', 'third', 'second')),
+  sort_order smallint not null,
+  is_active boolean not null default true,
+  season smallint not null,
+  unique (season, code),
+  unique (season, sort_order)
+);
+
+insert into public.fitp_rankings (id, code, name, category_group, sort_order, is_active, season) values
+  (1, '4.NC', 'IV categoria NC (non classificato)', 'fourth', 1, true, 2026),
+  (2, '4.6', 'IV categoria 6° gruppo', 'fourth', 2, true, 2026),
+  (3, '4.5', 'IV categoria 5° gruppo', 'fourth', 3, true, 2026),
+  (4, '4.4', 'IV categoria 4° gruppo', 'fourth', 4, true, 2026),
+  (5, '4.3', 'IV categoria 3° gruppo', 'fourth', 5, true, 2026),
+  (6, '4.2', 'IV categoria 2° gruppo', 'fourth', 6, true, 2026),
+  (7, '4.1', 'IV categoria 1° gruppo', 'fourth', 7, true, 2026),
+  (8, '3.5', 'III categoria 5° gruppo', 'third', 8, true, 2026),
+  (9, '3.4', 'III categoria 4° gruppo', 'third', 9, true, 2026),
+  (10, '3.3', 'III categoria 3° gruppo', 'third', 10, true, 2026),
+  (11, '3.2', 'III categoria 2° gruppo', 'third', 11, true, 2026),
+  (12, '3.1', 'III categoria 1° gruppo', 'third', 12, true, 2026),
+  (13, '2.8', 'II categoria 8° gruppo', 'second', 13, true, 2026),
+  (14, '2.7', 'II categoria 7° gruppo', 'second', 14, true, 2026),
+  (15, '2.6', 'II categoria 6° gruppo', 'second', 15, true, 2026),
+  (16, '2.5', 'II categoria 5° gruppo', 'second', 16, true, 2026),
+  (17, '2.4', 'II categoria 4° gruppo', 'second', 17, true, 2026),
+  (18, '2.3', 'II categoria 3° gruppo', 'second', 18, true, 2026),
+  (19, '2.2', 'II categoria 2° gruppo', 'second', 19, true, 2026),
+  (20, '2.1', 'II categoria 1° gruppo', 'second', 20, true, 2026)
+on conflict (id) do update set
+  code = excluded.code, name = excluded.name, category_group = excluded.category_group,
+  sort_order = excluded.sort_order, is_active = excluded.is_active, season = excluded.season;
+
+-- ranking_id: the player's current FITP ranking (null = not specified). The ranking each match was played with is
+-- frozen in matches.player_ranking_snapshot (the ranking code), so later updates do not change past matches.
 create table public.players (
   id uuid primary key,
   family_id uuid not null references public.families(id) on delete cascade,
   first_name text not null,
   last_name text not null default '',
   birth_date date,
-  ranking text not null default '',
+  ranking_id smallint
+    constraint players_ranking_id_fkey references public.fitp_rankings(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   version integer not null default 1 check (version > 0),
@@ -1059,12 +1104,24 @@ create policy "authenticated users can read statuses"
 
 commit;
 
+-- FITP rankings are read-only reference data for signed-in users.
+begin;
+
+revoke all on table public.fitp_rankings from public, anon;
+grant select on table public.fitp_rankings to authenticated;
+alter table public.fitp_rankings enable row level security;
+create policy "authenticated users can read fitp rankings"
+  on public.fitp_rankings for select to authenticated
+  using (true);
+
+commit;
+
 -- Player age categories (FITP age sectors).
 begin;
 
 -- FITP age categories of players. Reference data (not synced): ids are stable and mirrored by the app
 -- (src/features/players/ageCategories.ts) and by the Dexie player_age_categories store: never renumber them.
--- The category is computed from players.birth_date for a sporting year; it is independent from players.ranking
+-- The category is computed from players.birth_date for a sporting year; it is independent from players.ranking_id
 -- (FITP technical ranking). min_age is inclusive, max_age exclusive (null = no upper limit).
 -- age_basis: 'january_1' = years completed on 1 January of the sporting year (youth sectors, Open);
 --            'calendar_year' = age reached during the sporting year (veterans).

@@ -29,7 +29,7 @@ export interface FamilyInvitation {
 }
 
 /** Row of the player_age_categories reference table (FITP age sectors, see features/players/ageCategories.ts).
- *  Independent from the FITP technical ranking stored in Player.ranking. */
+ *  Independent from the FITP technical ranking (Player.ranking_id). */
 export interface PlayerAgeCategory {
   id: number;
   code: string;
@@ -45,14 +45,32 @@ export interface PlayerAgeCategory {
   age_basis: 'january_1' | 'calendar_year';
 }
 
+export type FitpRankingCategoryGroup = 'fourth' | 'third' | 'second';
+
+/** Row of the fitp_rankings reference table (FITP individual rankings, see features/players/fitpRankings.ts). */
+export interface FitpRanking {
+  id: number;
+  /** Official code: 4.NC, 4.6 ... 4.1, 3.5 ... 3.1, 2.8 ... 2.1. */
+  code: string;
+  name: string;
+  category_group: FitpRankingCategoryGroup;
+  /** Position from the lowest ranking (4.NC) to the highest. */
+  sort_order: number;
+  is_active: boolean;
+  /** FITP season the classification refers to. */
+  season: number;
+}
+
 export interface Player {
   id: PlayerId;
   family_id: UUID;
   first_name: string;
   last_name: string;
   birth_date?: string | null;
-  /** FITP technical ranking. The age category is not stored: it is computed from birth_date (see ageCategories.ts). */
-  ranking: string;
+  /** Current FITP technical ranking: FK to fitp_rankings.id, null when not specified. The ranking a match was played
+   *  with is frozen in Match.player_ranking_snapshot. The age category is not stored: it is computed from birth_date
+   *  (see ageCategories.ts). */
+  ranking_id: number | null;
   created_at: string;
   updated_at: string;
   version: number;
@@ -118,6 +136,8 @@ export interface Match {
   match_date: string;
   /** The player's name is read from the players table through player_id. */
   player_id: PlayerId;
+  /** Code of the player's FITP ranking (fitp_rankings.code) when the match was created: a historical snapshot, not
+   *  changed by later updates of the player's ranking. '' when the player had no ranking. */
   player_ranking_snapshot: string;
   opponent: string;
   opponent_ranking?: string | null;

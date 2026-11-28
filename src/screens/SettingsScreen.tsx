@@ -5,6 +5,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import { migrateLegacyPointPayload } from '../db/pointWinner';
 import { migrateLegacyStatus } from '../features/statuses/statuses';
+import { migrateLegacyPlayerRanking } from '../features/players/fitpRankings';
 import { migrateLegacyMatch } from '../features/matches/legacyMatch';
 import { useAuth } from '../features/auth/AuthContext';
 import { useFamily } from '../features/families/FamilyContextDefinition';
@@ -59,7 +60,8 @@ export function Settings() {
       const data = backup as {
         players?: Player[]; clubs?: Club[]; tournaments?: Tournament[]; matches?: Match[]; sets?: TennisSet[]; games?: Game[]; points?: Point[];
       };
-      const players = data.players ?? [];
+      // Backups written before the FITP rankings registry carry a free-text ranking, converted to ranking_id.
+      const players = (data.players ?? []).map(player => migrateLegacyPlayerRanking(player));
       const clubs = data.clubs ?? []; // absent in backups written before clubs existed
       // Absent in backups written before tournaments existed; older ones carry a text status, converted to status_id.
       const tournaments = (data.tournaments ?? []).map(tournament => migrateLegacyStatus('tournament', tournament));

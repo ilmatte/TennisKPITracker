@@ -2,12 +2,14 @@ import Dexie, { type EntityTable, type Table, type Transaction } from 'dexie';
 import { migrateLegacyMatchColumns } from '../features/matches/legacyMatch';
 import { POINT_TYPES } from '../features/scoring/pointTypes';
 import { PLAYER_AGE_CATEGORIES } from '../features/players/ageCategories';
+import { FITP_RANKINGS, migrateLegacyPlayerRanking } from '../features/players/fitpRankings';
 import { STATUSES, migrateLegacyStatus } from '../features/statuses/statuses';
 import type {
   Club,
   Family,
   FamilyInvitation,
   FamilyMember,
+  FitpRanking,
   Game,
   Match,
   Player,
@@ -37,6 +39,7 @@ export class TennisDatabase extends Dexie {
   point_types!: Table<PointType, number>;
   player_age_categories!: Table<PlayerAgeCategory, number>;
   statuses!: Table<Status, number>;
+  fitp_rankings!: Table<FitpRanking, number>;
   syncQueue!: EntityTable<SyncOperation, 'id'>;
   syncMetadata!: EntityTable<SyncMetadata, 'key'>;
   syncConflicts!: EntityTable<SyncConflict, 'id'>;
@@ -101,6 +104,13 @@ export class TennisDatabase extends Dexie {
     // ends up the same.
     this.version(15).stores({}).upgrade(migrateLegacyMatchStores);
     this.version(16).stores({}).upgrade(migrateLegacyMatchStores);
+    // v17: the fitp_rankings reference table; the free-text players.ranking becomes ranking_id (FK to fitp_rankings).
+    // Mirrors supabase/initial_schema.sql. Texts that match no registry code become null. Matches are not touched:
+    // player_ranking_snapshot keeps the ranking each match was played with.
+    this.version(17).stores({
+      fitp_rankings: 'id, &[season+code], category_group, sort_order',
+      players: 'id, family_id, first_name, last_name, ranking_id, updated_at, deleted',
+    }).upgrade(migrateLegacyPlayerStores);
     // Reference tables are written every time the database opens, whatever version the device came from.
     this.on('ready', database => seedReferenceTables(database as TennisDatabase));
   }
@@ -122,13 +132,32 @@ async function migrateLegacyMatchStores(transaction: Transaction): Promise<void>
   });
 }
 
+/** Converts the free-text ranking of stored players, and of the player records carried by pending sync operations and
+ *  conflicts, to ranking_id: an unsent upsert with the removed column would lose the ranking on Supabase. */
+async function migrateLegacyPlayerStores(transaction: Transaction): Promise<void> {
+  await transaction.table('players').toCollection().modify((player, ref) => {
+    ref.value = migrateLegacyPlayerRanking(player);
+  });
+  await transaction.table('syncQueue').toCollection().modify((operation: SyncOperation) => {
+    if (operation.entity_type === 'players') operation.payload = migrateLegacyPlayerRanking(operation.payload);
+  });
+  await transaction.table('syncConflicts').toCollection().modify((conflict: SyncConflict) => {
+    if (conflict.entity_type !== 'players') return;
+    conflict.local_payload = migrateLegacyPlayerRanking(conflict.local_payload);
+    conflict.remote_payload = migrateLegacyPlayerRanking(conflict.remote_payload);
+  });
+}
+
 /** Writes the reference tables (same rows as supabase/initial_schema.sql). Idempotent: rows are keyed by their stable
  *  id, so running it at every start updates them instead of creating duplicates. */
 function seedReferenceTables(database: TennisDatabase): Promise<unknown> {
-  return database.transaction('rw', [database.point_types, database.player_age_categories, database.statuses], () => Promise.all([
+  return database.transaction('rw', [
+    database.point_types, database.player_age_categories, database.statuses, database.fitp_rankings,
+  ], () => Promise.all([
     database.point_types.bulkPut([...POINT_TYPES]),
     database.player_age_categories.bulkPut([...PLAYER_AGE_CATEGORIES]),
     database.statuses.bulkPut([...STATUSES]),
+    database.fitp_rankings.bulkPut([...FITP_RANKINGS]),
   ]));
 }
 

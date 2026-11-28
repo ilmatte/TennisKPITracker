@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import schema from '../../supabase/initial_schema.sql?raw';
+import fitpMigration from '../../supabase/migrations/20261128_fitp_rankings.sql?raw';
+import { FITP_RANKINGS } from '../features/players/fitpRankings';
 
 function functionBody(sql: string, name: string): string {
   const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -88,5 +90,30 @@ describe('statuses SQL', () => {
     expect(schema).toMatch(/status_id smallint not null\s+constraint matches_status_id_fkey references public\.statuses\(id\)\s+constraint matches_status_id_check check \(status_id in \(2, 3\)\)/i);
     // No text status column is left.
     expect(schema).not.toMatch(/^\s*status text/m);
+  });
+});
+
+describe('FITP rankings SQL', () => {
+  const sqlRows = (sql: string) => [...sql.matchAll(
+    /\((\d+), '([^']+)', '([^']+)', '(fourth|third|second)', (\d+), (true|false), (\d+)\)/g,
+  )].map(([, id, code, name, category_group, sort_order, is_active, season]) => ({
+    id: Number(id), code, name, category_group, sort_order: Number(sort_order), is_active: is_active === 'true', season: Number(season),
+  }));
+
+  it('seeds the same registry as the app, in the schema and in the migration', () => {
+    expect(sqlRows(schema)).toEqual([...FITP_RANKINGS]);
+    expect(sqlRows(fitpMigration)).toEqual([...FITP_RANKINGS]);
+  });
+
+  it('links players to the registry and keeps it read-only for signed-in users', () => {
+    expect(schema).toMatch(/ranking_id smallint\s+constraint players_ranking_id_fkey references public\.fitp_rankings\(id\)/i);
+    expect(schema).toMatch(/unique \(season, code\),\s+unique \(season, sort_order\)/i);
+    expect(schema).toMatch(/grant select on table public\.fitp_rankings to authenticated/i);
+    expect(schema).toMatch(/create policy "authenticated users can read fitp rankings"/i);
+    // The free-text ranking column is gone; the match snapshot stays.
+    expect(schema).not.toMatch(/^\s*ranking text/m);
+    expect(schema).toMatch(/player_ranking_snapshot text not null default ''/i);
+    expect(fitpMigration).toMatch(/alter table public\.players drop column if exists ranking;/i);
+    expect(fitpMigration).not.toMatch(/update public\.matches/i);
   });
 });

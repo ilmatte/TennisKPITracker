@@ -36,7 +36,7 @@ describe('Tornei screen', () => {
   it('is reached from the Partite switch and lists each tournament with its matches', async () => {
     const family = await ensureLocalWorkspace();
     const now = new Date().toISOString();
-    await db.players.add({ id: 'p1', family_id: family.id, first_name: 'Ale', last_name: 'Rossi', ranking: '4.1', created_at: now, updated_at: now, version: 1, deleted: false });
+    await db.players.add({ id: 'p1', family_id: family.id, first_name: 'Ale', last_name: 'Rossi', ranking_id: 7, created_at: now, updated_at: now, version: 1, deleted: false });
     const { tournament } = await createTournament(family.id, { name: 'Torneo di primavera', age_category_id: 3, start_date: localIsoDate() },
       { create: { name: 'TC Lambrate', city: '', surface: null } });
     await createMatch(family.id, {
@@ -180,7 +180,7 @@ describe('Tornei screen', () => {
   it('opens only the most recent tournament\'s matches by default and lets every list be collapsed or expanded', async () => {
     const family = await ensureLocalWorkspace();
     const now = new Date().toISOString();
-    await db.players.add({ id: 'p1', family_id: family.id, first_name: 'Ale', last_name: 'Rossi', ranking: '4.1', created_at: now, updated_at: now, version: 1, deleted: false });
+    await db.players.add({ id: 'p1', family_id: family.id, first_name: 'Ale', last_name: 'Rossi', ranking_id: 7, created_at: now, updated_at: now, version: 1, deleted: false });
     const club = { create: { name: 'TC Lambrate', city: '', surface: null } };
     const recent = (await createTournament(family.id, { name: 'Torneo di primavera', age_category_id: 3, start_date: '2026-04-12' }, club)).tournament;
     const older = (await createTournament(family.id, { name: 'Memorial Conti', age_category_id: 3, start_date: '2025-06-14' }, club)).tournament;

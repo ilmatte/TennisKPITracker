@@ -5,6 +5,7 @@ import { db } from '../db/database';
 import { createMatch } from '../db/sportsMutations';
 import { useFamily } from '../features/families/FamilyContextDefinition';
 import { playerAgeCategory } from '../features/players/ageCategories';
+import { fitpRankingCode } from '../features/players/fitpRankings';
 import { playerFullName } from '../features/players/playerNames';
 import {
   formatTournamentDate,
@@ -64,6 +65,11 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
   const [opponent, setOpponent] = useState('');
   const selectedPlayer = players.find(player => player.id === playerId);
   const playerCategory = selectedPlayer ? playerAgeCategory(selectedPlayer, Number(matchDate.slice(0, 4))) : null;
+  // Current ranking code, read from the fitp_rankings registry: it is frozen in the match when it is created.
+  const playerRanking = useLiveQuery(
+    async () => selectedPlayer?.ranking_id == null ? '' : fitpRankingCode(selectedPlayer.ranking_id, await db.fitp_rankings.toArray()),
+    [selectedPlayer?.ranking_id],
+  ) ?? '';
 
   // Step 3: match rules
   const [sets, setSets] = useState<3 | 5>(3);
@@ -170,7 +176,7 @@ export function NewMatch({ initialPlayerId, onClose }: { initialPlayerId?: strin
           </SelectBox>
         </div>
         {selectedPlayer && <div className="cw-snapshot">
-          <strong>{[selectedPlayer.ranking, playerCategory ? tournamentCategoryLabel(playerCategory.id) : ''].filter(Boolean).join('  ') || '—'}</strong>
+          <strong>{[playerRanking, playerCategory ? tournamentCategoryLabel(playerCategory.id) : ''].filter(Boolean).join('  ') || '—'}</strong>
           <span>Dati congelati alla creazione</span>
         </div>}
         {!players.length && <p className="cw-feedback">Aggiungi prima un giocatore in questo spazio.</p>}

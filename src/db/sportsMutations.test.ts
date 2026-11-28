@@ -38,7 +38,7 @@ function family(id: string, local_only = true, created_by: string | null = null)
 function player(id: string, family_id = 'family-1'): Player {
   return {
     id, family_id, first_name: 'Ada', last_name: 'Lovelace', birth_date: null,
-    ranking: '4.1', created_at: now, updated_at: now, version: 1, deleted: false,
+    ranking_id: 7, created_at: now, updated_at: now, version: 1, deleted: false,
   };
 }
 
@@ -168,7 +168,7 @@ describe('sport entity mutations', () => {
   it('updates player profile without changing historical match snapshots', async () => {
     await seedMatch();
     const saved = await updatePlayer('family-1', 'player-1', {
-      first_name: 'Ada Marie', last_name: 'Byron', birth_date: '1815-12-10', ranking: '3.1',
+      first_name: 'Ada Marie', last_name: 'Byron', birth_date: '1815-12-10', ranking_id: 12,
     });
 
     expect(saved).toMatchObject({ version: 2, updated_at: expect.not.stringMatching(now) });
@@ -176,14 +176,27 @@ describe('sport entity mutations', () => {
       player_ranking_snapshot: '4.1',
     });
     expect(await operations('player-1')).toMatchObject([
-      { operation: 'upsert', payload: { version: 2, ranking: '3.1' } },
+      { operation: 'upsert', payload: { version: 2, ranking_id: 12 } },
     ]);
+  });
+
+  it('rejects a ranking that is not in the FITP rankings registry and accepts none', async () => {
+    await seedMatch();
+    await expect(updatePlayer('family-1', 'player-1', {
+      first_name: 'Ada', last_name: 'Lovelace', birth_date: null, ranking_id: 999,
+    })).rejects.toThrow('Classifica FITP non valida.');
+    expect(await db.players.get('player-1')).toMatchObject({ ranking_id: 7, version: 1 });
+    expect(await db.syncQueue.count()).toBe(0);
+    expect(await updatePlayer('family-1', 'player-1', {
+      first_name: 'Ada', last_name: 'Lovelace', birth_date: null, ranking_id: null,
+    })).toMatchObject({ ranking_id: null, version: 2 });
+    expect(await db.matches.get('match-1')).toMatchObject({ player_ranking_snapshot: '4.1' });
   });
 
   it('updates a match, snapshots a newly associated player and rejects foreign-family players', async () => {
     await seedMatch();
     // Born in 2010: 15 on 1 January 2026, so Under 16 in the sporting year of the match.
-    await db.players.put({ ...player('player-2'), first_name: 'Bea', last_name: 'Player', ranking: '2.8', birth_date: '2010-06-01' });
+    await db.players.put({ ...player('player-2'), first_name: 'Bea', last_name: 'Player', ranking_id: 13, birth_date: '2010-06-01' });
     const changes: MatchChanges = {
       match_date: '2026-02-02', player_id: 'player-2', opponent: 'Cam', opponent_ranking: '2.1',
       tournament_id: null, tournament_match_number: 8, number_of_sets: 5,
@@ -345,7 +358,7 @@ describe('sport entity mutations', () => {
       new Dexie.Promise<string>((_resolve, reject) => reject(new Error('simulated queue failure'))));
     try {
       await expect(updatePlayer('family-1', 'player-1', {
-        first_name: 'Changed', last_name: 'Name', birth_date: null, ranking: '2.0',
+        first_name: 'Changed', last_name: 'Name', birth_date: null, ranking_id: 20,
       })).rejects.toThrow('simulated queue failure');
     } finally {
       queueWrite.mockRestore();
@@ -358,7 +371,7 @@ describe('sport entity mutations', () => {
   it('rejects cross-family mutation without changing the foreign record', async () => {
     await seedMatch();
     await expect(updatePlayer('family-2', 'player-1', {
-      first_name: 'Changed', last_name: 'Name', birth_date: null, ranking: '2.0',
+      first_name: 'Changed', last_name: 'Name', birth_date: null, ranking_id: 20,
     })).rejects.toThrow('Giocatore non trovato nello spazio attivo.');
     expect((await db.players.get('player-1'))?.first_name).toBe('Ada');
     expect(await db.syncQueue.count()).toBe(0);
