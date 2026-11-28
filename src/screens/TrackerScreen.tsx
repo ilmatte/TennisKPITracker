@@ -20,6 +20,8 @@ import pointWonIcon from '../assets/icone/currentgame/vinto-chiaro.svg';
 import aceIcon from '../assets/icone/currentgame/ace-chiaro.svg';
 import servingIcon from '../assets/icone/trasparente/512/tennista-servizio-trasparente-512.png';
 import trophyIcon from '../assets/icone/currentgame/vinto-scuro.svg';
+import { MatchClock } from '../features/matches/MatchClock';
+import { matchDurationSeconds, matchStartedAt, withStatusTiming } from '../features/matches/matchTime';
 import { MatchEditor } from './MatchesScreen';
 import { stamp, mutationError, queueOperation } from './shared';
 import type { Game, Match, Point, ScoredPoint, TennisSet } from '../types';
@@ -93,7 +95,7 @@ export function Tracker() {
   // A match with a winner is completed automatically (also for matches finished before this rule existed).
   useEffect(() => {
     if (match && matchHasWinner && match.status_id === STATUS.in_progress) {
-      void setMatchStatus(match.family_id, match.id, STATUS.completed).catch(cause =>
+      void setMatchStatus(match.family_id, match.id, STATUS.completed, matchStartedAt(match, points)).catch(cause =>
         setTrackerError(cause instanceof Error ? cause.message : 'Impossibile completare la partita.'));
     }
   }, [match?.id, match?.status_id, matchHasWinner]);
@@ -204,6 +206,15 @@ export function Tracker() {
       await db.sets.put(updatedSet);
       await db.games.put(updatedGame);
       await db.points.add(point);
+      // The match clock starts with the first point scored (older matches take the time of their first point).
+      if (!currentMatch.started_at) {
+        const startedMatch: Match = {
+          ...currentMatch, started_at: matchStartedAt(currentMatch, scoredPoints) ?? created_at,
+          updated_at: created_at, version: currentMatch.version + 1,
+        };
+        await db.matches.put(startedMatch);
+        await db.syncQueue.put(queueOperation(currentMatch.family_id, 'matches', startedMatch, created_at));
+      }
       await db.syncQueue.bulkPut([
         queueOperation(currentMatch.family_id, 'sets', updatedSet, created_at),
         queueOperation(currentMatch.family_id, 'games', updatedGame, created_at),
@@ -330,7 +341,7 @@ export function Tracker() {
 
   async function completeMatch() {
     try {
-      await setMatchStatus(activeMatch.family_id, activeMatch.id, STATUS.completed);
+      await setMatchStatus(activeMatch.family_id, activeMatch.id, STATUS.completed, matchStartedAt(activeMatch, points));
       setTrackerError(null);
     } catch (cause) {
       setTrackerError(cause instanceof Error ? cause.message : 'Impossibile completare la partita.');
@@ -364,6 +375,12 @@ export function Tracker() {
   const courtChangeDue = selectedGame === null && !gameComplete && (startOfSetChange || tiebreakChange || oddGameChange);
   const changeoverKey = courtChangeDue ? `${match.id}:${selectedSetNumber}:${gameNumber}:${gamePoints.length}` : null;
   const changeoverReason = startOfSetChange ? 'inizio set' : tiebreakChange ? `tie-break · ${gamePoints.length} punti` : 'game dispari';
+  // Match time in the top bar: runs from the first point, frozen at the total duration once the match is completed.
+  // A completed match with no recorded time shows a 0m duration rather than a running clock.
+  const clockStartedAt = matchStartedAt(match, points) ?? (match.status_id === STATUS.completed ? match.updated_at : null);
+  const clockEndedAt = match.status_id === STATUS.completed && clockStartedAt
+    ? new Date(Date.parse(clockStartedAt) + (matchDurationSeconds(match, points) ?? 0) * 1000).toISOString()
+    : null;
   const playerName = playerFullName(matchPlayer);
   const opponentName = match.opponent || 'Avversario';
   const tiebreakLabel = isSuperTiebreakSet(match, selectedSetNumber) ||
@@ -385,7 +402,8 @@ export function Tracker() {
       <button className="cg-round-button cg-back" onClick={() => window.history.back()} aria-label="Indietro">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
       </button>
-      <h1>{currentTiebreak ? tiebreakLabel : 'Partita in corso'}</h1>
+      <h1 className="cg-visually-hidden">{currentTiebreak ? tiebreakLabel : 'Partita in corso'}</h1>
+      <MatchClock startedAt={clockStartedAt} endedAt={clockEndedAt} />
       <button className="cg-round-button cg-menu" onClick={() => setMatchMenuOpen(true)} aria-label="Menu partita">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><circle cx="12" cy="5" r="2.2" /><circle cx="12" cy="12" r="2.2" /><circle cx="12" cy="19" r="2.2" /></svg>
       </button>
@@ -567,8 +585,9 @@ export function Tracker() {
   </div>;
 }
 
-/** Saves the match status (and queues it for sync). */
-async function setMatchStatus(familyId: string, matchId: string, statusId: Match['status_id']): Promise<void> {
+/** Saves the match status (and queues it for sync). Completing it freezes its total duration, reopening it clears it;
+ *  `startedAt` fills started_at for matches started before the clock existed. */
+async function setMatchStatus(familyId: string, matchId: string, statusId: Match['status_id'], startedAt?: string | null): Promise<void> {
   await db.transaction('rw', db.matches, db.syncQueue, async () => {
     const current = await db.matches.get(matchId);
     if (!current || current.family_id !== familyId || current.deleted) {
@@ -576,7 +595,9 @@ async function setMatchStatus(familyId: string, matchId: string, statusId: Match
     }
     if (current.status_id === statusId) return;
     const updated_at = stamp();
-    const updated = { ...current, status_id: statusId, updated_at, version: current.version + 1 };
+    const updated = withStatusTiming(current, {
+      ...current, started_at: current.started_at ?? startedAt ?? null, status_id: statusId, updated_at, version: current.version + 1,
+    }, updated_at);
     await db.matches.put(updated);
     await db.syncQueue.put(queueOperation(familyId, 'matches', updated, updated_at));
   });

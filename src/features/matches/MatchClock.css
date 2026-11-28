@@ -1,0 +1,15 @@
+/* Match time block in the top bar: fills the space between the 44px Back/Menu buttons (16px from the edges). */
+.match-clock{position:absolute;left:68px;right:68px;top:18px;height:44px;padding:0;border:0;background:none;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-family:inherit;cursor:pointer}
+.match-clock-label{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;letter-spacing:.14em;line-height:1;opacity:.8;white-space:nowrap}
+.match-clock-dot{width:7px;height:7px;border-radius:4px;background:#C8F03A}
+/* Blinks only while the clock runs, i.e. from the first point scored. */
+.match-clock-dot.live{animation:match-clock-live 1.6s ease-in-out infinite}
+.match-clock-time{font-size:21px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap}
+.match-clock.ended .match-clock-label{color:#C8F03A;opacity:1}
+.match-clock.ended .match-clock-time{display:flex;align-items:center;gap:7px;color:#C8F03A}
+.match-clock.ended .match-clock-time svg{flex:none}
+.match-clock:focus-visible{outline:3px solid #C8F03A;outline-offset:2px}
+@keyframes match-clock-live{0%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}100%{opacity:1;transform:scale(1)}}
+/* "Reduce motion": the dot keeps blinking (opacity only), without the scale movement. */
+@media (prefers-reduced-motion:reduce){.match-clock-dot.live{animation-name:match-clock-blink}}
+@keyframes match-clock-blink{0%,100%{opacity:1}50%{opacity:.35}}

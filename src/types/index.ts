@@ -158,6 +158,10 @@ export interface Match {
   /** FK to statuses.id: In corso (2) or Conclusa (3). */
   status_id: MatchStatusId;
   result?: string | null;
+  /** When the first point was scored: the match clock runs from here. Null/missing before the first point. */
+  started_at?: string | null;
+  /** Total duration in seconds, frozen when the match is completed (now − started_at); null while it is played. */
+  duration_seconds?: number | null;
   created_at: string;
   updated_at: string;
   version: number;

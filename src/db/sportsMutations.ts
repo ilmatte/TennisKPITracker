@@ -14,6 +14,7 @@ import type {
 import { deriveSetScore } from '../features/scoring/scoring';
 import { TOURNAMENT_CATEGORIES } from '../features/tournaments/tournaments';
 import { STATUS, isMatchStatusId, isTournamentStatusId } from '../features/statuses/statuses';
+import { withStatusTiming } from '../features/matches/matchTime';
 
 const timestamp = () => new Date().toISOString();
 
@@ -196,15 +197,16 @@ export async function updateMatch(
     if (gamesToWinSet === 4 && shortSetTiebreakAt !== 3 && shortSetTiebreakAt !== 4) {
       throw new Error('Il tie-break dei set a 4 game deve iniziare sul 3-3 o sul 4-4.');
     }
-    const next: Match = {
-      ...updated(current, timestamp()),
+    const now = timestamp();
+    const next: Match = withStatusTiming(current, {
+      ...updated(current, now),
       ...changes,
       games_to_win_set: gamesToWinSet,
       short_set_tiebreak_at: shortSetTiebreakAt,
       opponent_ranking_snapshot: await requireRankingId(changes.opponent_ranking_snapshot),
       // Only a different player gets a new snapshot; otherwise the historical ranking is kept.
       ...(player ? { player_ranking_snapshot: await rankingSnapshot(player) } : {}),
-    };
+    }, now);
     await write(db.matches, 'matches', next, next.updated_at);
     await recalculate(next, next.updated_at);
     return next;

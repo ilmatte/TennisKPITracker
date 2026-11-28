@@ -189,6 +189,9 @@ create table public.matches (
   deuce_single_point boolean not null default true,
   first_server text not null check (first_server in ('player', 'opponent')),
   result text,
+  -- Match clock: when the first point was scored, and the total duration (seconds) frozen when the match is completed.
+  started_at timestamptz,
+  duration_seconds integer check (duration_seconds >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   version integer not null default 1 check (version > 0),
